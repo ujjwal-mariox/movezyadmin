@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Plus, Edit2, Trash2, X, Save, Filter, Bike, Truck } from "lucide-react";
+import { Plus, Edit2, Trash2, X, Save, Filter } from "lucide-react";
 
 interface Vehicle {
   id: number;
@@ -23,7 +23,7 @@ const initialVehicles: Vehicle[] = [
   },
   {
     id: 2,
-    vehicle: "Mini Truck",
+    vehicle: "Tempo",
     fuelCapacity: "60 L",
     mileage: "14 km/L",
     range: 840,
@@ -41,7 +41,7 @@ const initialVehicles: Vehicle[] = [
   },
   {
     id: 4,
-    vehicle: "EV Truck",
+    vehicle: "Pickup",
     fuelCapacity: "120 kWh",
     mileage: "6 km/kWh",
     range: 720,
@@ -60,23 +60,6 @@ const VehicleManagement = () => {
   const [filterType, setFilterType] = useState("All Vehicle Types");
   const [minRange, setMinRange] = useState("");
   const [minPayload, setMinPayload] = useState("");
-
-  const getVehicleIcon = (type: string) => {
-    switch (type) {
-      case "Bike":
-        return <Bike className="w-5 h-5 text-blue-600" />;
-      case "Tempo":
-        return <Truck className="w-5 h-5 text-orange-500" />;
-      case "Pickup":
-        return <Truck className="w-5 h-5 text-green-600" />;
-      case "Truck":
-        return <Truck className="w-5 h-5 text-purple-600" />;
-      case "EV Truck":
-        return <Truck className="w-5 h-5 text-teal-600" />;
-      default:
-        return <Truck className="w-5 h-5 text-gray-600" />;
-    }
-  };
 
   const handleDelete = (id: number) => {
     if (window.confirm("Are you sure you want to delete this vehicle?")) {
@@ -153,9 +136,9 @@ const VehicleManagement = () => {
           >
             <option>All Vehicle Types</option>
             <option>Bike</option>
-            <option>Mini Truck</option>
+            <option>Tempo</option>
+            <option>Pickup</option>
             <option>Truck</option>
-            <option>EV Truck</option>
           </select>
           <Filter className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
@@ -204,14 +187,7 @@ const VehicleManagement = () => {
           <tbody className="divide-y divide-gray-100">
             {filteredVehicles.map((vehicle) => (
               <tr key={vehicle.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center">
-                      {getVehicleIcon(vehicle.vehicle)}
-                    </div>
-                    <span>{vehicle.vehicle}</span>
-                  </div>
-                </td>
+                <td className="px-6 py-4 text-sm font-medium text-gray-900">{vehicle.vehicle}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{vehicle.fuelCapacity}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{vehicle.mileage}</td>
                 <td className="px-6 py-4 text-sm font-semibold text-blue-600">{vehicle.range} km</td>
@@ -266,20 +242,23 @@ const VehicleManagement = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Vehicle
+                </label>
+                <select
+                  value={currentVehicle.vehicle}
+                  onChange={(e) => setCurrentVehicle({ ...currentVehicle, vehicle: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="Bike">Bike</option>
+                  <option value="Tempo">Tempo</option>
+                  <option value="Pickup">Pickup</option>
+                  <option value="Truck">Truck</option>
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle</label>
-                  <select
-                    value={currentVehicle.vehicle}
-                    onChange={(e) => setCurrentVehicle({ ...currentVehicle, vehicle: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  >
-                    <option>Bike</option>
-                    <option>Mini Truck</option>
-                    <option>Truck</option>
-                    <option>EV Truck</option>
-                  </select>
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                   <select
@@ -328,7 +307,7 @@ const VehicleManagement = () => {
                     value={currentVehicle.range}
                     onChange={(e) => setCurrentVehicle({ ...currentVehicle, range: Number(e.target.value) })}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. 840"
+                    placeholder="e.g. 800"
                   />
                 </div>
                 <div>
