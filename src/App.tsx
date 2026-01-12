@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense } from "react";
 import { AuthProvider } from "./auth/AuthContext";
 import PrivateRoute from "./routes/privateRoute";
-import PrivateRoute from "./routes/PrivateRoute";
 
 import AuthLayout from "./layouts/AuthLayout";
 import AdminLayout from "./layouts/AdminLayout";
