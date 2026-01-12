@@ -1,6 +1,6 @@
 // src/components/Riders/RiderTable.tsx
 import React, { useState } from "react";
-import { Eye, Edit, Trash2, Search, MapPin, Star } from "lucide-react";
+import { Eye, Edit, Trash2, Search, MapPin, Star, Filter } from "lucide-react";
 import type { Rider } from "../../types";
 
 interface RiderTableProps {
@@ -9,19 +9,14 @@ interface RiderTableProps {
 
 const RiderTable: React.FC<RiderTableProps> = ({ riders }) => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
-    "All" | "Online" | "Offline" | "Busy"
-  >("All");
+  const [statusFilter, setStatusFilter] = useState<"All" | "Online" | "Offline" | "Busy">("All");
 
   const filteredRiders = riders.filter((rider) => {
     const matchesSearch =
       rider.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       rider.phone.includes(searchTerm) ||
       rider.vehicle.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus =
-      statusFilter === "All" || rider.status === statusFilter;
-
+    const matchesStatus = statusFilter === "All" || rider.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -38,8 +33,8 @@ const RiderTable: React.FC<RiderTableProps> = ({ riders }) => {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       {/* Filters */}
-      <div className="p-4 border-b border-gray-200 space-y-4">
-        <div className="relative">
+      <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <input
             type="text"
@@ -50,21 +45,18 @@ const RiderTable: React.FC<RiderTableProps> = ({ riders }) => {
           />
         </div>
 
-        <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium text-gray-700">Status:</span>
-          {(["All", "Online", "Offline", "Busy"] as const).map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                statusFilter === status
-                  ? "bg-movezy-600 text-white shadow-sm"
-                  : "bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200"
-              }`}
-            >
-              {status}
-            </button>
-          ))}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as any)}
+            className="pl-9 pr-8 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 bg-white appearance-none cursor-pointer min-w-[150px]"
+          >
+            <option value="All">All Status</option>
+            <option value="Online">Online</option>
+            <option value="Offline">Offline</option>
+            <option value="Busy">Busy</option>
+          </select>
         </div>
       </div>
 

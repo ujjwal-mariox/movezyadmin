@@ -56,38 +56,51 @@ const Dashboard: React.FC = () => {
   const recentOrders: Order[] = [
     {
       id: "ORD001",
-      customer: "Rahul Sharma",
+      customerName: "Rahul Sharma",
       rider: "Amit Kumar",
       status: "Delivered",
-      amount: "₹450",
+      amount: 450,
+      date: "2024-07-26",
     },
     {
       id: "ORD002",
-      customer: "Priya Patel",
+      customerName: "Priya Patel",
       rider: "Vijay Singh",
       status: "In Transit",
-      amount: "₹680",
+      amount: 680,
+      date: "2024-07-26",
     },
     {
       id: "ORD003",
-      customer: "Arjun Reddy",
+      customerName: "Arjun Reddy",
       rider: "Ravi Verma",
       status: "Pending",
-      amount: "₹320",
+      amount: 320,
+      date: "2024-07-25",
     },
     {
       id: "ORD004",
-      customer: "Sneha Desai",
+      customerName: "Sneha Desai",
       rider: "Suresh Yadav",
       status: "Delivered",
-      amount: "₹890",
+      amount: 890,
+      date: "2024-07-25",
     },
     {
       id: "ORD005",
-      customer: "Vikram Singh",
+      customerName: "Vikram Singh",
       rider: "Manoj Tiwari",
       status: "In Transit",
-      amount: "₹1,250",
+      amount: 1250,
+      date: "2024-07-24",
+    },
+    {
+      id: "ORD006",
+      customerName: "Anjali Mehta",
+      rider: "Sandeep Das",
+      status: "Cancelled",
+      amount: 500,
+      date: "2024-07-23",
     },
   ];
 
@@ -148,7 +161,7 @@ const Dashboard: React.FC = () => {
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                   itemStyle={{ color: '#1F2937' }}
-                  formatter={(value: number) => [`₹${value.toLocaleString()}`, "Revenue"]}
+                  formatter={(value: any) => [`₹${(value || 0).toLocaleString()}`, "Revenue"]}
                 />
                 <Area type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2} fillOpacity={1} fill="url(#colorValue)" />
               </AreaChart>

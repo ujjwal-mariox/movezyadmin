@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  Wallet, ArrowUpRight, ArrowDownLeft, Filter, Download, 
-  Search, CheckCircle, Clock, AlertCircle, DollarSign 
+  Download, Search, CheckCircle, Clock, DollarSign 
 } from 'lucide-react';
 
 interface Payment {
