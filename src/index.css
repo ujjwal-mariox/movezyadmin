@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-movezy-500 to-movezy-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition-shadow font-medium;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-movezy-600 border border-movezy-500 px-6 py-2 rounded-lg hover:bg-movezy-50 transition-colors font-medium;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow;
+  }
+
+  .status-badge {
+    @apply px-3 py-1 rounded-full text-xs font-semibold;
+  }
+
+  .status-active {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .status-inactive {
+    @apply bg-gray-100 text-gray-700;
+  }
+
+  .status-online {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .status-offline {
+    @apply bg-gray-100 text-gray-700;
+  }
+
+  .status-delivered {
+    @apply bg-green-100 text-green-700;
+  }
+
+  .status-transit {
+    @apply bg-blue-100 text-blue-700;
+  }
+
+  .status-pending {
+    @apply bg-yellow-100 text-yellow-700;
+  }
+}
