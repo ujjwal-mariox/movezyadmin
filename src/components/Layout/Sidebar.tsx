@@ -8,6 +8,7 @@ import {
   ClipboardList,
   SlidersHorizontal,
   Wallet,
+  Truck,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
@@ -24,6 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: Gauge },
+    { id: "vehicle-management", label: "Vehicle Management", icon: Truck },
     { id: "users", label: "User", icon: UserCog },
     { id: "riders", label: "Rider", icon: Bike },
     { id: "orders", label: "Orders", icon: ClipboardList },
