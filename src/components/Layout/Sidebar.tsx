@@ -18,15 +18,6 @@ interface SidebarProps {
   setIsMobileMenuOpen: (open: boolean) => void;
 }
 
-const menuItems = [
-  { id: "dashboard", label: "Dashboard", icon: Gauge },
-  { id: "users", label: "Users", icon: UserCog },
-  { id: "riders", label: "Riders", icon: Bike },
-  { id: "orders", label: "Orders", icon: ClipboardList },
-  { id: "payments", label: "Payments", icon: Wallet },
-  { id: "settings", label: "Settings", icon: SlidersHorizontal },
-];
-
 const Sidebar: React.FC<SidebarProps> = ({
   isMobileMenuOpen,
   setIsMobileMenuOpen,
