@@ -1,23 +1,10 @@
 import React, { useState } from 'react';
 import { 
-  Search, Filter, Eye, MapPin, Package, Truck, Calendar, 
-  DollarSign, MoreVertical, CheckCircle, XCircle, Clock, 
-  AlertCircle, Navigation, Bike, Map as MapIcon, X
+  Search, Package, Truck, 
+  DollarSign, CheckCircle, Clock, 
+  Bike, Map as MapIcon, X
 } from 'lucide-react';
-
-interface Order {
-  id: string;
-  customerName: string;
-  pickup: string;
-  dropoff: string;
-  amount: number;
-  status: 'Pending' | 'Assigned' | 'In Transit' | 'Delivered' | 'Cancelled';
-  vehicle: 'Bike' | '3 Wheeler' | 'Tata Ace' | 'Pickup 8ft' | 'Truck';
-  goodsType: string;
-  date: string;
-  rider?: string;
-  distance: string;
-}
+import type { Order } from '../types';
 
 const initialOrders: Order[] = [
   {
@@ -86,7 +73,7 @@ const initialOrders: Order[] = [
 ];
 
 const OrderManagement: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>(initialOrders);
+  const [orders] = useState<Order[]>(initialOrders);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -117,7 +104,7 @@ const OrderManagement: React.FC = () => {
     }
   };
 
-  const getVehicleIcon = (type: string) => {
+  const getVehicleIcon = (type?: string) => {
     switch (type) {
       case 'Bike': return <Bike className="w-4 h-4" />;
       case 'Truck': return <Truck className="w-4 h-4" />;

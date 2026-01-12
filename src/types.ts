@@ -15,6 +15,7 @@ export interface Rider {
   phone: string;
   vehicle: "Bike" | "Tempo" | "Pickup" | "Truck";
   status: "Online" | "Offline" | "Busy";
+  accountStatus: "Active" | "Inactive";
   completedOrders: number;
   rating: number;
   earnings: string;
@@ -25,10 +26,16 @@ export interface Rider {
 
 export interface Order {
   id: string;
-  customer: string;
-  rider: string;
-  status: "Pending" | "In Transit" | "Delivered";
-  amount: string;
+  customerName: string;
+  rider?: string;
+  status: 'Pending' | 'Assigned' | 'In Transit' | 'Delivered' | 'Cancelled';
+  amount: number;
+  date: string;
+  pickup?: string;
+  dropoff?: string;
+  vehicle?: 'Bike' | '3 Wheeler' | 'Tata Ace' | 'Pickup 8ft' | 'Truck';
+  goodsType?: string;
+  distance?: string;
 }
 
 export interface User {

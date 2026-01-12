@@ -18,6 +18,7 @@ const RiderManagement: React.FC = () => {
       joinedDate: "2023-08-15",
       vehicleNumber: "DL-01-AB-1234",
       currentLocation: "Connaught Place, Delhi",
+      accountStatus: "Active",
     },
     {
       id: 2,
@@ -31,6 +32,7 @@ const RiderManagement: React.FC = () => {
       joinedDate: "2023-09-20",
       vehicleNumber: "DL-02-CD-5678",
       currentLocation: "Nehru Place, Delhi",
+      accountStatus: "Active",
     },
     {
       id: 3,
@@ -44,6 +46,7 @@ const RiderManagement: React.FC = () => {
       joinedDate: "2023-07-10",
       vehicleNumber: "DL-03-EF-9012",
       currentLocation: "Dwarka, Delhi",
+      accountStatus: "Inactive",
     },
     {
       id: 4,
@@ -57,6 +60,7 @@ const RiderManagement: React.FC = () => {
       joinedDate: "2023-10-05",
       vehicleNumber: "DL-04-GH-3456",
       currentLocation: "Karol Bagh, Delhi",
+      accountStatus: "Active",
     },
     {
       id: 5,
@@ -70,6 +74,7 @@ const RiderManagement: React.FC = () => {
       joinedDate: "2023-11-12",
       vehicleNumber: "DL-05-IJ-7890",
       currentLocation: "Rohini, Delhi",
+      accountStatus: "Inactive",
     },
     {
       id: 6,
@@ -83,6 +88,7 @@ const RiderManagement: React.FC = () => {
       joinedDate: "2023-08-28",
       vehicleNumber: "DL-06-KL-2345",
       currentLocation: "Lajpat Nagar, Delhi",
+      accountStatus: "Active",
     },
     {
       id: 7,
@@ -96,6 +102,7 @@ const RiderManagement: React.FC = () => {
       joinedDate: "2023-09-14",
       vehicleNumber: "DL-07-MN-6789",
       currentLocation: "Saket, Delhi",
+      accountStatus: "Active",
     },
     {
       id: 8,
@@ -109,12 +116,11 @@ const RiderManagement: React.FC = () => {
       joinedDate: "2023-07-22",
       vehicleNumber: "DL-08-OP-0123",
       currentLocation: "Noida Sector 18",
+      accountStatus: "Active",
     },
   ];
 
   const onlineRiders = riders.filter((r) => r.status === "Online").length;
-  const busyRiders = riders.filter((r) => r.status === "Busy").length;
-  const offlineRiders = riders.filter((r) => r.status === "Offline").length;
 
   return (
     <div className="space-y-6">

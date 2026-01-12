@@ -13,6 +13,7 @@ const RecentOrders: React.FC<RecentOrdersProps> = ({ orders }) => {
       "In Transit": "bg-blue-100 text-blue-700",
       Pending: "bg-yellow-100 text-yellow-700",
       Cancelled: "bg-red-100 text-red-700",
+      Assigned: "bg-cyan-100 text-cyan-700",
     };
     return `px-3 py-1 rounded-full text-xs font-semibold ${statusClasses[status]}`;
   };
@@ -59,7 +60,7 @@ const RecentOrders: React.FC<RecentOrdersProps> = ({ orders }) => {
                   {order.id}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
-                  {order.customer}
+                  {order.customerName}
                 </td>
                 <td className="py-3 px-4 text-sm text-gray-600">
                   {order.rider}
@@ -70,7 +71,7 @@ const RecentOrders: React.FC<RecentOrdersProps> = ({ orders }) => {
                   </span>
                 </td>
                 <td className="py-3 px-4 text-sm font-semibold text-gray-800">
-                  {order.amount}
+                  ₹{order.amount.toLocaleString()}
                 </td>
                 <td className="py-3 px-4">
                   <button className="text-movezy-600 hover:text-movezy-700 text-sm font-medium">
