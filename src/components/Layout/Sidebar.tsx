@@ -9,6 +9,7 @@ import {
   SlidersHorizontal,
   Wallet,
   Truck,
+  FileText,
 
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
@@ -31,6 +32,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: "riders", label: "Rider", icon: Bike },
     { id: "orders", label: "Orders", icon: ClipboardList },
     { id: "payments", label: "Payments", icon: Wallet },
+    { id: "cms", label: "CMS Management", icon: FileText },
     { id: "settings", label: "Settings", icon: SlidersHorizontal },
   ];
 

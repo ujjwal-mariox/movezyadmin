@@ -6,9 +6,8 @@ import PrivateRoute from "./routes/privateRoute";
 import AuthLayout from "./layouts/AuthLayout";
 import AdminLayout from "./layouts/AdminLayout";
 import { authRoutes, adminRoutes } from "./routes";
-import UserManagement from "./pages/UserManagement";
 import UserDetail from "./pages/UserDetail";
-import VehicleManagement from "./pages/VehicleManagement";
+import CmsEdit from "./pages/CMSEdit";
 
 
 const LoadingSpinner = () => <div>Loading...</div>;
@@ -47,10 +46,8 @@ const App = () => {
                   }
                 />
               ))}
-
-              <Route path="vehicle-management" element={<VehicleManagement />} />
-              <Route path="users" element={<UserManagement />} />
               <Route path="users/:id" element={<UserDetail />} />
+              <Route path="cms/:slug" element={<CmsEdit />} />
 
               {/* default admin route */}
               <Route index element={<Navigate to="dashboard" replace />} />
