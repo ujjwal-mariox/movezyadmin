@@ -9,6 +9,8 @@ interface Vehicle {
   payloadCapacity: number;
   fuelCapacity?: string;
   mileage?: string;
+  intercityAllowed: boolean;
+  intercityRate?: number;
 }
 
 const initialVehicles: Vehicle[] = [
@@ -16,29 +18,37 @@ const initialVehicles: Vehicle[] = [
     id: 1,
     vehicle: "2 Wheeler",
     range: 60,
-    status: "Active",
+    status: "Available",
     payloadCapacity: 30,
+    intercityAllowed: false,
+    intercityRate: 0,
   },
   {
     id: 2,
     vehicle: "3 Wheeler",
     range: 120,
-    status: "Active",
+    status: "Available",
     payloadCapacity: 500,
+    intercityAllowed: true,
+    intercityRate: 12,
   },
   {
     id: 3,
     vehicle: "4 Wheeler (Truck)",
     range: 400,
-    status: "Inactive",
+    status: "Maintenance",
     payloadCapacity: 4000,
+    intercityAllowed: true,
+    intercityRate: 45,
   },
   {
     id: 4,
     vehicle: "4 Wheeler (EV)",
     range: 180,
-    status: "Active",
+    status: "Available",
     payloadCapacity: 1000,
+    intercityAllowed: false,
+    intercityRate: 0,
   },
 ];
 
@@ -52,6 +62,7 @@ const VehicleManagement = () => {
   const [filterType, setFilterType] = useState("All Vehicle Types");
   const [minRange, setMinRange] = useState("");
   const [minPayload, setMinPayload] = useState("");
+  const [intercityFilter, setIntercityFilter] = useState("All");
 
   // Stats calculation
   const totalVehicles = vehicles.length;
@@ -75,10 +86,12 @@ const VehicleManagement = () => {
     setCurrentVehicle({
       vehicle: "2 Wheeler",
       range: 0,
-      status: "Active",
+      status: "Available",
       payloadCapacity: 0,
       fuelCapacity: "",
       mileage: "",
+      intercityAllowed: false,
+      intercityRate: 0,
     });
     setIsEditing(false);
     setIsModalOpen(true);
@@ -100,7 +113,9 @@ const VehicleManagement = () => {
     const matchesType = filterType === "All Vehicle Types" || vehicle.vehicle === filterType;
     const matchesRange = minRange === "" || vehicle.range >= Number(minRange);
     const matchesPayload = minPayload === "" || vehicle.payloadCapacity >= Number(minPayload);
-    return matchesType && matchesRange && matchesPayload;
+    const matchesIntercity = intercityFilter === "All" || 
+      (intercityFilter === "Yes" ? vehicle.intercityAllowed : !vehicle.intercityAllowed);
+    return matchesType && matchesRange && matchesPayload && matchesIntercity;
   });
 
   return (
@@ -173,7 +188,7 @@ const VehicleManagement = () => {
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="relative">
           <select
             className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
@@ -186,6 +201,19 @@ const VehicleManagement = () => {
             <option>4 Wheeler (Pickup)</option>
             <option>4 Wheeler (Truck)</option>
             <option>4 Wheeler (EV)</option>
+          </select>
+          <Filter className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        </div>
+
+        <div className="relative">
+          <select
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+            value={intercityFilter}
+            onChange={(e) => setIntercityFilter(e.target.value)}
+          >
+            <option value="All">All Intercity</option>
+            <option value="Yes">Allowed</option>
+            <option value="No">Not Allowed</option>
           </select>
           <Filter className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
@@ -218,8 +246,9 @@ const VehicleManagement = () => {
       </div>
 
       {/* Vehicle Table */}
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        <table className="w-full text-left border-collapse">
+      <div className="bg-white rounded-xl shadow overflow-hidden border border-gray-100">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Vehicle</th>
@@ -228,6 +257,8 @@ const VehicleManagement = () => {
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Range (km)</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Payload (kg)</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Status</th>
+              <th className="px-6 py-4 text-sm font-semibold text-gray-600">Intercity Allowed</th>
+              <th className="px-6 py-4 text-sm font-semibold text-gray-600">Intercity Rate</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600 text-right">Actions</th>
             </tr>
           </thead>
@@ -249,6 +280,14 @@ const VehicleManagement = () => {
                     {vehicle.status}
                   </span>
                 </td>
+                <td className="px-6 py-4">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${vehicle.intercityAllowed ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
+                    {vehicle.intercityAllowed ? "Yes" : "No"}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-600">
+                  {vehicle.intercityAllowed && vehicle.intercityRate ? `₹${vehicle.intercityRate}/km` : "-"}
+                </td>
                 <td className="px-6 py-4 text-right flex justify-end gap-2">
                   <button
                     onClick={() => handleEdit(vehicle)}
@@ -267,6 +306,7 @@ const VehicleManagement = () => {
             ))}
           </tbody>
         </table>
+        </div>
         {filteredVehicles.length === 0 && (
           <div className="p-8 text-center text-gray-500">
             No vehicles found matching your filters.
@@ -320,6 +360,29 @@ const VehicleManagement = () => {
                     <option>Maintenance</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Intercity Allowed</label>
+                  <select
+                    value={currentVehicle.intercityAllowed ? "Yes" : "No"}
+                    onChange={(e) => setCurrentVehicle({ ...currentVehicle, intercityAllowed: e.target.value === "Yes" })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                {currentVehicle.intercityAllowed && (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Intercity Rate (₹/km)</label>
+                    <input
+                      type="number"
+                      value={currentVehicle.intercityRate}
+                      onChange={(e) => setCurrentVehicle({ ...currentVehicle, intercityRate: Number(e.target.value) })}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. 15"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
