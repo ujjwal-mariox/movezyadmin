@@ -126,6 +126,14 @@ const UserManagement: React.FC = () => {
     }
   };
 
+  const handleStatusToggle = (id: number) => {
+    setUsers(users.map(user => 
+      user.id === id 
+        ? { ...user, status: user.status === 'Active' ? 'Inactive' : 'Active' } 
+        : user
+    ));
+  };
+
   const filteredUsers = users.filter(user => {
     const matchesRole = roleFilter === 'All' || user.role === roleFilter;
     const matchesStatus = statusFilter === 'All' || user.status === statusFilter;
@@ -319,11 +327,18 @@ const UserManagement: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      user.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {user.status}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={user.status === "Active"}
+                          onChange={() => handleStatusToggle(user.id)}
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                      </label>
+                      <span className="text-sm text-gray-600">{user.status}</span>
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex items-center gap-1">

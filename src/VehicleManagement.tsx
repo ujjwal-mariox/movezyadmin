@@ -1,52 +1,44 @@
 import React, { useState } from "react";
-import { Plus, Edit2, Trash2, X, Save, Filter } from "lucide-react";
+import { Plus, Edit2, Trash2, X, Save, Filter, Truck, Activity, AlertCircle, CheckCircle } from "lucide-react";
 
 interface Vehicle {
   id: number;
   vehicle: string;
-  fuelCapacity: string;
-  mileage: string;
   range: number;
-  status: "Available" | "In Transit" | "Maintenance";
+  status: "Active" | "Inactive" | "Available" | "In Transit" | "Maintenance";
   payloadCapacity: number;
+  fuelCapacity?: string;
+  mileage?: string;
 }
 
 const initialVehicles: Vehicle[] = [
   {
     id: 1,
-    vehicle: "Bike",
-    fuelCapacity: "12 L",
-    mileage: "45 km/L",
-    range: 540,
-    status: "Available",
-    payloadCapacity: 20,
+    vehicle: "2 Wheeler",
+    range: 60,
+    status: "Active",
+    payloadCapacity: 30,
   },
   {
     id: 2,
-    vehicle: "Tempo",
-    fuelCapacity: "60 L",
-    mileage: "14 km/L",
-    range: 840,
-    status: "In Transit",
-    payloadCapacity: 800,
+    vehicle: "3 Wheeler",
+    range: 120,
+    status: "Active",
+    payloadCapacity: 500,
   },
   {
     id: 3,
-    vehicle: "Truck",
-    fuelCapacity: "200 L",
-    mileage: "5 km/L",
-    range: 1000,
-    status: "Maintenance",
-    payloadCapacity: 5000,
+    vehicle: "4 Wheeler (Truck)",
+    range: 400,
+    status: "Inactive",
+    payloadCapacity: 4000,
   },
   {
     id: 4,
-    vehicle: "Pickup",
-    fuelCapacity: "120 kWh",
-    mileage: "6 km/kWh",
-    range: 720,
-    status: "Available",
-    payloadCapacity: 3000,
+    vehicle: "4 Wheeler (EV)",
+    range: 180,
+    status: "Active",
+    payloadCapacity: 1000,
   },
 ];
 
@@ -60,6 +52,12 @@ const VehicleManagement = () => {
   const [filterType, setFilterType] = useState("All Vehicle Types");
   const [minRange, setMinRange] = useState("");
   const [minPayload, setMinPayload] = useState("");
+
+  // Stats calculation
+  const totalVehicles = vehicles.length;
+  const availableVehicles = vehicles.filter(v => v.status === "Available").length;
+  const inTransitVehicles = vehicles.filter(v => v.status === "In Transit").length;
+  const maintenanceVehicles = vehicles.filter(v => v.status === "Maintenance").length;
 
   const handleDelete = (id: number) => {
     if (window.confirm("Are you sure you want to delete this vehicle?")) {
@@ -75,12 +73,12 @@ const VehicleManagement = () => {
 
   const handleAdd = () => {
     setCurrentVehicle({
-      vehicle: "Bike",
+      vehicle: "2 Wheeler",
+      range: 0,
+      status: "Active",
+      payloadCapacity: 0,
       fuelCapacity: "",
       mileage: "",
-      range: 0,
-      status: "Available",
-      payloadCapacity: 0,
     });
     setIsEditing(false);
     setIsModalOpen(true);
@@ -126,6 +124,54 @@ const VehicleManagement = () => {
         </button>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Fleet</p>
+              <h3 className="text-3xl font-bold text-gray-900 mt-1">{totalVehicles}</h3>
+            </div>
+            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
+              <Truck className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Available</p>
+              <h3 className="text-3xl font-bold text-gray-900 mt-1">{availableVehicles}</h3>
+            </div>
+            <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">In Transit</p>
+              <h3 className="text-3xl font-bold text-gray-900 mt-1">{inTransitVehicles}</h3>
+            </div>
+            <div className="w-12 h-12 bg-yellow-50 rounded-xl flex items-center justify-center">
+              <Activity className="w-6 h-6 text-yellow-600" />
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Maintenance</p>
+              <h3 className="text-3xl font-bold text-gray-900 mt-1">{maintenanceVehicles}</h3>
+            </div>
+            <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
+              <AlertCircle className="w-6 h-6 text-red-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="relative">
@@ -135,10 +181,11 @@ const VehicleManagement = () => {
             onChange={(e) => setFilterType(e.target.value)}
           >
             <option>All Vehicle Types</option>
-            <option>Bike</option>
-            <option>Tempo</option>
-            <option>Pickup</option>
-            <option>Truck</option>
+            <option>2 Wheeler</option>
+            <option>3 Wheeler</option>
+            <option>4 Wheeler (Pickup)</option>
+            <option>4 Wheeler (Truck)</option>
+            <option>4 Wheeler (EV)</option>
           </select>
           <Filter className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
@@ -179,6 +226,7 @@ const VehicleManagement = () => {
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Fuel / Battery</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Mileage</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Range (km)</th>
+              <th className="px-6 py-4 text-sm font-semibold text-gray-600">Payload (kg)</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Status</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600 text-right">Actions</th>
             </tr>
@@ -191,6 +239,7 @@ const VehicleManagement = () => {
                 <td className="px-6 py-4 text-sm text-gray-600">{vehicle.fuelCapacity}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{vehicle.mileage}</td>
                 <td className="px-6 py-4 text-sm font-semibold text-blue-600">{vehicle.range} km</td>
+                <td className="px-6 py-4 text-sm text-gray-600">{vehicle.payloadCapacity} kg</td>
                 <td className="px-6 py-4">
                   <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                     vehicle.status === "Available" ? "bg-green-100 text-green-700" :
@@ -279,7 +328,7 @@ const VehicleManagement = () => {
                   <input
                     type="text"
                     required
-                    value={currentVehicle.fuelCapacity}
+                    value={currentVehicle.fuelCapacity || ""}
                     onChange={(e) => setCurrentVehicle({ ...currentVehicle, fuelCapacity: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="e.g. 60 L"
@@ -290,7 +339,7 @@ const VehicleManagement = () => {
                   <input
                     type="text"
                     required
-                    value={currentVehicle.mileage}
+                    value={currentVehicle.mileage || ""}
                     onChange={(e) => setCurrentVehicle({ ...currentVehicle, mileage: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="e.g. 14 km/L"

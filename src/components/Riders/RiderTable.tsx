@@ -5,9 +5,10 @@ import type { Rider } from "../../types";
 
 interface RiderTableProps {
   riders: Rider[];
+  onStatusToggle: (id: number) => void;
 }
 
-const RiderTable: React.FC<RiderTableProps> = ({ riders }) => {
+const RiderTable: React.FC<RiderTableProps> = ({ riders, onStatusToggle }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | "Online" | "Offline" | "Busy">("All");
 
@@ -144,26 +145,18 @@ const RiderTable: React.FC<RiderTableProps> = ({ riders }) => {
                   </div>
                 </td>
                 <td className="py-4 px-6">
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center space-x-1 w-fit ${
-                      rider.status === "Online"
-                        ? "bg-green-100 text-green-700"
-                        : rider.status === "Busy"
-                        ? "bg-yellow-100 text-yellow-700"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        rider.status === "Online"
-                          ? "bg-green-500"
-                          : rider.status === "Busy"
-                          ? "bg-yellow-500"
-                          : "bg-gray-500"
-                      }`}
-                    ></span>
-                    <span>{rider.status}</span>
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={rider.accountStatus === "Active"}
+                        onChange={() => onStatusToggle(rider.id)}
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                    <span className="text-sm text-gray-600">{rider.accountStatus}</span>
+                  </div>
                 </td>
                 <td className="py-4 px-6">
                   <div className="flex items-center space-x-2">

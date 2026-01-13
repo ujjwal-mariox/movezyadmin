@@ -4,49 +4,39 @@ import { Plus, Edit2, Trash2, X, Save, Filter, Bike, Truck } from "lucide-react"
 interface Vehicle {
   id: number;
   vehicle: string;
-  fuelCapacity: string;
-  mileage: string;
   range: number;
-  status: "Available" | "In Transit" | "Maintenance";
+  status: "Active" | "Inactive";
   payloadCapacity: number;
 }
 
 const initialVehicles: Vehicle[] = [
   {
     id: 1,
-    vehicle: "Bike",
-    fuelCapacity: "12 L",
-    mileage: "45 km/L",
-    range: 540,
-    status: "Available",
-    payloadCapacity: 20,
+    vehicle: "2 Wheeler",
+    range: 60,
+    status: "Active",
+    payloadCapacity: 30,
   },
   {
     id: 2,
-    vehicle: "Mini Truck",
-    fuelCapacity: "60 L",
-    mileage: "14 km/L",
-    range: 840,
-    status: "In Transit",
-    payloadCapacity: 800,
+    vehicle: "3 Wheeler",
+    range: 120,
+    status: "Active",
+    payloadCapacity: 500,
   },
   {
     id: 3,
-    vehicle: "Truck",
-    fuelCapacity: "200 L",
-    mileage: "5 km/L",
-    range: 1000,
-    status: "Maintenance",
-    payloadCapacity: 5000,
+    vehicle: "4 Wheeler (Truck)",
+    range: 400,
+    status: "Inactive",
+    payloadCapacity: 4000,
   },
   {
     id: 4,
-    vehicle: "EV Truck",
-    fuelCapacity: "120 kWh",
-    mileage: "6 km/kWh",
-    range: 720,
-    status: "Available",
-    payloadCapacity: 3000,
+    vehicle: "4 Wheeler (EV)",
+    range: 180,
+    status: "Active",
+    payloadCapacity: 1000,
   },
 ];
 
@@ -63,15 +53,15 @@ const VehicleManagement = () => {
 
   const getVehicleIcon = (type: string) => {
     switch (type) {
-      case "Bike":
+      case "2 Wheeler":
         return <Bike className="w-5 h-5 text-blue-600" />;
-      case "Tempo":
+      case "3 Wheeler":
         return <Truck className="w-5 h-5 text-orange-500" />;
-      case "Pickup":
+      case "4 Wheeler (Pickup)":
         return <Truck className="w-5 h-5 text-green-600" />;
-      case "Truck":
+      case "4 Wheeler (Truck)":
         return <Truck className="w-5 h-5 text-purple-600" />;
-      case "EV Truck":
+      case "4 Wheeler (EV)":
         return <Truck className="w-5 h-5 text-teal-600" />;
       default:
         return <Truck className="w-5 h-5 text-gray-600" />;
@@ -84,6 +74,10 @@ const VehicleManagement = () => {
     }
   };
 
+  const handleStatusToggle = (id: number) => {
+    setVehicles(vehicles.map(v => v.id === id ? { ...v, status: v.status === "Active" ? "Inactive" : "Active" } : v));
+  };
+
   const handleEdit = (vehicle: Vehicle) => {
     setCurrentVehicle(vehicle);
     setIsEditing(true);
@@ -92,11 +86,9 @@ const VehicleManagement = () => {
 
   const handleAdd = () => {
     setCurrentVehicle({
-      vehicle: "Bike",
-      fuelCapacity: "",
-      mileage: "",
+      vehicle: "2 Wheeler",
       range: 0,
-      status: "Available",
+      status: "Active",
       payloadCapacity: 0,
     });
     setIsEditing(false);
@@ -152,10 +144,11 @@ const VehicleManagement = () => {
             onChange={(e) => setFilterType(e.target.value)}
           >
             <option>All Vehicle Types</option>
-            <option>Bike</option>
-            <option>Mini Truck</option>
-            <option>Truck</option>
-            <option>EV Truck</option>
+            <option>2 Wheeler</option>
+            <option>3 Wheeler</option>
+            <option>4 Wheeler (Pickup)</option>
+            <option>4 Wheeler (Truck)</option>
+            <option>4 Wheeler (EV)</option>
           </select>
           <Filter className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
@@ -192,9 +185,7 @@ const VehicleManagement = () => {
         <table className="w-full text-left border-collapse">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              <th className="px-6 py-4 text-sm font-semibold text-gray-600">Vehicle</th>
-              <th className="px-6 py-4 text-sm font-semibold text-gray-600">Fuel / Battery</th>
-              <th className="px-6 py-4 text-sm font-semibold text-gray-600">Mileage</th>
+              <th className="px-6 py-4 text-sm font-semibold text-gray-600">Vehicle Type</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Range (km)</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600">Status</th>
               <th className="px-6 py-4 text-sm font-semibold text-gray-600 text-right">Actions</th>
@@ -212,28 +203,33 @@ const VehicleManagement = () => {
                     <span>{vehicle.vehicle}</span>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{vehicle.fuelCapacity}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{vehicle.mileage}</td>
                 <td className="px-6 py-4 text-sm font-semibold text-blue-600">{vehicle.range} km</td>
                 <td className="px-6 py-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    vehicle.status === "Available" ? "bg-green-100 text-green-700" :
-                    vehicle.status === "In Transit" ? "bg-yellow-100 text-yellow-700" :
-                    "bg-red-100 text-red-700"
-                  }`}>
-                    {vehicle.status}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={vehicle.status === "Active"}
+                        onChange={() => handleStatusToggle(vehicle.id)}
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    </label>
+                    <span className="text-sm text-gray-600">{vehicle.status}</span>
+                  </div>
                 </td>
                 <td className="px-6 py-4 text-right flex justify-end gap-2">
                   <button
                     onClick={() => handleEdit(vehicle)}
                     className="text-blue-600 hover:text-blue-800 transition-colors"
+                    title="Edit"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDelete(vehicle.id)}
                     className="text-red-600 hover:text-red-800 transition-colors"
+                    title="Delete"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -268,54 +264,31 @@ const VehicleManagement = () => {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Type</label>
                   <select
                     value={currentVehicle.vehicle}
                     onChange={(e) => setCurrentVehicle({ ...currentVehicle, vehicle: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
-                    <option>Bike</option>
-                    <option>Mini Truck</option>
-                    <option>Truck</option>
-                    <option>EV Truck</option>
+                    <option>2 Wheeler</option>
+                    <option>3 Wheeler</option>
+                    <option>4 Wheeler (Pickup)</option>
+                    <option>4 Wheeler (Truck)</option>
+                    <option>4 Wheeler (EV)</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select
-                    value={currentVehicle.status}
-                    onChange={(e) => setCurrentVehicle({ ...currentVehicle, status: e.target.value as any })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  >
-                    <option>Available</option>
-                    <option>In Transit</option>
-                    <option>Maintenance</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fuel/Battery</label>
-                  <input
-                    type="text"
-                    required
-                    value={currentVehicle.fuelCapacity}
-                    onChange={(e) => setCurrentVehicle({ ...currentVehicle, fuelCapacity: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. 60 L"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Mileage</label>
-                  <input
-                    type="text"
-                    required
-                    value={currentVehicle.mileage}
-                    onChange={(e) => setCurrentVehicle({ ...currentVehicle, mileage: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. 14 km/L"
-                  />
+                  <label className="relative inline-flex items-center cursor-pointer mt-2">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={currentVehicle.status === "Active"}
+                      onChange={(e) => setCurrentVehicle({ ...currentVehicle, status: e.target.checked ? "Active" : "Inactive" })}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                    <span className="ml-3 text-sm font-medium text-gray-700">{currentVehicle.status}</span>
+                  </label>
                 </div>
               </div>
 
