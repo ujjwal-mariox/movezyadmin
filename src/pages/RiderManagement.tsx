@@ -1,11 +1,11 @@
 // src/pages/RiderManagement.tsx
-import React from "react";
+import React, { useState } from "react";
 import { UserPlus, Download, MapPin, Bike, PieChart, Truck, Star, Package, Activity } from "lucide-react";
 import RiderTable from "../components/Riders/RiderTable";
 import type { Rider } from "../types";
 
 const RiderManagement: React.FC = () => {
-  const riders: Rider[] = [
+  const [riders, setRiders] = useState<Rider[]>([
     {
       id: 1,
       name: "Amit Kumar",
@@ -118,7 +118,15 @@ const RiderManagement: React.FC = () => {
       currentLocation: "Noida Sector 18",
       accountStatus: "Active",
     },
-  ];
+  ]);
+
+  const handleStatusToggle = (id: number) => {
+    setRiders(riders.map(rider => 
+      rider.id === id 
+        ? { ...rider, accountStatus: rider.accountStatus === 'Active' ? 'Inactive' : 'Active' } 
+        : rider
+    ));
+  };
 
   const onlineRiders = riders.filter((r) => r.status === "Online").length;
 
@@ -255,7 +263,7 @@ const RiderManagement: React.FC = () => {
       </div>
 
       {/* Rider Table */}
-      <RiderTable riders={riders} />
+      <RiderTable riders={riders} onStatusToggle={handleStatusToggle} />
     </div>
   );
 };
