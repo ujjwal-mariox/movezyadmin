@@ -10,7 +10,8 @@ const RiderManagement: React.FC = () => {
       id: 1,
       name: "Amit Kumar",
       phone: "+91 98765 43220",
-      vehicle: "Bike",
+      vehicle: "2 Wheeler",
+      approvalStatus: "Approved",
       status: "Online",
       completedOrders: 245,
       rating: 4.8,
@@ -19,12 +20,16 @@ const RiderManagement: React.FC = () => {
       vehicleNumber: "DL-01-AB-1234",
       currentLocation: "Connaught Place, Delhi",
       accountStatus: "Active",
+      drivingLicense: "DL-0420110056789",
+      rcNumber: "RC-DL01AB1234",
+      profilePhoto: "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=150&h=150&fit=crop&q=80",
     },
     {
       id: 2,
       name: "Vijay Singh",
       phone: "+91 98765 43221",
-      vehicle: "Tempo",
+      vehicle: "3 Wheeler",
+      approvalStatus: "Approved",
       status: "Online",
       completedOrders: 189,
       rating: 4.6,
@@ -33,12 +38,16 @@ const RiderManagement: React.FC = () => {
       vehicleNumber: "DL-02-CD-5678",
       currentLocation: "Nehru Place, Delhi",
       accountStatus: "Active",
+      drivingLicense: "DL-0820150098765",
+      rcNumber: "RC-DL02CD5678",
+      profilePhoto: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&q=80",
     },
     {
       id: 3,
       name: "Ravi Verma",
       phone: "+91 98765 43222",
-      vehicle: "Pickup",
+      vehicle: "4 Wheeler",
+      approvalStatus: "Blocked",
       status: "Offline",
       completedOrders: 312,
       rating: 4.9,
@@ -47,12 +56,16 @@ const RiderManagement: React.FC = () => {
       vehicleNumber: "DL-03-EF-9012",
       currentLocation: "Dwarka, Delhi",
       accountStatus: "Inactive",
+      drivingLicense: "DL-0320180011223",
+      rcNumber: "RC-DL03EF9012",
+      profilePhoto: "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=150&h=150&fit=crop&q=80",
     },
     {
       id: 4,
       name: "Suresh Yadav",
       phone: "+91 98765 43223",
-      vehicle: "Bike",
+      vehicle: "2 Wheeler",
+      approvalStatus: "Pending",
       status: "Online",
       completedOrders: 156,
       rating: 4.5,
@@ -61,12 +74,16 @@ const RiderManagement: React.FC = () => {
       vehicleNumber: "DL-04-GH-3456",
       currentLocation: "Karol Bagh, Delhi",
       accountStatus: "Active",
+      drivingLicense: "DL-0920200033445",
+      rcNumber: "RC-DL04GH3456",
+      profilePhoto: "https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=150&h=150&fit=crop&q=80",
     },
     {
       id: 5,
       name: "Manoj Tiwari",
       phone: "+91 98765 43224",
-      vehicle: "Truck",
+      vehicle: "4 Wheeler",
+      approvalStatus: "Rejected",
       status: "Offline",
       completedOrders: 98,
       rating: 4.7,
@@ -75,12 +92,16 @@ const RiderManagement: React.FC = () => {
       vehicleNumber: "DL-05-IJ-7890",
       currentLocation: "Rohini, Delhi",
       accountStatus: "Inactive",
+      drivingLicense: "DL-0520190055667",
+      rcNumber: "RC-DL05IJ7890",
+      profilePhoto: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&h=150&fit=crop&q=80",
     },
     {
       id: 6,
       name: "Rajesh Kumar",
       phone: "+91 98765 43225",
-      vehicle: "Bike",
+      vehicle: "2 Wheeler",
+      approvalStatus: "Approved",
       status: "Busy",
       completedOrders: 203,
       rating: 4.8,
@@ -89,12 +110,16 @@ const RiderManagement: React.FC = () => {
       vehicleNumber: "DL-06-KL-2345",
       currentLocation: "Lajpat Nagar, Delhi",
       accountStatus: "Active",
+      drivingLicense: "DL-0620210077889",
+      rcNumber: "RC-DL06KL2345",
+      profilePhoto: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&q=80",
     },
     {
       id: 7,
       name: "Santosh Singh",
       phone: "+91 98765 43226",
-      vehicle: "Tempo",
+      vehicle: "3 Wheeler",
+      approvalStatus: "Approved",
       status: "Online",
       completedOrders: 167,
       rating: 4.6,
@@ -103,12 +128,16 @@ const RiderManagement: React.FC = () => {
       vehicleNumber: "DL-07-MN-6789",
       currentLocation: "Saket, Delhi",
       accountStatus: "Active",
+      drivingLicense: "DL-0720170099001",
+      rcNumber: "RC-DL07MN6789",
+      profilePhoto: "https://images.unsplash.com/photo-1628157588553-5eeea00af15c?w=150&h=150&fit=crop&q=80",
     },
     {
       id: 8,
       name: "Deepak Sharma",
       phone: "+91 98765 43227",
-      vehicle: "Pickup",
+      vehicle: "4 Wheeler",
+      approvalStatus: "Approved",
       status: "Online",
       completedOrders: 278,
       rating: 4.9,
@@ -117,6 +146,9 @@ const RiderManagement: React.FC = () => {
       vehicleNumber: "DL-08-OP-0123",
       currentLocation: "Noida Sector 18",
       accountStatus: "Active",
+      drivingLicense: "DL-0820160022334",
+      rcNumber: "RC-DL08OP0123",
+      profilePhoto: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&h=150&fit=crop&q=80",
     },
   ]);
 
@@ -226,8 +258,8 @@ const RiderManagement: React.FC = () => {
             Fleet Distribution
           </h3>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {(["Bike", "Tempo", "Pickup", "Truck"] as const).map((vehicle) => {
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {(["2 Wheeler", "3 Wheeler", "4 Wheeler"] as const).map((vehicle) => {
             const count = riders.filter((r) => r.vehicle === vehicle).length;
             const percentage = Math.round((count / riders.length) * 100);
             return (
@@ -236,19 +268,18 @@ const RiderManagement: React.FC = () => {
                 className="text-center p-3 bg-gray-50 rounded-xl hover:shadow-md transition-all duration-300 group border border-gray-100"
               >
                 <div className="w-10 h-10 mx-auto bg-white rounded-full shadow-sm flex items-center justify-center mb-2 group-hover:scale-110 transition-transform duration-300">
-                  {vehicle === "Bike" && <Bike className="w-5 h-5 text-blue-600" />}
-                  {vehicle === "Tempo" && <Truck className="w-5 h-5 text-orange-500" />}
-                  {vehicle === "Pickup" && <Truck className="w-5 h-5 text-green-600" />}
-                  {vehicle === "Truck" && <Truck className="w-5 h-5 text-purple-600" />}
+                  {vehicle === "2 Wheeler" && <Bike className="w-5 h-5 text-blue-600" />}
+                  {vehicle === "3 Wheeler" && <Truck className="w-5 h-5 text-yellow-500" />}
+                  {vehicle === "4 Wheeler" && <Truck className="w-5 h-5 text-green-600" />}
                 </div>
                 <p className="text-xl font-bold text-gray-800 mb-1">{count}</p>
                 <p className="text-xs font-medium text-gray-600 mb-2">{vehicle}</p>
                 <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                   <div 
                     className={`h-full rounded-full ${
-                      vehicle === "Bike" ? "bg-blue-600" :
-                      vehicle === "Tempo" ? "bg-orange-500" :
-                      vehicle === "Pickup" ? "bg-green-600" : "bg-purple-600"
+                      vehicle === "2 Wheeler" ? "bg-blue-600" :
+                      vehicle === "3 Wheeler" ? "bg-yellow-500" :
+                      "bg-green-600"
                     }`}
                     style={{ width: `${percentage}%` }}
                   ></div>

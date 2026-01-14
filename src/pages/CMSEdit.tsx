@@ -8,15 +8,15 @@ interface Commission {
   name: string;
   type: "Percentage" | "Flat";
   value: number;
-  vehicle: "Bike" | "Auto" | "Truck" | "All";
+  vehicle: "2 Wheeler" | "3 Wheeler" | "Pickup" | "Truck" | "All";
   status: "Active" | "Inactive";
 }
 
 // --- Mock Data ---
 const initialCommissions: Commission[] = [
-  { id: 1, name: "Standard Bike Commission", type: "Percentage", value: 15, vehicle: "Bike", status: "Active" },
+  { id: 1, name: "Standard Bike Commission", type: "Percentage", value: 15, vehicle: "2 Wheeler", status: "Active" },
   { id: 2, name: "Heavy Truck Flat Fee", type: "Flat", value: 500, vehicle: "Truck", status: "Active" },
-  { id: 3, name: "Auto Rickshaw Promo", type: "Percentage", value: 10, vehicle: "Auto", status: "Inactive" },
+  { id: 3, name: "Auto Rickshaw Promo", type: "Percentage", value: 10, vehicle: "3 Wheeler", status: "Inactive" },
 ];
 
 // --- Components ---
@@ -128,8 +128,9 @@ const CommissionManagement = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Type</label>
                   <select value={currentCommission.vehicle} onChange={e => setCurrentCommission({...currentCommission, vehicle: e.target.value as any})} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                     <option value="All">All</option>
-                    <option value="Bike">Bike</option>
-                    <option value="Auto">Auto</option>
+                    <option value="2 Wheeler">2 Wheeler</option>
+                    <option value="3 Wheeler">3 Wheeler</option>
+                    <option value="Pickup">Pickup</option>
                     <option value="Truck">Truck</option>
                   </select>
                 </div>

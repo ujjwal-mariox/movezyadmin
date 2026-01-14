@@ -28,10 +28,10 @@ const ToggleSwitch = ({ enabled, setEnabled }: { enabled: boolean, setEnabled: (
 // --- Main Component ---
 
 const dummyCommissions = [
-  { id: 1, name: 'Standard Delivery Fee', type: 'Percentage', value: 15, vehicleType: 'Bike', status: 'Active' },
+  { id: 1, name: 'Standard Delivery Fee', type: 'Percentage', value: 15, vehicleType: '2 Wheeler', status: 'Active' },
   { id: 2, name: 'Heavy Goods Surcharge', type: 'Flat', value: 500, vehicleType: 'Truck', status: 'Active' },
-  { id: 3, name: 'Intercity Premium', type: 'Percentage', value: 25, vehicleType: 'Auto', status: 'Inactive' },
-  { id: 4, name: 'Express Bike Fee', type: 'Flat', value: 50, vehicleType: 'Bike', status: 'Active' },
+  { id: 3, name: 'Intercity Premium', type: 'Percentage', value: 25, vehicleType: '3 Wheeler', status: 'Inactive' },
+  { id: 4, name: 'Express Bike Fee', type: 'Flat', value: 50, vehicleType: '2 Wheeler', status: 'Active' },
 ];
 
 const CommissionManagement = () => {
@@ -41,11 +41,11 @@ const CommissionManagement = () => {
   const [selectedCommission, setSelectedCommission] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  const [formState, setFormState] = useState({ name: '', type: 'Percentage', value: '', vehicleType: 'Bike', status: true });
+  const [formState, setFormState] = useState({ name: '', type: 'Percentage', value: '', vehicleType: '2 Wheeler', status: true });
 
   const handleOpenAddModal = () => {
     setIsEditing(false);
-    setFormState({ name: '', type: 'Percentage', value: '', vehicleType: 'Bike', status: true });
+    setFormState({ name: '', type: 'Percentage', value: '', vehicleType: '2 Wheeler', status: true });
     setIsFormModalOpen(true);
   };
 
@@ -85,9 +85,10 @@ const CommissionManagement = () => {
   };
 
   const getVehicleIcon = (vehicleType: string) => {
-    if (vehicleType === 'Bike') return <Bike className="w-5 h-5 text-blue-500" />;
+    if (vehicleType === '2 Wheeler') return <Bike className="w-5 h-5 text-blue-500" />;
+    if (vehicleType === '3 Wheeler') return <Truck className="w-5 h-5 text-yellow-500" />;
+    if (vehicleType === 'Pickup') return <Truck className="w-5 h-5 text-green-500" />;
     if (vehicleType === 'Truck') return <Truck className="w-5 h-5 text-red-500" />;
-    if (vehicleType === 'Auto') return <Truck className="w-5 h-5 text-yellow-500" />;
     return null;
   };
 
@@ -142,7 +143,7 @@ const CommissionManagement = () => {
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Type</label><select name="type" value={formState.type} onChange={handleFormChange} className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"><option>Percentage</option><option>Flat</option></select></div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Value</label><input type="number" name="value" value={formState.value} onChange={handleFormChange} className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition" required /></div>
                 </div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Type</label><select name="vehicleType" value={formState.vehicleType} onChange={handleFormChange} className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"><option>Bike</option><option>Auto</option><option>Truck</option></select></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Vehicle Type</label><select name="vehicleType" value={formState.vehicleType} onChange={handleFormChange} className="w-full border rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition"><option>2 Wheeler</option><option>3 Wheeler</option><option>Pickup</option><option>Truck</option></select></div>
                 <div className="flex items-center justify-between pt-2"><label className="block text-sm font-medium text-gray-700">Status</label><ToggleSwitch enabled={formState.status} setEnabled={(val) => setFormState(p => ({...p, status: val}))} /></div>
               </div>
               <div className="p-4 bg-gray-50 rounded-b-xl flex justify-end gap-3"><button type="button" onClick={() => setIsFormModalOpen(false)} className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm font-medium transition-colors">Cancel</button><button type="submit" className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-medium transition-colors">{isEditing ? 'Save Changes' : 'Add Commission'}</button></div>
