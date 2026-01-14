@@ -13,7 +13,8 @@ export interface Rider {
   id: number;
   name: string;
   phone: string;
-  vehicle: "Bike" | "Tempo" | "Pickup" | "Truck";
+  vehicle: "2 Wheeler" | "3 Wheeler" | "4 Wheeler";
+  approvalStatus: "Pending" | "Approved" | "Blocked" | "Rejected";
   status: "Online" | "Offline" | "Busy";
   accountStatus: "Active" | "Inactive";
   completedOrders: number;
@@ -22,6 +23,9 @@ export interface Rider {
   joinedDate: string;
   vehicleNumber: string;
   currentLocation: string;
+  drivingLicense?: string;
+  rcNumber?: string;
+  profilePhoto?: string;
 }
 
 export interface Order {

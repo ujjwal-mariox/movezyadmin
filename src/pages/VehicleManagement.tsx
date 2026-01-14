@@ -345,8 +345,8 @@ const VehicleManagement = () => {
                   onChange={(e) => setCurrentVehicle({ ...currentVehicle, vehicle: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
-                  <option value="Bike">Bike</option>
-                  <option value="Tempo">Tempo</option>
+                  <option value="2 Wheeler">2 Wheeler</option>
+                  <option value="3 Wheeler">3 Wheeler</option>
                   <option value="Pickup">Pickup</option>
                   <option value="Truck">Truck</option>
                 </select>
