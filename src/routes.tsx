@@ -9,6 +9,13 @@ import {
   FileText,
   Bike,
   UserCircle,
+  Shield,
+  Building2,
+  AlertTriangle,
+  MapPin,
+  Tag,
+  Bell,
+  TicketCheck,
 } from "lucide-react";
 
 // Auth Pages
@@ -27,6 +34,13 @@ const SettingsPage = lazy(() => import("./pages/Settings"));
 const VehicleManagement = lazy(() => import("./pages/VehicleManagement"));
 const UserManagement = lazy(() => import("./pages/UserManagement"));
 const CmsManagement = lazy(() => import("./pages/CMSManagement"));
+const StaffManagement = lazy(() => import("./pages/StaffManagement"));
+const EnterpriseManagement = lazy(() => import("./pages/EnterpriseManagement"));
+const SOSDashboard = lazy(() => import("./pages/SOSDashboard"));
+const DriverTracking = lazy(() => import("./pages/DriverTracking"));
+const PromoManagement = lazy(() => import("./pages/PromoManagement"));
+const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
+const SupportTickets = lazy(() => import("./pages/SupportTickets"));
 
 export const authRoutes = [
   { path: "/login", element: Login },
@@ -43,34 +57,76 @@ export const adminRoutes = [
     icon: LayoutDashboard,
   },
   {
+    path: "staff",
+    element: StaffManagement,
+    name: "Staff Management",
+    icon: Shield,
+  },
+  {
+    path: "vehicle-management",
+    element: VehicleManagement,
+    name: "Vehicle Management",
+    icon: Truck,
+  },
+  {
+    path: "app-users",
+    element: UserManagement,
+    name: "User Management",
+    icon: Users,
+  },
+  {
     path: "riders",
     element: RiderManagement,
-    name: "Riders",
+    name: "Driver Management",
     icon: Bike,
   },
   {
     path: "customers",
     element: CustomerManagement,
     name: "Customers",
-    icon: Users,
+    icon: UserCircle,
   },
   {
     path: "orders",
     element: OrderManagement,
-    name: "Orders",
+    name: "Orders Management",
     icon: ShoppingBag,
   },
   {
-    path: "vehicle-management",
-    element: VehicleManagement,
-    name: "Vehicles",
-    icon: Truck,
+    path: "enterprises",
+    element: EnterpriseManagement,
+    name: "Enterprise Management",
+    icon: Building2,
   },
   {
-    path: "users",
-    element: UserManagement,
-    name: "Users",
-    icon: UserCircle,
+    path: "sos",
+    element: SOSDashboard,
+    name: "SOS Dashboard",
+    icon: AlertTriangle,
+  },
+  {
+    path: "tracking",
+    element: DriverTracking,
+    name: "Driver Tracking",
+    icon: MapPin,
+  },
+  {
+    path: "promos",
+    element: PromoManagement,
+    name: "Coupon Management",
+    icon: Tag,
+  },
+  {
+    path: "notifications",
+    element: NotificationCenter,
+    name: "Master Notifications",
+    icon: Bell,
+  },
+  {
+    path: "support",
+    element: SupportTickets,
+    name: "Support Tickets",
+    icon: TicketCheck,
   },
   {
     path: "payments",

@@ -4,48 +4,73 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 // Helper function to get auth token
 const getAuthToken = () => localStorage.getItem("adminToken");
 
-// Helper function to handle logout on auth failure
-const handleAuthFailure = () => {
-  localStorage.removeItem("adminToken");
-  // Redirect to login page
-  if (window.location.pathname !== "/login") {
-    window.location.href = "/login";
-  }
-};
-
 // Generic fetch wrapper with auth
 const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
   const token = getAuthToken();
 
-  // If no token exists, redirect to login
+  // If no token exists, throw error but don't redirect
   if (!token) {
-    handleAuthFailure();
-    throw new Error("No authentication token");
+    console.error("[API] No token found in localStorage");
+    throw new Error("No authentication token. Please login.");
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...options.headers,
-    },
-  });
+  console.log(`[API] Calling: ${API_URL}${endpoint}`);
+  console.log(`[API] Token (first 50 chars): ${token.substring(0, 50)}...`);
 
-  // Handle 401 Unauthorized - token expired or invalid
-  if (response.status === 401) {
-    handleAuthFailure();
-    throw new Error("Session expired. Please login again.");
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...options.headers,
+      },
+    });
+
+    console.log(`[API] Response status: ${response.status}`);
+
+    // Handle 401 Unauthorized - token expired or invalid
+    if (response.status === 401) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("[API] 401 Unauthorized:", errorData);
+      // DON'T auto-logout - let the user see the error first
+      alert(
+        `API returned 401: ${errorData.message || "Session expired"}\n\nCheck console for details.`,
+      );
+      throw new Error(
+        errorData.message || "Session expired. Please login again.",
+      );
+    }
+
+    // Handle 403 Forbidden - no permission (don't logout)
+    if (response.status === 403) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("[API] 403 Forbidden:", errorData.message);
+      throw new Error(
+        errorData.message || "You don't have permission for this action.",
+      );
+    }
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ message: "Request failed" }));
+      console.error(`[API] Error: ${error.message}`);
+      throw new Error(error.message || "Request failed");
+    }
+
+    return response.json();
+  } catch (error: any) {
+    // Network error or other fetch error
+    if (error.name === "TypeError" && error.message === "Failed to fetch") {
+      console.error("[API] Network error - is the backend running?");
+      alert("Cannot connect to backend. Is the server running on port 9050?");
+      throw new Error(
+        "Unable to connect to server. Please check your connection.",
+      );
+    }
+    throw error;
   }
-
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ message: "Request failed" }));
-    throw new Error(error.message || "Request failed");
-  }
-
-  return response.json();
 };
 
 // ==================== ENTERPRISE API ====================
