@@ -2,7 +2,9 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import logo from "../assets/logo.png";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 
 const Login: React.FC = () => {
   const { login } = useAuth();
@@ -11,18 +13,51 @@ const Login: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(""); // Reset error on new submission
+    setError("");
+    setIsLoading(true);
 
-    // Mock validation - in a real app, you'd call an API
-    if (email === "admin@movezy.com" && password === "password") {
-      login();
-      navigate("/admin/dashboard", { replace: true });
-    } else {
-      setError("Invalid credentials. Please use the hint below.");
+    try {
+      const response = await fetch(`${API_URL}/admin/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Login failed");
+      }
+
+      if (data.success && data.data) {
+        const { token, admin, accessibleModules } = data.data;
+        login(token, {
+          _id: admin._id,
+          name: admin.fullName,
+          email: admin.email,
+          roleName: admin.roleName,
+          permissions: admin.permissions || [],
+          accessibleModules: accessibleModules || [],
+          avatar: admin.profileImage,
+        });
+
+        // Redirect to first accessible module or dashboard
+        const firstModule = accessibleModules?.[0] || "dashboard";
+        navigate(`/admin/${firstModule}`, { replace: true });
+      } else {
+        throw new Error(data.message || "Login failed");
+      }
+    } catch (err: any) {
+      setError(err.message || "An error occurred during login");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -48,27 +83,29 @@ const Login: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg flex">
-                <AlertCircle className="w-5 h-5 mr-3" />
+                <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
             <input
               type="email"
-              placeholder="admin@movezy.com"
+              placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-movezy-500"
+              className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-movezy-500 focus:outline-none"
               required
+              disabled={isLoading}
             />
 
             <input
               type="password"
-              placeholder="••••••••"
+              placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-movezy-500"
+              className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-movezy-500 focus:outline-none"
               required
+              disabled={isLoading}
             />
 
             <div className="flex items-center justify-between">
@@ -78,25 +115,33 @@ const Login: React.FC = () => {
                   className="h-4 w-4 text-movezy-600 focus:ring-movezy-500 border-gray-300 rounded"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
+                  disabled={isLoading}
                 />
                 <span className="ml-2">Remember me</span>
               </label>
-              <Link to="/forgot-password" className="text-sm text-movezy-600 hover:text-movezy-500 font-medium">
+              <Link
+                to="/forgot-password"
+                className="text-sm text-movezy-600 hover:text-movezy-500 font-medium"
+              >
                 Forgot password?
               </Link>
             </div>
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-movezy-500 to-movezy-600 text-white rounded-lg text-lg font-medium hover:shadow-xl transition"
+              disabled={isLoading}
+              className="w-full py-3 bg-gradient-to-r from-movezy-500 to-movezy-600 text-white rounded-lg text-lg font-medium hover:shadow-xl transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
-              Login
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Login"
+              )}
             </button>
           </form>
-          <div className="mt-6 text-center text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
-            <p>Hint: Use the example credentials to log in.</p>
-            <p><code className="bg-gray-200 px-1 rounded">admin@movezy.com</code> / <code className="bg-gray-200 px-1 rounded">password</code></p>
-          </div>
         </div>
       </div>
     </div>
