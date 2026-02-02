@@ -4,9 +4,25 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 // Helper function to get auth token
 const getAuthToken = () => localStorage.getItem("adminToken");
 
+// Helper function to handle logout on auth failure
+const handleAuthFailure = () => {
+  localStorage.removeItem("adminToken");
+  // Redirect to login page
+  if (window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
+};
+
 // Generic fetch wrapper with auth
 const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
   const token = getAuthToken();
+
+  // If no token exists, redirect to login
+  if (!token) {
+    handleAuthFailure();
+    throw new Error("No authentication token");
+  }
+
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
@@ -15,6 +31,12 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
       ...options.headers,
     },
   });
+
+  // Handle 401 Unauthorized - token expired or invalid
+  if (response.status === 401) {
+    handleAuthFailure();
+    throw new Error("Session expired. Please login again.");
+  }
 
   if (!response.ok) {
     const error = await response
