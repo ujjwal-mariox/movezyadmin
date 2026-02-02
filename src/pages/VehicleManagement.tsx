@@ -270,6 +270,64 @@ const VehicleManagement: React.FC = () => {
         </button>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 gap-6 mb-6 md:grid-cols-4">
+        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Fleet</p>
+              <h3 className="mt-1 text-3xl font-bold text-gray-900">
+                {totalVehicles}
+              </h3>
+            </div>
+            <div className="flex items-center justify-center w-12 h-12 bg-blue-50 rounded-xl">
+              <Truck className="w-6 h-6 text-blue-600" />
+            </div>
+          </div>
+        </div>
+        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Active</p>
+              <h3 className="mt-1 text-3xl font-bold text-gray-900">
+                {activeVehicles}
+              </h3>
+            </div>
+            <div className="flex items-center justify-center w-12 h-12 bg-green-50 rounded-xl">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Inactive</p>
+              <h3 className="mt-1 text-3xl font-bold text-gray-900">
+                {inactiveVehicles}
+              </h3>
+            </div>
+            <div className="flex items-center justify-center w-12 h-12 bg-yellow-50 rounded-xl">
+              <AlertCircle className="w-6 h-6 text-yellow-600" />
+            </div>
+          </div>
+        </div>
+        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-medium text-gray-500">
+                Intercity Allowed
+              </p>
+              <h3 className="mt-1 text-3xl font-bold text-gray-900">
+                {intercityVehicles}
+              </h3>
+            </div>
+            <div className="flex items-center justify-center w-12 h-12 bg-red-50 rounded-xl">
+              <Activity className="w-6 h-6 text-red-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="flex items-center gap-4 p-4 mb-6 bg-white border border-gray-100 shadow-sm rounded-xl">
         <div className="relative flex-1 max-w-xs">
