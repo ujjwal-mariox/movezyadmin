@@ -13,6 +13,7 @@ import {
   AlertCircle,
   Loader2,
   Truck,
+  Activity,
 } from "lucide-react";
 import { vehicleTypesApi } from "../services/admin-api";
 
@@ -222,6 +223,18 @@ const VehicleManagement: React.FC = () => {
       setActionLoading(null);
     }
   };
+
+  // Compute stats
+  const totalVehicles = vehicleTypes.filter((vt) => !vt.isDeleted).length;
+  const activeVehicles = vehicleTypes.filter(
+    (vt) => vt.isActive && !vt.isDeleted,
+  ).length;
+  const inactiveVehicles = vehicleTypes.filter(
+    (vt) => !vt.isActive && !vt.isDeleted,
+  ).length;
+  const intercityVehicles = vehicleTypes.filter(
+    (vt) => vt.allowInterCity && !vt.isDeleted,
+  ).length;
 
   // Filter vehicle types
   const filteredVehicleTypes = vehicleTypes.filter((vt) => {

@@ -25,7 +25,7 @@ const NotificationCenter: React.FC = () => {
   >("all");
   const [promoCode, setPromoCode] = useState("");
   const [sending, setSending] = useState(false);
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [_showTemplateModal, setShowTemplateModal] = useState(false);
 
   // Mock templates
   const templates: NotificationTemplate[] = [
@@ -130,9 +130,9 @@ const NotificationCenter: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+          <h2 className="flex items-center gap-2 text-xl font-bold text-gray-800">
             <Bell className="w-6 h-6 text-movezy-500" />
             Notification Center
           </h2>
@@ -143,7 +143,7 @@ const NotificationCenter: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+      <div className="bg-white border border-gray-100 shadow-sm rounded-2xl">
         <div className="border-b border-gray-100">
           <div className="flex">
             <button
@@ -193,7 +193,7 @@ const NotificationCenter: React.FC = () => {
           {activeTab === "send" && (
             <div className="max-w-2xl mx-auto space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block mb-2 text-sm font-medium text-gray-700">
                   Target Audience
                 </label>
                 <div className="grid grid-cols-3 gap-3">
@@ -241,7 +241,7 @@ const NotificationCenter: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block mb-2 text-sm font-medium text-gray-700">
                   Notification Title
                 </label>
                 <input
@@ -252,13 +252,13 @@ const NotificationCenter: React.FC = () => {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-movezy-500"
                   maxLength={100}
                 />
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="mt-1 text-xs text-gray-400">
                   {title.length}/100 characters
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block mb-2 text-sm font-medium text-gray-700">
                   Notification Body
                 </label>
                 <textarea
@@ -269,13 +269,13 @@ const NotificationCenter: React.FC = () => {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-movezy-500"
                   maxLength={500}
                 />
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="mt-1 text-xs text-gray-400">
                   {body.length}/500 characters
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block mb-2 text-sm font-medium text-gray-700">
                   Promo Code (Optional)
                 </label>
                 <input
@@ -283,28 +283,28 @@ const NotificationCenter: React.FC = () => {
                   value={promoCode}
                   onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
                   placeholder="PROMO20"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-movezy-500 font-mono"
+                  className="w-full px-4 py-3 font-mono border border-gray-200 rounded-xl focus:ring-2 focus:ring-movezy-500"
                 />
               </div>
 
               {/* Preview */}
               {(title || body) && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block mb-2 text-sm font-medium text-gray-700">
                     Preview
                   </label>
-                  <div className="bg-gray-100 rounded-xl p-4">
-                    <div className="bg-white rounded-lg shadow-sm p-4 max-w-xs">
+                  <div className="p-4 bg-gray-100 rounded-xl">
+                    <div className="max-w-xs p-4 bg-white rounded-lg shadow-sm">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 bg-movezy-500 rounded-lg flex items-center justify-center">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-movezy-500">
                           <Bell className="w-4 h-4 text-white" />
                         </div>
                         <span className="text-xs text-gray-500">Movezy</span>
                       </div>
-                      <p className="font-semibold text-gray-800 text-sm">
+                      <p className="text-sm font-semibold text-gray-800">
                         {title || "Notification Title"}
                       </p>
-                      <p className="text-gray-600 text-sm mt-1">
+                      <p className="mt-1 text-sm text-gray-600">
                         {body || "Notification body message..."}
                       </p>
                     </div>
@@ -315,11 +315,11 @@ const NotificationCenter: React.FC = () => {
               <button
                 onClick={handleSend}
                 disabled={!title || !body || sending}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-movezy-500 text-white rounded-xl hover:bg-movezy-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center w-full gap-2 px-6 py-3 text-white bg-movezy-500 rounded-xl hover:bg-movezy-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {sending ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-white rounded-full border-t-transparent animate-spin" />
                     Sending...
                   </>
                 ) : (
@@ -338,17 +338,17 @@ const NotificationCenter: React.FC = () => {
               <div className="flex justify-end mb-4">
                 <button
                   onClick={() => setShowTemplateModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-movezy-500 text-white rounded-xl hover:bg-movezy-600"
+                  className="flex items-center gap-2 px-4 py-2 text-white bg-movezy-500 rounded-xl hover:bg-movezy-600"
                 >
                   <Plus className="w-4 h-4" />
                   Add Template
                 </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {templates.map((template) => (
                   <div
                     key={template._id}
-                    className="bg-gray-50 rounded-xl p-4 border border-gray-100"
+                    className="p-4 border border-gray-100 bg-gray-50 rounded-xl"
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div>
@@ -368,15 +368,15 @@ const NotificationCenter: React.FC = () => {
                         </button>
                       </div>
                     </div>
-                    <p className="text-sm font-medium text-gray-700 mb-1">
+                    <p className="mb-1 text-sm font-medium text-gray-700">
                       {template.title}
                     </p>
-                    <p className="text-sm text-gray-500 mb-4">
+                    <p className="mb-4 text-sm text-gray-500">
                       {template.body}
                     </p>
                     <button
                       onClick={() => handleUseTemplate(template)}
-                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className="w-full px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
                     >
                       Use Template
                     </button>
@@ -392,22 +392,22 @@ const NotificationCenter: React.FC = () => {
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600">
+                    <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                       Notification
                     </th>
-                    <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600">
+                    <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                       Target
                     </th>
-                    <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600">
+                    <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                       Sent
                     </th>
-                    <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600">
+                    <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                       Success
                     </th>
-                    <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600">
+                    <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                       Failed
                     </th>
-                    <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600">
+                    <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                       Date
                     </th>
                   </tr>
@@ -419,7 +419,7 @@ const NotificationCenter: React.FC = () => {
                         <p className="font-medium text-gray-800">
                           {item.title}
                         </p>
-                        <p className="text-sm text-gray-500 truncate max-w-xs">
+                        <p className="max-w-xs text-sm text-gray-500 truncate">
                           {item.body}
                         </p>
                       </td>

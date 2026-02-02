@@ -20,7 +20,6 @@ const NotificationCenter = lazy(() => import("../pages/NotificationCenter"));
 const PromoManagement = lazy(() => import("../pages/PromoManagement"));
 const SupportTickets = lazy(() => import("../pages/SupportTickets"));
 const StaffManagement = lazy(() => import("../pages/StaffManagement"));
-const AppUserManagement = lazy(() => import("../pages/AppUserManagement"));
 const UserManagement = lazy(() => import("../pages/UserManagement"));
 
 export const authRoutes = [
