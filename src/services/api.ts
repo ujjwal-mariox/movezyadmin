@@ -1,5 +1,5 @@
 // src/services/api.ts
-const API_URL = "http://localhost:9050/v1/api";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 
 const getHeaders = () => {
   const token = localStorage.getItem("adminToken");
