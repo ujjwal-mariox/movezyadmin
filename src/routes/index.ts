@@ -21,6 +21,9 @@ const PromoManagement = lazy(() => import("../pages/PromoManagement"));
 const SupportTickets = lazy(() => import("../pages/SupportTickets"));
 const StaffManagement = lazy(() => import("../pages/StaffManagement"));
 const UserManagement = lazy(() => import("../pages/UserManagement"));
+const VehicleManagement = lazy(() => import("../pages/VehicleManagement"));
+const CategoryManagement = lazy(() => import("../pages/CategoryManagement"));
+const AddonServiceManagement = lazy(() => import("../pages/AddonServiceManagement"));
 
 export const authRoutes = [
   {
@@ -89,6 +92,18 @@ export const adminRoutes = [
   {
     path: "staff",
     element: StaffManagement,
+  },
+  {
+    path: "vehicles",
+    element: VehicleManagement,
+  },
+  {
+    path: "categories",
+    element: CategoryManagement,
+  },
+  {
+    path: "addon-services",
+    element: AddonServiceManagement,
   },
   {
     path: "settings",

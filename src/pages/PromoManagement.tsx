@@ -13,17 +13,24 @@ import {
   Users,
   TrendingUp,
 } from "lucide-react";
-import type { PromoCode } from "../types/admin";
+import {
+  fetchPromos,
+  createPromo,
+  updatePromo,
+  togglePromo,
+  deletePromo as deletePromoApi,
+  type PromoCodeItem,
+} from "../services/api";
 
 const PromoManagement: React.FC = () => {
-  const [promos, setPromos] = useState<PromoCode[]>([]);
+  const [promos, setPromos] = useState<PromoCodeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "ALL" | "ACTIVE" | "EXPIRED"
   >("ALL");
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [editingPromo, setEditingPromo] = useState<PromoCode | null>(null);
+  const [editingPromo, setEditingPromo] = useState<PromoCodeItem | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -31,94 +38,28 @@ const PromoManagement: React.FC = () => {
     description: "",
     discountType: "PERCENTAGE" as "PERCENTAGE" | "FIXED",
     discountValue: 10,
-    minOrderAmount: 0,
+    minOrderValue: 0,
     maxDiscount: 0,
-    usageLimit: 0,
+    maxUsage: 0,
     perUserLimit: 1,
-    startDate: "",
-    endDate: "",
+    validFrom: "",
+    validTo: "",
   });
 
-  // Mock data
-  const mockPromos: PromoCode[] = [
-    {
-      _id: "1",
-      code: "WELCOME20",
-      description: "Welcome offer for new users",
-      discountType: "PERCENTAGE",
-      discountValue: 20,
-      minOrderAmount: 200,
-      maxDiscount: 100,
-      usageLimit: 1000,
-      usedCount: 456,
-      perUserLimit: 1,
-      startDate: "2024-01-01",
-      endDate: "2024-12-31",
-      isActive: true,
-      applicableVehicles: [],
-      applicableServiceTypes: [],
-      createdAt: "2024-01-01T00:00:00Z",
-    },
-    {
-      _id: "2",
-      code: "FLAT100",
-      description: "Flat ₹100 off on orders above ₹500",
-      discountType: "FIXED",
-      discountValue: 100,
-      minOrderAmount: 500,
-      usageLimit: 500,
-      usedCount: 234,
-      perUserLimit: 2,
-      startDate: "2024-01-15",
-      endDate: "2024-03-15",
-      isActive: true,
-      applicableVehicles: [],
-      applicableServiceTypes: [],
-      createdAt: "2024-01-15T00:00:00Z",
-    },
-    {
-      _id: "3",
-      code: "WEEKEND30",
-      description: "Weekend special - 30% off",
-      discountType: "PERCENTAGE",
-      discountValue: 30,
-      minOrderAmount: 300,
-      maxDiscount: 200,
-      usageLimit: 200,
-      usedCount: 200,
-      perUserLimit: 1,
-      startDate: "2024-01-20",
-      endDate: "2024-01-21",
-      isActive: false,
-      applicableVehicles: [],
-      applicableServiceTypes: [],
-      createdAt: "2024-01-20T00:00:00Z",
-    },
-    {
-      _id: "4",
-      code: "TEMPO50",
-      description: "50% off on Tempo bookings",
-      discountType: "PERCENTAGE",
-      discountValue: 50,
-      minOrderAmount: 400,
-      maxDiscount: 300,
-      usageLimit: 100,
-      usedCount: 45,
-      perUserLimit: 1,
-      startDate: "2024-02-01",
-      endDate: "2024-02-29",
-      isActive: true,
-      applicableVehicles: ["Tempo"],
-      applicableServiceTypes: [],
-      createdAt: "2024-02-01T00:00:00Z",
-    },
-  ];
+  const loadPromos = async () => {
+    try {
+      setLoading(true);
+      const res = await fetchPromos(1, 100);
+      setPromos(res.data?.promos || res.promos || []);
+    } catch (err) {
+      console.error("Failed to load promos", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    setTimeout(() => {
-      setPromos(mockPromos);
-      setLoading(false);
-    }, 500);
+    loadPromos();
   }, []);
 
   const filteredPromos = promos.filter((promo) => {
@@ -126,7 +67,7 @@ const PromoManagement: React.FC = () => {
       promo.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       promo.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const now = new Date();
-    const endDate = new Date(promo.endDate);
+    const endDate = new Date(promo.validTo);
     const isExpired = endDate < now || !promo.isActive;
 
     if (statusFilter === "ACTIVE") return matchesSearch && !isExpired;
@@ -137,43 +78,71 @@ const PromoManagement: React.FC = () => {
   const stats = {
     total: promos.length,
     active: promos.filter(
-      (p) => p.isActive && new Date(p.endDate) >= new Date(),
+      (p) => p.isActive && new Date(p.validTo) >= new Date(),
     ).length,
-    totalUsed: promos.reduce((sum, p) => sum + p.usedCount, 0),
+    totalUsed: promos.reduce((sum, p) => sum + (p.usedCount || 0), 0),
     totalSavings: promos.reduce((sum, p) => {
       if (p.discountType === "FIXED") {
-        return sum + p.discountValue * p.usedCount;
+        return sum + p.discountValue * (p.usedCount || 0);
       }
-      return sum + (p.maxDiscount || 50) * p.usedCount;
+      return sum + (p.maxDiscount || 50) * (p.usedCount || 0);
     }, 0),
   };
 
-  const handleCreate = () => {
-    // In production, call API
-    const newPromo: PromoCode = {
-      _id: Date.now().toString(),
-      ...formData,
-      usedCount: 0,
-      isActive: true,
-      applicableVehicles: [],
-      applicableServiceTypes: [],
-      createdAt: new Date().toISOString(),
-    };
-    setPromos([newPromo, ...promos]);
-    setShowCreateModal(false);
-    resetForm();
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this promo code?")) {
-      setPromos(promos.filter((p) => p._id !== id));
+  const handleCreate = async () => {
+    try {
+      if (editingPromo) {
+        await updatePromo(editingPromo._id, {
+          description: formData.description,
+          discountType: formData.discountType,
+          discountValue: formData.discountValue,
+          minOrderValue: formData.minOrderValue,
+          maxDiscount: formData.maxDiscount,
+          maxUsage: formData.maxUsage,
+          perUserLimit: formData.perUserLimit,
+          validFrom: formData.validFrom,
+          validTo: formData.validTo,
+        } as any);
+      } else {
+        await createPromo({
+          code: formData.code,
+          description: formData.description,
+          discountType: formData.discountType,
+          discountValue: formData.discountValue,
+          minOrderValue: formData.minOrderValue,
+          maxDiscount: formData.maxDiscount,
+          maxUsage: formData.maxUsage,
+          perUserLimit: formData.perUserLimit,
+          validFrom: formData.validFrom,
+          validTo: formData.validTo,
+        } as any);
+      }
+      setShowCreateModal(false);
+      resetForm();
+      loadPromos();
+    } catch (err) {
+      console.error("Failed to save promo", err);
     }
   };
 
-  const handleToggleActive = (id: string) => {
-    setPromos(
-      promos.map((p) => (p._id === id ? { ...p, isActive: !p.isActive } : p)),
-    );
+  const handleDelete = async (id: string) => {
+    if (confirm("Are you sure you want to delete this promo code?")) {
+      try {
+        await deletePromoApi(id);
+        loadPromos();
+      } catch (err) {
+        console.error("Failed to delete promo", err);
+      }
+    }
+  };
+
+  const handleToggleActive = async (id: string) => {
+    try {
+      await togglePromo(id);
+      loadPromos();
+    } catch (err) {
+      console.error("Failed to toggle promo", err);
+    }
   };
 
   const copyCode = (code: string) => {
@@ -187,12 +156,12 @@ const PromoManagement: React.FC = () => {
       description: "",
       discountType: "PERCENTAGE",
       discountValue: 10,
-      minOrderAmount: 0,
+      minOrderValue: 0,
       maxDiscount: 0,
-      usageLimit: 0,
+      maxUsage: 0,
       perUserLimit: 1,
-      startDate: "",
-      endDate: "",
+      validFrom: "",
+      validTo: "",
     });
     setEditingPromo(null);
   };
@@ -338,9 +307,9 @@ const PromoManagement: React.FC = () => {
         ) : (
           filteredPromos.map((promo) => {
             const isExpired =
-              new Date(promo.endDate) < new Date() || !promo.isActive;
-            const usagePercent = promo.usageLimit
-              ? (promo.usedCount / promo.usageLimit) * 100
+              new Date(promo.validTo) < new Date() || !promo.isActive;
+            const usagePercent = promo.maxUsage
+              ? ((promo.usedCount || 0) / promo.maxUsage) * 100
               : 0;
 
             return (
@@ -409,22 +378,22 @@ const PromoManagement: React.FC = () => {
                     <div className="flex items-center justify-between text-gray-600">
                       <span>Min Order:</span>
                       <span className="font-medium">
-                        {formatCurrency(promo.minOrderAmount)}
+                        {formatCurrency(promo.minOrderValue || 0)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-gray-600">
                       <span>Valid:</span>
                       <span className="font-medium">
-                        {formatDate(promo.startDate)} -{" "}
-                        {formatDate(promo.endDate)}
+                        {formatDate(promo.validFrom)} -{" "}
+                        {formatDate(promo.validTo)}
                       </span>
                     </div>
-                    {promo.usageLimit && (
+                    {promo.maxUsage ? (
                       <div>
                         <div className="flex items-center justify-between mb-1 text-gray-600">
                           <span>Usage:</span>
                           <span className="font-medium">
-                            {promo.usedCount} / {promo.usageLimit}
+                            {promo.usedCount || 0} / {promo.maxUsage}
                           </span>
                         </div>
                         <div className="w-full h-2 overflow-hidden bg-gray-100 rounded-full">
@@ -440,7 +409,7 @@ const PromoManagement: React.FC = () => {
                           />
                         </div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -464,12 +433,12 @@ const PromoManagement: React.FC = () => {
                           description: promo.description || "",
                           discountType: promo.discountType,
                           discountValue: promo.discountValue,
-                          minOrderAmount: promo.minOrderAmount,
+                          minOrderValue: promo.minOrderValue || 0,
                           maxDiscount: promo.maxDiscount || 0,
-                          usageLimit: promo.usageLimit || 0,
+                          maxUsage: promo.maxUsage || 0,
                           perUserLimit: promo.perUserLimit,
-                          startDate: promo.startDate,
-                          endDate: promo.endDate,
+                          validFrom: promo.validFrom ? promo.validFrom.split("T")[0] : "",
+                          validTo: promo.validTo ? promo.validTo.split("T")[0] : "",
                         });
                         setShowCreateModal(true);
                       }}
@@ -579,11 +548,11 @@ const PromoManagement: React.FC = () => {
                   </label>
                   <input
                     type="number"
-                    value={formData.minOrderAmount}
+                    value={formData.minOrderValue}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        minOrderAmount: Number(e.target.value),
+                        minOrderValue: Number(e.target.value),
                       })
                     }
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"
@@ -616,11 +585,11 @@ const PromoManagement: React.FC = () => {
                   </label>
                   <input
                     type="number"
-                    value={formData.usageLimit}
+                    value={formData.maxUsage}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        usageLimit: Number(e.target.value),
+                        maxUsage: Number(e.target.value),
                       })
                     }
                     placeholder="0 for unlimited"
@@ -652,9 +621,9 @@ const PromoManagement: React.FC = () => {
                   </label>
                   <input
                     type="date"
-                    value={formData.startDate}
+                    value={formData.validFrom}
                     onChange={(e) =>
-                      setFormData({ ...formData, startDate: e.target.value })
+                      setFormData({ ...formData, validFrom: e.target.value })
                     }
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"
                   />
@@ -665,9 +634,9 @@ const PromoManagement: React.FC = () => {
                   </label>
                   <input
                     type="date"
-                    value={formData.endDate}
+                    value={formData.validTo}
                     onChange={(e) =>
-                      setFormData({ ...formData, endDate: e.target.value })
+                      setFormData({ ...formData, validTo: e.target.value })
                     }
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"
                   />
@@ -688,7 +657,7 @@ const PromoManagement: React.FC = () => {
               <button
                 onClick={handleCreate}
                 disabled={
-                  !formData.code || !formData.startDate || !formData.endDate
+                  !formData.code || !formData.validFrom || !formData.validTo
                 }
                 className="flex-1 px-4 py-2.5 bg-movezy-500 text-white rounded-xl hover:bg-movezy-600 disabled:opacity-50"
               >

@@ -60,6 +60,8 @@ export const PERMISSIONS = {
 export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   dashboard: [PERMISSIONS.DASHBOARD_VIEW],
   "vehicle-management": [PERMISSIONS.VEHICLES_VIEW],
+  categories: [PERMISSIONS.CONFIG_VIEW],
+  "addon-services": [PERMISSIONS.CONFIG_VIEW],
   "app-users": [PERMISSIONS.USERS_VIEW],
   riders: [PERMISSIONS.DRIVERS_VIEW],
   orders: [PERMISSIONS.BOOKINGS_VIEW],
@@ -74,6 +76,7 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   promos: [PERMISSIONS.PROMOS_VIEW],
   support: [PERMISSIONS.SUPPORT_VIEW],
   staff: [PERMISSIONS.STAFF_VIEW, PERMISSIONS.ROLES_VIEW],
+  wallet: [PERMISSIONS.PAYMENTS_VIEW],
   settings: [PERMISSIONS.CONFIG_VIEW],
 };
 

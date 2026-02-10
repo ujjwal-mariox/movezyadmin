@@ -15,6 +15,9 @@ import {
   Users,
   Shield,
   TicketCheck,
+  Wallet,
+  Package,
+  Wrench,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
@@ -36,6 +39,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: "dashboard", label: "Dashboard", icon: Gauge },
     { id: "staff", label: "Staff Management", icon: Shield },
     { id: "vehicle-management", label: "Vehicle Management", icon: Truck },
+    { id: "categories", label: "Delivery Categories", icon: Package },
+    { id: "addon-services", label: "Add-on Services", icon: Wrench },
     { id: "app-users", label: "User Management", icon: Users },
     { id: "riders", label: "Driver Management", icon: Bike },
     { id: "orders", label: "Orders Management", icon: ClipboardList },
@@ -45,6 +50,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: "promos", label: "Coupon Management", icon: Tag },
     { id: "notifications", label: "Master Notifications", icon: Bell },
     { id: "support", label: "Support Tickets", icon: TicketCheck },
+    { id: "wallet", label: "Wallet Management", icon: Wallet },
     { id: "settings", label: "Settings", icon: SlidersHorizontal },
   ];
 

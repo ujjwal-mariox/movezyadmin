@@ -73,6 +73,28 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
   }
 };
 
+// Fetch wrapper for FormData (file uploads) — omits Content-Type so browser sets multipart boundary
+const fetchFormData = async (endpoint: string, formData: FormData, method: string = "POST") => {
+  const token = getAuthToken();
+  if (!token) throw new Error("No authentication token. Please login.");
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (response.status === 401) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || "Session expired. Please login again.");
+  }
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: "Request failed" }));
+    throw new Error(error.message || "Request failed");
+  }
+  return response.json();
+};
+
 // ==================== ENTERPRISE API ====================
 export const enterpriseApi = {
   // Get all enterprises
@@ -806,52 +828,37 @@ export const vehicleTypesApi = {
   // Get all vehicle types
   getAll: () => fetchWithAuth("/admin/config/vehicle-types"),
 
-  // Create vehicle type
-  create: (data: {
-    name: string;
-    description?: string;
-    maxWeightKg: number;
-    baseFare: number;
-    perKmRate: number;
-    perMinuteRate: number;
-    minDistanceKm?: number;
-    minRangeKm?: number;
-    maxRangeKm?: number;
-    allowIntraCity?: boolean;
-    allowInterCity?: boolean;
-    image?: string;
-    icon?: string;
-    sortOrder?: number;
-  }) =>
-    fetchWithAuth("/admin/config/vehicle-types", {
+  // Create vehicle type (supports image file upload)
+  create: (data: Record<string, any>, imageFile?: File) => {
+    if (imageFile) {
+      const formData = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) formData.append(key, String(value));
+      });
+      formData.append("image", imageFile);
+      return fetchFormData("/admin/config/vehicle-types", formData, "POST");
+    }
+    return fetchWithAuth("/admin/config/vehicle-types", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
+    });
+  },
 
-  // Update vehicle type
-  update: (
-    id: string,
-    data: {
-      name?: string;
-      description?: string;
-      maxWeightKg?: number;
-      baseFare?: number;
-      perKmRate?: number;
-      perMinuteRate?: number;
-      minDistanceKm?: number;
-      minRangeKm?: number;
-      maxRangeKm?: number;
-      allowIntraCity?: boolean;
-      allowInterCity?: boolean;
-      image?: string;
-      icon?: string;
-      sortOrder?: number;
-    },
-  ) =>
-    fetchWithAuth(`/admin/config/vehicle-types/${id}`, {
+  // Update vehicle type (supports image file upload)
+  update: (id: string, data: Record<string, any>, imageFile?: File) => {
+    if (imageFile) {
+      const formData = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) formData.append(key, String(value));
+      });
+      formData.append("image", imageFile);
+      return fetchFormData(`/admin/config/vehicle-types/${id}`, formData, "PUT");
+    }
+    return fetchWithAuth(`/admin/config/vehicle-types/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
-    }),
+    });
+  },
 
   // Toggle vehicle type active status
   toggle: (id: string) =>

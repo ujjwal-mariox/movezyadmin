@@ -16,6 +16,9 @@ import {
   Tag,
   Bell,
   TicketCheck,
+  Wallet,
+  Package,
+  Wrench,
 } from "lucide-react";
 
 // Auth Pages
@@ -41,6 +44,9 @@ const DriverTracking = lazy(() => import("./pages/DriverTracking"));
 const PromoManagement = lazy(() => import("./pages/PromoManagement"));
 const NotificationCenter = lazy(() => import("./pages/NotificationCenter"));
 const SupportTickets = lazy(() => import("./pages/SupportTickets"));
+const WalletManagement = lazy(() => import("./pages/WalletManagement"));
+const CategoryManagement = lazy(() => import("./pages/CategoryManagement"));
+const AddonServiceManagement = lazy(() => import("./pages/AddonServiceManagement"));
 
 export const authRoutes = [
   { path: "/login", element: Login },
@@ -67,6 +73,18 @@ export const adminRoutes = [
     element: VehicleManagement,
     name: "Vehicle Management",
     icon: Truck,
+  },
+  {
+    path: "categories",
+    element: CategoryManagement,
+    name: "Delivery Categories",
+    icon: Package,
+  },
+  {
+    path: "addon-services",
+    element: AddonServiceManagement,
+    name: "Add-on Services",
+    icon: Wrench,
   },
   {
     path: "app-users",
@@ -133,6 +151,12 @@ export const adminRoutes = [
     element: Payments,
     name: "Payments",
     icon: CreditCard,
+  },
+  {
+    path: "wallet",
+    element: WalletManagement,
+    name: "Wallet Management",
+    icon: Wallet,
   },
   {
     path: "cms",

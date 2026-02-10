@@ -14,6 +14,7 @@ import {
   Loader2,
   Truck,
   Activity,
+  Upload,
 } from "lucide-react";
 import { vehicleTypesApi } from "../services/admin-api";
 
@@ -82,6 +83,8 @@ const VehicleManagement: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>(initialFormData);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   // Filters
   const [filterStatus, setFilterStatus] = useState<
@@ -123,6 +126,8 @@ const VehicleManagement: React.FC = () => {
     setFormData(initialFormData);
     setIsEditing(false);
     setEditingId(null);
+    setImageFile(null);
+    setImagePreview(null);
     setIsModalOpen(true);
   };
 
@@ -144,6 +149,8 @@ const VehicleManagement: React.FC = () => {
     });
     setIsEditing(true);
     setEditingId(vehicleType._id);
+    setImageFile(null);
+    setImagePreview(vehicleType.image || null);
     setIsModalOpen(true);
   };
 
@@ -153,10 +160,10 @@ const VehicleManagement: React.FC = () => {
       setActionLoading("submit");
 
       if (isEditing && editingId) {
-        await vehicleTypesApi.update(editingId, formData);
+        await vehicleTypesApi.update(editingId, formData, imageFile || undefined);
         showNotification("success", "Vehicle type updated successfully");
       } else {
-        await vehicleTypesApi.create(formData);
+        await vehicleTypesApi.create(formData, imageFile || undefined);
         showNotification("success", "Vehicle type created successfully");
       }
 
@@ -651,17 +658,33 @@ const VehicleManagement: React.FC = () => {
                 </div>
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-700">
-                    Image URL
+                    Vehicle Image
                   </label>
-                  <input
-                    type="text"
-                    value={formData.image}
-                    onChange={(e) =>
-                      setFormData({ ...formData, image: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="https://..."
-                  />
+                  <div className="flex items-center gap-4">
+                    {(imagePreview || formData.image) && (
+                      <img
+                        src={imagePreview || formData.image}
+                        alt="Vehicle"
+                        className="object-contain w-16 h-16 border rounded-lg"
+                      />
+                    )}
+                    <label className="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg cursor-pointer hover:bg-blue-50">
+                      <Upload className="w-4 h-4" />
+                      {imageFile ? imageFile.name : "Choose Image"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setImageFile(file);
+                            setImagePreview(URL.createObjectURL(file));
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
 
