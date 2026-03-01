@@ -1,5 +1,5 @@
 // src/pages/DriverTracking.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   MapPin,
   Navigation,
@@ -13,6 +13,8 @@ import {
   Circle,
   Package,
 } from "lucide-react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import type { DriverLocation } from "../types/admin";
 
 const DriverTracking: React.FC = () => {
@@ -131,6 +133,62 @@ const DriverTracking: React.FC = () => {
     busy: drivers.filter((d) => d.status === "BUSY").length,
     offline: drivers.filter((d) => d.status === "OFFLINE").length,
   };
+
+  // Leaflet map ref
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markersRef = useRef<L.Marker[]>([]);
+
+  // Initialize Leaflet map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+    const map = L.map(mapContainerRef.current).setView([28.6139, 77.209], 11);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // Update markers when drivers/filter change
+  useEffect(() => {
+    if (!mapRef.current) return;
+    // Remove old markers
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    filteredDrivers.forEach((driver) => {
+      if (!driver.lat || !driver.lng) return;
+      const color = driver.status === "ONLINE" ? "#22c55e" : driver.status === "BUSY" ? "#eab308" : "#9ca3af";
+      const icon = L.divIcon({
+        html: `<div style="background:${color};width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.3);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+        </div>`,
+        className: "",
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      });
+
+      const marker = L.marker([driver.lat, driver.lng], { icon })
+        .addTo(mapRef.current!)
+        .bindPopup(`<b>${driver.driverName}</b><br/>${driver.vehicleType} • ${driver.vehicleNumber}<br/><span style="color:${color}">${driver.status}</span>${driver.speed ? ` • ${driver.speed} km/h` : ""}`);
+
+      marker.on("click", () => setSelectedDriver(driver));
+      markersRef.current.push(marker);
+    });
+
+    // Fit bounds if there are drivers
+    if (filteredDrivers.length > 0) {
+      const validDrivers = filteredDrivers.filter((d) => d.lat && d.lng);
+      if (validDrivers.length > 0) {
+        const bounds = L.latLngBounds(validDrivers.map((d) => [d.lat, d.lng]));
+        mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
+      }
+    }
+  }, [filteredDrivers]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -279,42 +337,7 @@ const DriverTracking: React.FC = () => {
           <div className="p-4 border-b border-gray-100">
             <h3 className="font-semibold text-gray-800">Live Map</h3>
           </div>
-          <div className="h-[500px] bg-gray-100 flex items-center justify-center relative">
-            {/* Map placeholder - in production, integrate with Google Maps or Mapbox */}
-            <div className="text-center">
-              <MapPin className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 mb-2">Map Integration Required</p>
-              <p className="text-sm text-gray-400">
-                Integrate Google Maps or Mapbox for live tracking
-              </p>
-            </div>
-
-            {/* Driver markers overlay (mock visualization) */}
-            <div className="absolute inset-0 pointer-events-none">
-              {filteredDrivers.map((driver, index) => (
-                <div
-                  key={driver.driverId}
-                  className="absolute"
-                  style={{
-                    left: `${20 + (index % 4) * 20}%`,
-                    top: `${20 + Math.floor(index / 4) * 25}%`,
-                  }}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${
-                      driver.status === "ONLINE"
-                        ? "bg-green-500"
-                        : driver.status === "BUSY"
-                          ? "bg-yellow-500"
-                          : "bg-gray-400"
-                    }`}
-                  >
-                    <Truck className="w-4 h-4 text-white" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <div className="h-[500px] relative" ref={mapContainerRef} />
         </div>
 
         {/* Driver List */}

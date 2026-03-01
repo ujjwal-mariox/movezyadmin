@@ -1,4 +1,6 @@
 // src/services/api.ts
+import type { Enterprise } from "../types/admin";
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 
 const getHeaders = () => {
@@ -326,3 +328,230 @@ export const deletePromo = async (id: string) => {
   });
   return res.json();
 };
+
+// ─── CANCELLATION REASONS ───
+
+export interface CancellationReasonItem {
+  _id: string;
+  reason: string;
+  code: string;
+  applicableTo: "USER" | "DRIVER" | "BOTH";
+  penaltyType: "NONE" | "FIXED" | "PERCENTAGE";
+  penaltyValue: number;
+  isRefundable: boolean;
+  refundPercentage: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchCancellationReasons = async () => {
+  const res = await fetch(`${API_URL}/admin/config/cancellation-reasons`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const createCancellationReason = async (data: Partial<CancellationReasonItem>) => {
+  const res = await fetch(`${API_URL}/admin/config/cancellation-reasons`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateCancellationReason = async (id: string, data: Partial<CancellationReasonItem>) => {
+  const res = await fetch(`${API_URL}/admin/config/cancellation-reasons/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteCancellationReason = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/config/cancellation-reasons/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+// ─── PROHIBITED ITEMS ───
+
+export interface ProhibitedItemData {
+  _id: string;
+  name: string;
+  icon: string;
+  image: string;
+  bgColor: string;
+  description: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchProhibitedItems = async () => {
+  const res = await fetch(`${API_URL}/admin/config/prohibited-items`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const createProhibitedItem = async (data: Partial<ProhibitedItemData>) => {
+  const res = await fetch(`${API_URL}/admin/config/prohibited-items`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateProhibitedItem = async (id: string, data: Partial<ProhibitedItemData>) => {
+  const res = await fetch(`${API_URL}/admin/config/prohibited-items/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteProhibitedItem = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/config/prohibited-items/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+// ─── ENTERPRISE ACCOUNTS ───
+
+export const fetchEnterprises = async (status?: string, search?: string, page = 1, limit = 20) => {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (status && status !== "ALL") params.set("status", status);
+  if (search) params.set("search", search);
+  const res = await fetch(`${API_URL}/admin/enterprises?${params}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const createEnterprise = async (data: Partial<Enterprise>) => {
+  const res = await fetch(`${API_URL}/admin/enterprises`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateEnterprise = async (enterpriseId: string, data: Partial<Enterprise>) => {
+  const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteEnterprise = async (enterpriseId: string) => {
+  const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const approveEnterprise = async (enterpriseId: string, data: { creditLimit: number; discountPercentage: number; paymentTerms: number }) => {
+  const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}/approve`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const rejectEnterprise = async (enterpriseId: string, data: { reason: string }) => {
+  const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}/reject`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const suspendEnterprise = async (enterpriseId: string, data: { reason: string }) => {
+  const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}/suspend`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+// ─── ENTERPRISE INQUIRIES ───
+
+export interface EnterpriseInquiryData {
+  _id: string;
+  userId: { _id: string; fullName?: string; mobileNumber?: string; email?: string; profileImage?: string } | string;
+  name: string;
+  phone: string;
+  email?: string;
+  companyName?: string;
+  message?: string;
+  source: "GET_IN_TOUCH" | "ENTERPRISE_ENTRY";
+  status: "NEW" | "CONTACTED" | "CONVERTED" | "CLOSED";
+  adminNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchEnterpriseInquiries = async (status?: string, search?: string, page = 1, limit = 20) => {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (status && status !== "ALL") params.set("status", status);
+  if (search) params.set("search", search);
+  const res = await fetch(`${API_URL}/admin/enterprises/inquiries?${params}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const updateEnterpriseInquiry = async (id: string, data: { status?: string; adminNotes?: string }) => {
+  const res = await fetch(`${API_URL}/admin/enterprises/inquiries/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteEnterpriseInquiry = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/enterprises/inquiries/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+// ─── ENTERPRISE PAGE CONTENT ───
+
+export interface EnterpriseFeatureData {
+  _id?: string;
+  icon: string;
+  title: string;
+  description: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface EnterpriseFaqData {
+  _id?: string;
+  question: string;
+  answer: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface EnterpriseClientData {
+  _id?: string;
+  name: string;
+  logoUrl: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface EnterpriseContentData {
+  _id?: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  features: EnterpriseFeatureData[];
+  faqs: EnterpriseFaqData[];
+  clients: EnterpriseClientData[];
+  ctaText: string;
+  ctaSubtext: string;
+  isActive: boolean;
+}
+
+export const fetchEnterpriseContent = async () => {
+  const res = await fetch(`${API_URL}/admin/enterprises/content`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const updateEnterpriseContent = async (data: Partial<EnterpriseContentData>) => {
+  const res = await fetch(`${API_URL}/admin/enterprises/content`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+

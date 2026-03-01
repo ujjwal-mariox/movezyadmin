@@ -40,12 +40,26 @@ const Payments: React.FC = () => {
   const completedCount = filteredPayments.filter(p => p.status === 'Completed').length;
   const pendingCount = filteredPayments.filter(p => p.status === 'Pending').length;
 
+  const handleExport = () => {
+    const rows = [["Payment ID", "Booking ID", "Name", "Amount", "Method", "Status", "Date", "Type"].join(",")];
+    filteredPayments.forEach((p) => {
+      rows.push([p.id, p.bookingId, p.user, p.amount, p.method, p.status, p.date, p.type].join(","));
+    });
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `payments-${paymentType}-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4">
         <div className="flex items-center space-x-3">
-          <button className="flex items-center space-x-2 px-4 py-2 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors bg-white shadow-sm">
+          <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors bg-white shadow-sm">
             <Download className="w-4 h-4" />
             <span className="text-sm font-medium">Export Report</span>
           </button>

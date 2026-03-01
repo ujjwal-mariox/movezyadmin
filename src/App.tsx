@@ -51,10 +51,12 @@ const App = () => {
 
               {/* default admin route */}
               <Route index element={<Navigate to="dashboard" replace />} />
+              {/* Catch-all inside /admin — prevents top-level fallback redirecting to /login */}
+              <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
             </Route>
           </Route>
 
-          {/* fallback */}
+          {/* fallback — only for truly unknown routes outside /admin */}
           <Route path="*" element={<Navigate to="/login" />} />
         </Routes>
       </BrowserRouter>

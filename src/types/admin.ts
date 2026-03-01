@@ -62,19 +62,20 @@ export interface AppUser {
 export interface Enterprise {
   _id: string;
   companyName: string;
-  gstin: string;
+  gstin?: string;
   contactPerson: string;
-  contactEmail: string;
-  contactPhone: string;
+  email: string;
+  phone: string;
   address: string;
   city: string;
   state: string;
+  pincode: string;
   status: "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
   creditLimit: number;
-  creditUsed: number;
-  billingCycle: "WEEKLY" | "BIWEEKLY" | "MONTHLY";
-  totalBookings: number;
-  totalSpent: number;
+  usedCredit: number;
+  paymentTerms: number;
+  discountPercentage: number;
+  isActive: boolean;
   rejectionReason?: string;
   suspensionReason?: string;
   createdAt: string;

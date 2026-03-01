@@ -24,6 +24,15 @@ const UserManagement = lazy(() => import("../pages/UserManagement"));
 const VehicleManagement = lazy(() => import("../pages/VehicleManagement"));
 const CategoryManagement = lazy(() => import("../pages/CategoryManagement"));
 const AddonServiceManagement = lazy(() => import("../pages/AddonServiceManagement"));
+const WalletManagement = lazy(() => import("../pages/WalletManagement"));
+const CancellationReasonManagement = lazy(() => import("../pages/CancellationReasonManagement"));
+const ProhibitedItemManagement = lazy(() => import("../pages/ProhibitedItemManagement"));
+
+// Phase 2 pages
+const FinanceModule = lazy(() => import("../pages/FinanceModule"));
+const AuditLogPage = lazy(() => import("../pages/AuditLogPage"));
+const AutomationRulesPage = lazy(() => import("../pages/AutomationRulesPage"));
+const DocumentCompliancePage = lazy(() => import("../pages/DocumentCompliancePage"));
 
 export const authRoutes = [
   {
@@ -106,7 +115,39 @@ export const adminRoutes = [
     element: AddonServiceManagement,
   },
   {
+    path: "wallet",
+    element: WalletManagement,
+  },
+  {
+    path: "cancellation-reasons",
+    element: CancellationReasonManagement,
+  },
+  {
+    path: "prohibited-items",
+    element: ProhibitedItemManagement,
+  },
+  {
+    path: "vehicle-management",
+    element: VehicleManagement,
+  },
+  {
     path: "settings",
     element: Settings,
+  },
+  {
+    path: "finance",
+    element: FinanceModule,
+  },
+  {
+    path: "audit-logs",
+    element: AuditLogPage,
+  },
+  {
+    path: "automation",
+    element: AutomationRulesPage,
+  },
+  {
+    path: "compliance",
+    element: DocumentCompliancePage,
   },
 ];

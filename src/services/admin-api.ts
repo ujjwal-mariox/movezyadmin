@@ -878,6 +878,53 @@ export const vehicleTypesApi = {
 };
 
 // ==================== DEFAULT EXPORT ====================
+
+// ==================== AUDIT LOG API ====================
+export const auditApi = {
+  getLogs: (params: { page?: number; limit?: number; module?: string; action?: string; search?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.module) query.set("module", params.module);
+    if (params.action) query.set("action", params.action);
+    if (params.search) query.set("search", params.search);
+    return fetchWithAuth(`/admin/audit-logs?${query.toString()}`);
+  },
+  getStats: () => fetchWithAuth("/admin/audit-logs/stats"),
+};
+
+// ==================== AUTOMATION API ====================
+export const automationApi = {
+  getRules: () => fetchWithAuth("/admin/automation/rules"),
+  getRule: (id: string) => fetchWithAuth(`/admin/automation/rules/${id}`),
+  createRule: (data: any) => fetchWithAuth("/admin/automation/rules", { method: "POST", body: JSON.stringify(data) }),
+  updateRule: (id: string, data: any) => fetchWithAuth(`/admin/automation/rules/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteRule: (id: string) => fetchWithAuth(`/admin/automation/rules/${id}`, { method: "DELETE" }),
+  toggleRule: (id: string) => fetchWithAuth(`/admin/automation/rules/${id}/toggle`, { method: "PUT" }),
+  getTriggerTypes: () => fetchWithAuth("/admin/automation/trigger-types"),
+  getActionTypes: () => fetchWithAuth("/admin/automation/action-types"),
+};
+
+// ==================== FINANCE API ====================
+export const financeApi = {
+  getOverview: (period: string = "month") => fetchWithAuth(`/admin/finance/overview?period=${period}`),
+  getPayouts: (params: { page?: number; status?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.status) query.set("status", params.status);
+    return fetchWithAuth(`/admin/finance/payouts?${query.toString()}`);
+  },
+  getCODSummary: () => fetchWithAuth("/admin/finance/cod-summary"),
+  exportData: (period: string = "month") => fetchWithAuth(`/admin/finance/export?period=${period}`),
+};
+
+// ==================== ENHANCED DASHBOARD API ====================
+export const dashboardLiveApi = {
+  getAlerts: () => fetchWithAuth("/admin/dashboard/alerts"),
+  getLiveStats: () => fetchWithAuth("/admin/dashboard/live-stats"),
+  getEventTimeline: (limit: number = 10) => fetchWithAuth(`/admin/dashboard/event-timeline?limit=${limit}`),
+};
+
 export default {
   enterprise: enterpriseApi,
   sos: sosApi,
@@ -892,4 +939,8 @@ export default {
   users: usersApi,
   drivers: driversApi,
   vehicleTypes: vehicleTypesApi,
+  audit: auditApi,
+  automation: automationApi,
+  finance: financeApi,
+  dashboardLive: dashboardLiveApi,
 };

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   X,
   LogOut,
@@ -18,10 +18,27 @@ import {
   Wallet,
   Package,
   Wrench,
+  Ban,
+  ChevronDown,
+  DollarSign,
+  Zap,
+  FileCheck,
+  ScrollText,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
 import logo from "../../assets/logo.png";
+
+interface MenuItem {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+}
+
+interface MenuGroup {
+  label: string;
+  items: MenuItem[];
+}
 
 interface SidebarProps {
   isMobileMenuOpen: boolean;
@@ -34,28 +51,67 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navigate = useNavigate();
   const { logout, canAccessModule, user } = useAuth();
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-  const allMenuItems = [
-    { id: "dashboard", label: "Dashboard", icon: Gauge },
-    { id: "staff", label: "Staff Management", icon: Shield },
-    { id: "vehicle-management", label: "Vehicle Management", icon: Truck },
-    { id: "categories", label: "Delivery Categories", icon: Package },
-    { id: "addon-services", label: "Add-on Services", icon: Wrench },
-    { id: "app-users", label: "User Management", icon: Users },
-    { id: "riders", label: "Driver Management", icon: Bike },
-    { id: "orders", label: "Orders Management", icon: ClipboardList },
-    { id: "enterprises", label: "Enterprise Management", icon: Building2 },
-    { id: "sos", label: "SOS Dashboard", icon: AlertTriangle },
-    { id: "tracking", label: "Driver Tracking", icon: MapPin },
-    { id: "promos", label: "Coupon Management", icon: Tag },
-    { id: "notifications", label: "Master Notifications", icon: Bell },
-    { id: "support", label: "Support Tickets", icon: TicketCheck },
-    { id: "wallet", label: "Wallet Management", icon: Wallet },
-    { id: "settings", label: "Settings", icon: SlidersHorizontal },
+  const menuGroups: MenuGroup[] = [
+    {
+      label: "Operations",
+      items: [
+        { id: "dashboard", label: "Dashboard", icon: Gauge },
+        { id: "orders", label: "Orders", icon: ClipboardList },
+        { id: "tracking", label: "Driver Tracking", icon: MapPin },
+        { id: "sos", label: "SOS Dashboard", icon: AlertTriangle },
+      ],
+    },
+    {
+      label: "People",
+      items: [
+        { id: "app-users", label: "User Management", icon: Users },
+        { id: "riders", label: "Driver Management", icon: Bike },
+        { id: "enterprises", label: "Enterprise", icon: Building2 },
+        { id: "compliance", label: "Document Compliance", icon: FileCheck },
+      ],
+    },
+    {
+      label: "Business",
+      items: [
+        { id: "finance", label: "Finance & Insights", icon: DollarSign },
+        { id: "payments", label: "Payments", icon: Wallet },
+        { id: "promos", label: "Coupons", icon: Tag },
+        { id: "wallet", label: "Wallet", icon: Wallet },
+      ],
+    },
+    {
+      label: "Configuration",
+      items: [
+        { id: "vehicle-management", label: "Vehicles", icon: Truck },
+        { id: "categories", label: "Delivery Categories", icon: Package },
+        { id: "addon-services", label: "Add-on Services", icon: Wrench },
+        { id: "cancellation-reasons", label: "Cancellation Reasons", icon: Ban },
+        { id: "prohibited-items", label: "Prohibited Items", icon: Ban },
+      ],
+    },
+    {
+      label: "Communication",
+      items: [
+        { id: "notifications", label: "Notifications", icon: Bell },
+        { id: "support", label: "Support Tickets", icon: TicketCheck },
+      ],
+    },
+    {
+      label: "Admin",
+      items: [
+        { id: "staff", label: "Staff Management", icon: Shield },
+        { id: "automation", label: "Automation Rules", icon: Zap },
+        { id: "audit-logs", label: "Audit Logs", icon: ScrollText },
+        { id: "settings", label: "Settings", icon: SlidersHorizontal },
+      ],
+    },
   ];
 
-  // Filter menu items based on user's permissions
-  const menuItems = allMenuItems.filter((item) => canAccessModule(item.id));
+  const toggleGroup = (label: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
 
   const handleLogout = () => {
     logout();
@@ -104,26 +160,47 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
 
-          {/* Menu */}
-          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
+          {/* Grouped Menu */}
+          <nav className="flex-1 px-3 py-2 overflow-y-auto">
+            {menuGroups.map((group) => {
+              const visibleItems = group.items.filter((item) => canAccessModule(item.id));
+              if (visibleItems.length === 0) return null;
+              const isCollapsed = collapsedGroups[group.label];
+
               return (
-                <NavLink
-                  key={item.id}
-                  to={`/admin/${item.id}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={({ isActive }) =>
-                    `w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all ${
-                      isActive
-                        ? "bg-gradient-to-r from-movezy-500 to-movezy-600 text-white shadow-md"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`
-                  }
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </NavLink>
+                <div key={group.label} className="mb-1">
+                  <button
+                    onClick={() => toggleGroup(group.label)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {group.label}
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                  </button>
+                  {!isCollapsed && (
+                    <div className="space-y-0.5">
+                      {visibleItems.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <NavLink
+                            key={item.id}
+                            to={`/admin/${item.id}`}
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className={({ isActive }) =>
+                              `w-full flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-sm ${
+                                isActive
+                                  ? "bg-gradient-to-r from-movezy-500 to-movezy-600 text-white shadow-md"
+                                  : "text-gray-600 hover:bg-gray-100"
+                              }`
+                            }
+                          >
+                            <Icon className="w-4 h-4" />
+                            <span className="font-medium">{item.label}</span>
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>

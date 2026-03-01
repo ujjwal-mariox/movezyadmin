@@ -8,6 +8,7 @@ interface StatCardProps {
   change: string;
   icon: LucideIcon;
   color: "blue" | "green" | "orange" | "purple" | "red";
+  onClick?: () => void;
 }
 
 const StatCard: React.FC<StatCardProps> = ({
@@ -16,6 +17,7 @@ const StatCard: React.FC<StatCardProps> = ({
   change,
   icon: Icon,
   color,
+  onClick,
 }) => {
   const colorClasses = {
     blue: {
@@ -43,7 +45,10 @@ const StatCard: React.FC<StatCardProps> = ({
   const isPositive = change.startsWith("+");
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
+    <div
+      className={`bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow ${onClick ? "cursor-pointer" : ""}`}
+      onClick={onClick}
+    >
       <div className="flex items-center justify-between mb-4">
         <div
           className={`w-12 h-12 ${colorClasses[color].bg} rounded-lg flex items-center justify-center`}

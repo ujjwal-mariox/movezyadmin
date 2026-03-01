@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Menu, Bell, X } from "lucide-react";
+import GlobalSearch from "./GlobalSearch";
 
 interface HeaderProps {
   setIsMobileMenuOpen: (open: boolean) => void;
@@ -45,6 +46,9 @@ const Header: React.FC<HeaderProps> = ({ setIsMobileMenuOpen }) => {
         </div>
 
         <div className="flex items-center space-x-4">
+          {/* Global Search Trigger */}
+          <GlobalSearch />
+
           {/* Notifications */}
           <div className="relative">
             <button

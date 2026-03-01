@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect } from "react";
+import React, { createContext, useState, useEffect, useRef, useCallback } from "react";
 import type { ReactNode } from "react";
 
 // Permission constants matching backend
@@ -54,6 +54,14 @@ export const PERMISSIONS = {
   TRACKING_VIEW: "tracking:view",
   NOTIFICATIONS_VIEW: "notifications:view",
   NOTIFICATIONS_SEND: "notifications:send",
+  // New permissions
+  PRICING_VIEW: "pricing:view",
+  PRICING_UPDATE: "pricing:update",
+  AUTOMATION_VIEW: "automation:view",
+  AUTOMATION_MANAGE: "automation:manage",
+  AUDIT_VIEW: "audit:view",
+  FINANCE_VIEW: "finance:view",
+  FINANCE_EXPORT: "finance:export",
 } as const;
 
 // Map sidebar items to required permissions
@@ -62,6 +70,8 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   "vehicle-management": [PERMISSIONS.VEHICLES_VIEW],
   categories: [PERMISSIONS.CONFIG_VIEW],
   "addon-services": [PERMISSIONS.CONFIG_VIEW],
+  "cancellation-reasons": [PERMISSIONS.CONFIG_VIEW],
+  "prohibited-items": [PERMISSIONS.CONFIG_VIEW],
   "app-users": [PERMISSIONS.USERS_VIEW],
   riders: [PERMISSIONS.DRIVERS_VIEW],
   orders: [PERMISSIONS.BOOKINGS_VIEW],
@@ -78,6 +88,11 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   staff: [PERMISSIONS.STAFF_VIEW, PERMISSIONS.ROLES_VIEW],
   wallet: [PERMISSIONS.PAYMENTS_VIEW],
   settings: [PERMISSIONS.CONFIG_VIEW],
+  // New modules
+  finance: [PERMISSIONS.FINANCE_VIEW],
+  "audit-logs": [PERMISSIONS.AUDIT_VIEW],
+  automation: [PERMISSIONS.AUTOMATION_VIEW],
+  compliance: [PERMISSIONS.DRIVERS_VIEW],
 };
 
 export interface AdminUser {
@@ -112,6 +127,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<AdminUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+
+  const performLogout = useCallback(() => {
+    localStorage.removeItem("adminToken");
+    setUser(null);
+    setIsAuthenticated(false);
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+  }, []);
+
+  // Auto-logout on inactivity
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    if (!isAuthenticated) return;
+    inactivityTimerRef.current = setTimeout(() => {
+      console.log("[Auth] Auto-logout due to inactivity");
+      performLogout();
+      window.location.href = "/login";
+    }, INACTIVITY_TIMEOUT);
+  }, [isAuthenticated, performLogout]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const events = ["mousedown", "keydown", "scroll", "touchstart", "mousemove"];
+    const handler = () => resetInactivityTimer();
+    events.forEach((e) => window.addEventListener(e, handler));
+    resetInactivityTimer(); // start timer
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, handler));
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    };
+  }, [isAuthenticated, resetInactivityTimer]);
 
   // Check for existing token on mount
   useEffect(() => {
@@ -160,9 +208,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   const logout = () => {
-    localStorage.removeItem("adminToken");
-    setUser(null);
-    setIsAuthenticated(false);
+    performLogout();
   };
 
   const hasPermission = (permission: string | string[]): boolean => {

@@ -15,6 +15,7 @@ import {
   Truck,
   Activity,
   Upload,
+  Home,
 } from "lucide-react";
 import { vehicleTypesApi } from "../services/admin-api";
 
@@ -34,6 +35,7 @@ interface VehicleType {
   image?: string;
   icon?: string;
   sortOrder?: number;
+  showOnHomeScreen: boolean;
   isActive: boolean;
   isDeleted: boolean;
   createdAt?: string;
@@ -52,6 +54,7 @@ interface FormData {
   maxRangeKm: number;
   allowIntraCity: boolean;
   allowInterCity: boolean;
+  showOnHomeScreen: boolean;
   image: string;
   sortOrder: number;
 }
@@ -68,6 +71,7 @@ const initialFormData: FormData = {
   maxRangeKm: 100,
   allowIntraCity: true,
   allowInterCity: false,
+  showOnHomeScreen: true,
   image: "",
   sortOrder: 0,
 };
@@ -144,6 +148,7 @@ const VehicleManagement: React.FC = () => {
       maxRangeKm: vehicleType.maxRangeKm || 100,
       allowIntraCity: vehicleType.allowIntraCity ?? true,
       allowInterCity: vehicleType.allowInterCity ?? false,
+      showOnHomeScreen: vehicleType.showOnHomeScreen ?? true,
       image: vehicleType.image || "",
       sortOrder: vehicleType.sortOrder || 0,
     });
@@ -471,7 +476,13 @@ const VehicleManagement: React.FC = () => {
                 </div>
 
                 {/* Service Area */}
-                <div className="flex gap-2 pt-2">
+                <div className="flex gap-2 pt-2 flex-wrap">
+                  {vt.showOnHomeScreen && (
+                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full flex items-center gap-1">
+                      <Home className="w-3 h-3" />
+                      Home Screen
+                    </span>
+                  )}
                   {vt.allowIntraCity && (
                     <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
                       Intra-city
@@ -859,6 +870,32 @@ const VehicleManagement: React.FC = () => {
                     </span>
                   </label>
                 </div>
+              </div>
+
+              {/* Home Screen Visibility */}
+              <div className="pt-4 border-t border-gray-100">
+                <h3 className="mb-3 text-sm font-semibold text-gray-700">
+                  Home Screen Visibility
+                </h3>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.showOnHomeScreen}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        showOnHomeScreen: e.target.checked,
+                      })
+                    }
+                    className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                  />
+                  <span className="text-sm text-gray-700">
+                    Show on Home Screen
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    — Only vehicles with this enabled will appear on the user app home screen
+                  </span>
+                </label>
               </div>
 
               {/* Actions */}
