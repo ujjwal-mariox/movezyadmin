@@ -25,7 +25,7 @@ import {
   type GoodsTypeItem,
   type VehicleTypeItem,
 } from "../services/api";
-import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 
 interface FormData {
@@ -252,7 +252,7 @@ const CategoryManagement: React.FC = () => {
           </select>
           <Filter className="absolute w-4 h-4 text-gray-400 -translate-y-1/2 pointer-events-none right-3 top-1/2" />
         </div>
-        <button onClick={loadData} className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+        <button onClick={() => loadData(page, limit)} className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
           <RotateCcw className="w-4 h-4" /> Refresh
         </button>
       </div>

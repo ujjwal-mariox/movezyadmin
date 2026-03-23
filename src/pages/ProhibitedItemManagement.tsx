@@ -10,7 +10,7 @@ import {
   Ban,
   Palette,
 } from "lucide-react";
-import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import {
   fetchProhibitedItems,
@@ -206,7 +206,7 @@ const ProhibitedItemManagement: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={loadData}
+            onClick={() => loadData(page, limit)}
             className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50"
           >
             <RotateCcw className="w-4 h-4" />

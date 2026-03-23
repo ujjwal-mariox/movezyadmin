@@ -18,7 +18,7 @@ import {
   Home,
 } from "lucide-react";
 import { vehicleTypesApi } from "../services/admin-api";
-import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 
 interface VehicleType {
@@ -407,7 +407,7 @@ const VehicleManagement: React.FC = () => {
         </div>
 
         <button
-          onClick={loadVehicleTypes}
+          onClick={() => loadVehicleTypes(page, limit)}
           className="flex items-center gap-2 px-4 py-2 text-gray-700 transition-colors bg-gray-100 rounded-lg hover:bg-gray-200"
         >
           <RotateCcw className="w-4 h-4" />

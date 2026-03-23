@@ -19,7 +19,7 @@ import {
   Edit2,
 } from "lucide-react";
 import type { Enterprise } from "../types/admin";
-import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import {
   fetchEnterprises,

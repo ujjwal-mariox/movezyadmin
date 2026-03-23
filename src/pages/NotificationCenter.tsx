@@ -120,7 +120,14 @@ const NotificationCenter: React.FC = () => {
   };
 
   const formatDate = (dateString: string) => {
-
+    return new Date(dateString).toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   const {
     paginatedData: paginatedTemplates,
@@ -144,14 +151,7 @@ const NotificationCenter: React.FC = () => {
     endIndex: historyEnd,
     pageSize: historyPageSize,
     setPageSize: setHistoryPageSize,
-  } = usePagination(history, 10);    return new Date(dateString).toLocaleString("en-IN", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  } = usePagination(history, 10);
 
   return (
     <div className="space-y-6">

@@ -21,7 +21,7 @@ import {
   deletePromo as deletePromoApi,
   type PromoCodeItem,
 } from "../services/api";
-import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 
 const PromoManagement: React.FC = () => {
@@ -327,7 +327,7 @@ const PromoManagement: React.FC = () => {
           <div className="py-12 text-center text-gray-500 col-span-full">
             Loading...
           </div>
-        ) : filteredPromos.length === 0 ? (
+        ) : paginatedPromos.length === 0 ? (
           <div className="py-12 text-center text-gray-500 col-span-full">
             No promo codes found
           </div>

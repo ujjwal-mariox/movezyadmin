@@ -1059,15 +1059,15 @@ const AppUserManagement: React.FC = () => {
                 />
               </div>
 
-              {coinAdjustment.amount > 0 && (
+              {Number(coinAdjustment.amount) > 0 && (
                 <div className="p-3 bg-gray-50 rounded-xl text-center">
                   <p className="text-sm text-gray-500">New Balance</p>
                   <p className="text-xl font-bold text-gray-800">
                     {coinAdjustment.type === "CREDIT"
-                      ? selectedUser.coinBalance + coinAdjustment.amount
+                      ? selectedUser.coinBalance + Number(coinAdjustment.amount)
                       : Math.max(
                           0,
-                          selectedUser.coinBalance - coinAdjustment.amount,
+                          selectedUser.coinBalance - Number(coinAdjustment.amount),
                         )}
                   </p>
                 </div>

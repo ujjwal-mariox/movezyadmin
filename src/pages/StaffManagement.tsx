@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { staffApi, rolesApi } from "../services/admin-api";
 import { useAuth } from "../auth/useAuth";
-import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 
 // Types
@@ -982,7 +982,7 @@ const StaffManagement: React.FC = () => {
                       Loading...
                     </td>
                   </tr>
-                ) : filteredStaff.length === 0 ? (
+                ) : paginatedStaff.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-gray-500">
                       No staff members found

@@ -16,7 +16,7 @@ import {
   Users,
   Car,
 } from "lucide-react";
-import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import {
   fetchCancellationReasons,
@@ -279,7 +279,7 @@ const CancellationReasonManagement: React.FC = () => {
             <option value="BOTH">Both</option>
           </select>
         </div>
-        <button onClick={loadData} className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+        <button onClick={() => loadData(page, limit)} className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
           <RotateCcw className="w-4 h-4" /> Refresh
         </button>
       </div>
@@ -311,7 +311,7 @@ const CancellationReasonManagement: React.FC = () => {
                     <span className="text-sm font-medium text-gray-900">{item.reason}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <code className="px-2 py-1 text-xs font-mono bg-gray-100 rounded">{item.code}</code>
+                    <code className="px-2 py-1 font-mono text-xs bg-gray-100 rounded">{item.code}</code>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${applicableBadgeColor(item.applicableTo)}`}>

@@ -188,7 +188,8 @@ const maskNumber = (number: string, visibleDigits = 4) => {
 };
 
 // ==================== STATUS CONFIG ====================
-const statusConfig: Record<
+// @ts-expect-error statusConfig kept for future use
+const _statusConfig: Record<
   DriverStatus,
   { label: string; color: string; bgColor: string; icon: React.ElementType }
 > = {

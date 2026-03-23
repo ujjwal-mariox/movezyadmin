@@ -15,7 +15,7 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
-import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
