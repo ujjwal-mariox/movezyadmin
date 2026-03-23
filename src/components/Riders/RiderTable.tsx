@@ -2,6 +2,8 @@
 import React, { useState } from "react";
 import { Eye, Edit, Trash2, Search, MapPin, Star, Filter, X, FileText, CreditCard, Calendar, User, Phone, Truck } from "lucide-react";
 import type { Rider } from "../../types";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 interface RiderTableProps {
   riders: Rider[];
@@ -26,6 +28,18 @@ const RiderTable: React.FC<RiderTableProps> = ({ riders, onStatusToggle }) => {
     const matchesApproval = approvalFilter === "All" || rider.approvalStatus === approvalFilter;
     return matchesSearch && matchesStatus && matchesVehicle && matchesApproval;
   });
+
+  const {
+    paginatedData: paginatedRiders,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(filteredRiders, 10);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -121,7 +135,7 @@ const RiderTable: React.FC<RiderTableProps> = ({ riders, onStatusToggle }) => {
             </tr>
           </thead>
           <tbody>
-            {filteredRiders.map((rider) => (
+            {paginatedRiders.map((rider) => (
               <tr
                 key={rider.id}
                 className="border-b border-gray-100 hover:bg-gray-50 transition-colors group"
@@ -241,20 +255,17 @@ const RiderTable: React.FC<RiderTableProps> = ({ riders, onStatusToggle }) => {
         </div>
       )}
 
-      {/* Pagination Footer */}
-      <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-        <div className="text-sm text-gray-600">
-          Showing {filteredRiders.length} of {riders.length} riders
-        </div>
-        <div className="flex space-x-2">
-          <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-            Previous
-          </button>
-          <button className="px-4 py-2 bg-movezy-500 text-white rounded-lg text-sm font-medium hover:bg-movezy-600">
-            Next
-          </button>
-        </div>
-      </div>
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={totalItems}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        itemLabel="riders"
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+      />
 
       {/* Rider Details Modal */}
       {selectedRider && (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Edit2,
@@ -18,6 +18,8 @@ import {
   Home,
 } from "lucide-react";
 import { vehicleTypesApi } from "../services/admin-api";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 interface VehicleType {
   _id: string;
@@ -45,18 +47,18 @@ interface VehicleType {
 interface FormData {
   name: string;
   description: string;
-  maxWeightKg: number;
-  baseFare: number;
-  perKmRate: number;
-  perMinuteRate: number;
-  minDistanceKm: number;
-  minRangeKm: number;
-  maxRangeKm: number;
+  maxWeightKg: number | string;
+  baseFare: number | string;
+  perKmRate: number | string;
+  perMinuteRate: number | string;
+  minDistanceKm: number | string;
+  minRangeKm: number | string;
+  maxRangeKm: number | string;
   allowIntraCity: boolean;
   allowInterCity: boolean;
   showOnHomeScreen: boolean;
   image: string;
-  sortOrder: number;
+  sortOrder: number | string;
 }
 
 const initialFormData: FormData = {
@@ -95,6 +97,11 @@ const VehicleManagement: React.FC = () => {
     "all" | "active" | "inactive" | "deleted"
   >("all");
 
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
+
   // Notification state
   const [notification, setNotification] = useState<{
     type: "success" | "error";
@@ -106,11 +113,21 @@ const VehicleManagement: React.FC = () => {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const loadVehicleTypes = async () => {
+  const loadVehicleTypes = useCallback(async (p: number, l: number) => {
     try {
       setLoading(true);
-      const response = await vehicleTypesApi.getAll();
+      const response = await vehicleTypesApi.getAll({
+        page: p,
+        limit: l,
+        status: filterStatus !== "all" ? filterStatus : undefined,
+      });
       setVehicleTypes(response.data.vehicleTypes || []);
+      if (response.data.pagination) {
+        setPaginationMeta({
+          total: response.data.pagination.total || 0,
+          pages: response.data.pagination.pages || 0,
+        });
+      }
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Failed to load vehicle types";
@@ -118,13 +135,19 @@ const VehicleManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus]);
 
-  // Load data
+  // Single useEffect: reset page on filter change, otherwise fetch
+  const prevFilterRef = React.useRef(filterStatus);
   useEffect(() => {
-    loadVehicleTypes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const filterChanged = prevFilterRef.current !== filterStatus;
+    prevFilterRef.current = filterStatus;
+    if (filterChanged && page !== 1) {
+      setPage(1);
+    } else {
+      loadVehicleTypes(page, limit);
+    }
+  }, [page, limit, filterStatus, loadVehicleTypes]);
 
   const handleAdd = () => {
     setFormData(initialFormData);
@@ -163,17 +186,28 @@ const VehicleManagement: React.FC = () => {
     e.preventDefault();
     try {
       setActionLoading("submit");
+      const payload = {
+        ...formData,
+        sortOrder: Number(formData.sortOrder) || 0,
+        maxWeightKg: Number(formData.maxWeightKg) || 0,
+        baseFare: Number(formData.baseFare) || 0,
+        perKmRate: Number(formData.perKmRate) || 0,
+        perMinuteRate: Number(formData.perMinuteRate) || 0,
+        minDistanceKm: Number(formData.minDistanceKm) || 0,
+        minRangeKm: Number(formData.minRangeKm) || 0,
+        maxRangeKm: Number(formData.maxRangeKm) || 0,
+      };
 
       if (isEditing && editingId) {
-        await vehicleTypesApi.update(editingId, formData, imageFile || undefined);
+        await vehicleTypesApi.update(editingId, payload, imageFile || undefined);
         showNotification("success", "Vehicle type updated successfully");
       } else {
-        await vehicleTypesApi.create(formData, imageFile || undefined);
+        await vehicleTypesApi.create(payload, imageFile || undefined);
         showNotification("success", "Vehicle type created successfully");
       }
 
       setIsModalOpen(false);
-      loadVehicleTypes();
+      loadVehicleTypes(page, limit);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Failed to save vehicle type";
@@ -187,7 +221,7 @@ const VehicleManagement: React.FC = () => {
     try {
       setActionLoading(id);
       await vehicleTypesApi.toggle(id);
-      loadVehicleTypes();
+      loadVehicleTypes(page, limit);
       showNotification("success", "Status updated successfully");
     } catch (error: unknown) {
       const message =
@@ -206,7 +240,7 @@ const VehicleManagement: React.FC = () => {
     try {
       setActionLoading(id);
       await vehicleTypesApi.delete(id);
-      loadVehicleTypes();
+      loadVehicleTypes(page, limit);
       showNotification("success", "Vehicle type deleted successfully");
     } catch (error: unknown) {
       const message =
@@ -223,7 +257,7 @@ const VehicleManagement: React.FC = () => {
     try {
       setActionLoading(id);
       await vehicleTypesApi.restore(id);
-      loadVehicleTypes();
+      loadVehicleTypes(page, limit);
       showNotification("success", "Vehicle type restored successfully");
     } catch (error: unknown) {
       const message =
@@ -236,8 +270,8 @@ const VehicleManagement: React.FC = () => {
     }
   };
 
-  // Compute stats
-  const totalVehicles = vehicleTypes.filter((vt) => !vt.isDeleted).length;
+  // Compute stats from pagination metadata
+  const totalVehicles = paginationMeta.total;
   const activeVehicles = vehicleTypes.filter(
     (vt) => vt.isActive && !vt.isDeleted,
   ).length;
@@ -248,13 +282,12 @@ const VehicleManagement: React.FC = () => {
     (vt) => vt.allowInterCity && !vt.isDeleted,
   ).length;
 
-  // Filter vehicle types
-  const filteredVehicleTypes = vehicleTypes.filter((vt) => {
-    if (filterStatus === "active") return vt.isActive && !vt.isDeleted;
-    if (filterStatus === "inactive") return !vt.isActive && !vt.isDeleted;
-    if (filterStatus === "deleted") return vt.isDeleted;
-    return true;
-  });
+  // Server-side: vehicleTypes IS the current page (already filtered)
+  const paginatedVehicleTypes = vehicleTypes;
+  const totalItems = paginationMeta.total;
+  const totalPages = paginationMeta.pages;
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
+  const endIndex = Math.min(page * limit, totalItems);
 
   return (
     <div className="min-h-screen p-6 bg-gray-50">
@@ -390,7 +423,7 @@ const VehicleManagement: React.FC = () => {
       ) : (
         /* Vehicle Types Grid */
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredVehicleTypes.map((vt) => (
+          {paginatedVehicleTypes.map((vt) => (
             <div
               key={vt._id}
               className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all hover:shadow-md ${
@@ -552,8 +585,22 @@ const VehicleManagement: React.FC = () => {
         </div>
       )}
 
+      {!loading && paginatedVehicleTypes.length > 0 && (
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="vehicle types"
+          pageSize={limit}
+          onPageSizeChange={(size) => { setLimit(size as PageSize); setPage(1); }}
+        />
+      )}
+
       {/* Empty State */}
-      {!loading && filteredVehicleTypes.length === 0 && (
+      {!loading && paginatedVehicleTypes.length === 0 && (
         <div className="py-16 text-center">
           <Truck className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-900">
@@ -622,7 +669,7 @@ const VehicleManagement: React.FC = () => {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        sortOrder: Number(e.target.value),
+                        sortOrder: e.target.value === '' ? '' : Number(e.target.value),
                       })
                     }
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -660,7 +707,7 @@ const VehicleManagement: React.FC = () => {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        maxWeightKg: Number(e.target.value),
+                        maxWeightKg: e.target.value === '' ? '' : Number(e.target.value),
                       })
                     }
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -718,7 +765,7 @@ const VehicleManagement: React.FC = () => {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          baseFare: Number(e.target.value),
+                          baseFare: e.target.value === '' ? '' : Number(e.target.value),
                         })
                       }
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -738,7 +785,7 @@ const VehicleManagement: React.FC = () => {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          perKmRate: Number(e.target.value),
+                          perKmRate: e.target.value === '' ? '' : Number(e.target.value),
                         })
                       }
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -758,7 +805,7 @@ const VehicleManagement: React.FC = () => {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          perMinuteRate: Number(e.target.value),
+                          perMinuteRate: e.target.value === '' ? '' : Number(e.target.value),
                         })
                       }
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -785,7 +832,7 @@ const VehicleManagement: React.FC = () => {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          minDistanceKm: Number(e.target.value),
+                          minDistanceKm: e.target.value === '' ? '' : Number(e.target.value),
                         })
                       }
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -803,7 +850,7 @@ const VehicleManagement: React.FC = () => {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          minRangeKm: Number(e.target.value),
+                          minRangeKm: e.target.value === '' ? '' : Number(e.target.value),
                         })
                       }
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -821,7 +868,7 @@ const VehicleManagement: React.FC = () => {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          maxRangeKm: Number(e.target.value),
+                          maxRangeKm: e.target.value === '' ? '' : Number(e.target.value),
                         })
                       }
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"

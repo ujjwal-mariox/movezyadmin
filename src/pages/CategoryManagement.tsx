@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Edit2,
@@ -25,6 +25,8 @@ import {
   type GoodsTypeItem,
   type VehicleTypeItem,
 } from "../services/api";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 interface FormData {
   name: string;
@@ -33,7 +35,7 @@ interface FormData {
   description: string;
   icon: string;
   allowedVehicleTypes: string[];
-  sortOrder: number;
+  sortOrder: number | string;
 }
 
 const initialFormData: FormData = {
@@ -60,25 +62,52 @@ const CategoryManagement: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
+
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async (p: number, l: number) => {
     try {
       setLoading(true);
-      const [catRes, vtRes] = await Promise.all([fetchGoodsTypes(), fetchVehicleTypes()]);
+      const [catRes, vtRes] = await Promise.all([
+        fetchGoodsTypes({
+          page: p,
+          limit: l,
+          status: filterStatus !== "all" ? filterStatus : undefined,
+        }),
+        fetchVehicleTypes(),
+      ]);
       setCategories(catRes.data?.goodsTypes || catRes.goodsTypes || []);
+      if (catRes.data?.pagination) {
+        setPaginationMeta({
+          total: catRes.data.pagination.total || 0,
+          pages: catRes.data.pagination.pages || 0,
+        });
+      }
       setVehicleTypes(vtRes.data?.vehicleTypes || vtRes.vehicleTypes || []);
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus]);
 
-  useEffect(() => { loadData(); }, []);
+  const prevFilterRef = React.useRef(filterStatus);
+  useEffect(() => {
+    const filterChanged = prevFilterRef.current !== filterStatus;
+    prevFilterRef.current = filterStatus;
+    if (filterChanged && page !== 1) {
+      setPage(1);
+    } else {
+      loadData(page, limit);
+    }
+  }, [page, limit, filterStatus, loadData]);
 
   const handleAdd = () => {
     setFormData(initialFormData);
@@ -106,15 +135,16 @@ const CategoryManagement: React.FC = () => {
     e.preventDefault();
     try {
       setActionLoading("submit");
+      const payload = { ...formData, sortOrder: Number(formData.sortOrder) || 0 };
       if (isEditing && editingId) {
-        await updateGoodsType(editingId, formData as any);
+        await updateGoodsType(editingId, payload as any);
         showNotification("success", "Category updated successfully");
       } else {
-        await createGoodsType(formData as any);
+        await createGoodsType(payload as any);
         showNotification("success", "Category created successfully");
       }
       setIsModalOpen(false);
-      loadData();
+      loadData(page, limit);
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to save category");
     } finally {
@@ -126,7 +156,7 @@ const CategoryManagement: React.FC = () => {
     try {
       setActionLoading(id);
       await toggleGoodsType(id);
-      loadData();
+      loadData(page, limit);
       showNotification("success", "Status updated");
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to toggle");
@@ -140,7 +170,7 @@ const CategoryManagement: React.FC = () => {
     try {
       setActionLoading(id);
       await deleteGoodsType(id);
-      loadData();
+      loadData(page, limit);
       showNotification("success", "Category deleted");
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to delete");
@@ -158,17 +188,17 @@ const CategoryManagement: React.FC = () => {
     }));
   };
 
-  const totalCategories = categories.filter((c) => !c.isDeleted).length;
+  const totalCategories = paginationMeta.total;
   const activeCategories = categories.filter((c) => c.isActive && !c.isDeleted).length;
   const businessCategories = categories.filter((c) => c.category === "BUSINESS" && !c.isDeleted).length;
   const personalCategories = categories.filter((c) => c.category === "PERSONAL" && !c.isDeleted).length;
 
-  const filtered = categories.filter((c) => {
-    if (c.isDeleted) return false;
-    if (filterStatus === "active") return c.isActive;
-    if (filterStatus === "inactive") return !c.isActive;
-    return true;
-  });
+  // Server-side: data is already filtered and paginated
+  const paginatedCategories = categories;
+  const totalItems = paginationMeta.total;
+  const totalPages = paginationMeta.pages;
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
+  const endIndex = Math.min(page * limit, totalItems);
 
   return (
     <div className="min-h-screen p-6 bg-gray-50">
@@ -231,8 +261,9 @@ const CategoryManagement: React.FC = () => {
       {loading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 animate-spin" /></div>
       ) : (
+        <>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((cat) => (
+          {paginatedCategories.map((cat) => (
             <div key={cat._id} className={`bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-all ${cat.isActive ? "border-gray-100" : "border-yellow-200 bg-yellow-50"}`}>
               {/* Card Header */}
               <div className="p-4 border-b border-gray-100">
@@ -288,10 +319,21 @@ const CategoryManagement: React.FC = () => {
             </div>
           ))}
         </div>
-      )}
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="categories"
+          pageSize={limit}
+          onPageSizeChange={(size) => { setLimit(size as PageSize); setPage(1); }}
+        />
+        </>)}
 
       {/* Empty */}
-      {!loading && filtered.length === 0 && (
+      {!loading && paginatedCategories.length === 0 && (
         <div className="py-16 text-center">
           <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-900">No categories found</h3>
@@ -335,7 +377,7 @@ const CategoryManagement: React.FC = () => {
                 </div>
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-700">Sort Order</label>
-                  <input type="number" min="0" value={formData.sortOrder} onChange={(e) => setFormData({ ...formData, sortOrder: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="number" min="0" value={formData.sortOrder} onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
 

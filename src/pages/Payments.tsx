@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { 
   Download, Search, CheckCircle, Clock, DollarSign 
 } from 'lucide-react';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 
 interface Payment {
   id: string;
@@ -35,6 +37,18 @@ const Payments: React.FC = () => {
                           payment.id.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesType && matchesStatus && matchesSearch;
   });
+
+  const {
+    paginatedData: paginatedPayments,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(filteredPayments, 10);
 
   const totalAmount = filteredPayments.reduce((sum, p) => sum + p.amount, 0);
   const completedCount = filteredPayments.filter(p => p.status === 'Completed').length;
@@ -170,7 +184,7 @@ const Payments: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredPayments.map((payment) => (
+              {paginatedPayments.map((payment) => (
                 <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{payment.id}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{payment.bookingId}</td>
@@ -192,6 +206,17 @@ const Payments: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="payments"
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       </div>
     </div>
   );

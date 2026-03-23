@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Edit, Trash2, Bike, Truck } from 'lucide-react';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 
 // --- Reusable UI Components ---
 
@@ -42,6 +44,18 @@ const CommissionManagement = () => {
   const [isEditing, setIsEditing] = useState(false);
 
   const [formState, setFormState] = useState({ name: '', type: 'Percentage', value: '', vehicleType: '2 Wheeler', status: true });
+
+  const {
+    paginatedData: paginatedCommissions,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(commissions, 10);
 
   const handleOpenAddModal = () => {
     setIsEditing(false);
@@ -115,7 +129,7 @@ const CommissionManagement = () => {
             </tr>
           </thead>
           <tbody>
-            {commissions.map((item) => (
+            {paginatedCommissions.map((item) => (
               <tr key={item.id} className="bg-white border-b hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
                 <td className="px-6 py-4">{item.type}</td>
@@ -131,6 +145,17 @@ const CommissionManagement = () => {
           </tbody>
         </table>
       </div>
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={totalItems}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        itemLabel="commissions"
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+      />
 
       {isFormModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4 animate-in fade-in duration-300">

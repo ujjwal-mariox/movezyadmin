@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Plus, Edit2, Trash2, X, Save, Filter, Truck, Activity, AlertCircle, CheckCircle } from "lucide-react";
+import { usePagination } from "./hooks/usePagination";
+import Pagination from "./components/Pagination";
 
 interface Vehicle {
   id: number;
@@ -117,6 +119,18 @@ const VehicleManagement = () => {
       (intercityFilter === "Yes" ? vehicle.intercityAllowed : !vehicle.intercityAllowed);
     return matchesType && matchesRange && matchesPayload && matchesIntercity;
   });
+
+  const {
+    paginatedData: paginatedVehicles,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(filteredVehicles, 10);
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
@@ -264,7 +278,7 @@ const VehicleManagement = () => {
           </thead>
 
           <tbody className="divide-y divide-gray-100">
-            {filteredVehicles.map((vehicle) => (
+            {paginatedVehicles.map((vehicle) => (
               <tr key={vehicle.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4 text-sm font-medium text-gray-900">{vehicle.vehicle}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{vehicle.fuelCapacity}</td>
@@ -312,6 +326,17 @@ const VehicleManagement = () => {
             No vehicles found matching your filters.
           </div>
         )}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="vehicles"
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       {/* Add/Edit Modal */}

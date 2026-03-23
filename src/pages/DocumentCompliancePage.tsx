@@ -11,6 +11,8 @@ import {
   ChevronDown,
   Eye,
 } from "lucide-react";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
@@ -133,6 +135,18 @@ const DocumentCompliancePage: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
+  const {
+    paginatedData: paginatedDrivers,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(filtered, 10);
+
   const counts = {
     total: drivers.length,
     valid: drivers.filter((d) => d.overallStatus === "valid").length,
@@ -228,7 +242,7 @@ const DocumentCompliancePage: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map((driver) => {
+          {paginatedDrivers.map((driver) => {
             const StatusConf = STATUS_CONFIG[driver.overallStatus];
             const isExpanded = expandedDriver === driver.driverId;
             return (
@@ -297,6 +311,19 @@ const DocumentCompliancePage: React.FC = () => {
             );
           })}
         </div>
+      )}
+      {!loading && filtered.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="drivers"
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       )}
     </div>
   );

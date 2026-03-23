@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
@@ -56,6 +57,7 @@ const AuditLogPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
   const [search, setSearch] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
@@ -63,7 +65,7 @@ const AuditLogPage: React.FC = () => {
   const loadLogs = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: "30" });
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) params.set("search", search);
       if (moduleFilter) params.set("module", moduleFilter);
       if (actionFilter) params.set("action", actionFilter);
@@ -80,7 +82,7 @@ const AuditLogPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search, moduleFilter, actionFilter]);
+  }, [page, search, moduleFilter, actionFilter, limit]);
 
   useEffect(() => { loadLogs(); }, [loadLogs]);
 
@@ -216,9 +218,26 @@ const AuditLogPage: React.FC = () => {
         )}
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {logs.length > 0 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <p className="text-xs text-gray-500">Page {page} of {totalPages}</p>
+            <div className="flex items-center gap-4">
+              <p className="text-xs text-gray-500">Page {page} of {totalPages}</p>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">Show</label>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value) as PageSize);
+                    setPage(1);
+                  }}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs"
+                >
+                  {PAGE_SIZE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}

@@ -13,8 +13,6 @@ import {
   Coins,
   Gift,
   X,
-  ChevronLeft,
-  ChevronRight,
   Smartphone,
   Clock,
   TrendingUp,
@@ -22,14 +20,14 @@ import {
   Check,
 } from "lucide-react";
 import type { AppUser } from "../types/admin";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 const AppUserManagement: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
 
   // Detail Modal
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
@@ -45,8 +43,12 @@ const AppUserManagement: React.FC = () => {
 
   // Coin Adjustment Modal
   const [showCoinModal, setShowCoinModal] = useState(false);
-  const [coinAdjustment, setCoinAdjustment] = useState({
-    type: "CREDIT" as "CREDIT" | "DEBIT",
+  const [coinAdjustment, setCoinAdjustment] = useState<{
+    type: "CREDIT" | "DEBIT";
+    amount: number | string;
+    reason: string;
+  }>({
+    type: "CREDIT",
     amount: 0,
     reason: "",
   });
@@ -241,12 +243,17 @@ const AppUserManagement: React.FC = () => {
     });
   }, [users, searchQuery, statusFilter]);
 
-  const paginatedUsers = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredUsers.slice(start, start + itemsPerPage);
-  }, [filteredUsers, currentPage]);
-
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const {
+    paginatedData: paginatedUsers,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(filteredUsers, 10);
 
   const stats = useMemo(
     () => ({
@@ -316,12 +323,13 @@ const AppUserManagement: React.FC = () => {
   };
 
   const handleCoinAdjustment = () => {
-    if (!selectedUser || !coinAdjustment.amount || !coinAdjustment.reason)
+    const amount = Number(coinAdjustment.amount) || 0;
+    if (!selectedUser || !amount || !coinAdjustment.reason)
       return;
     const adjustment =
       coinAdjustment.type === "CREDIT"
-        ? coinAdjustment.amount
-        : -coinAdjustment.amount;
+        ? amount
+        : -amount;
     setUsers(
       users.map((u) =>
         u._id === selectedUser._id
@@ -621,57 +629,17 @@ const AppUserManagement: React.FC = () => {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="p-4 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-sm text-gray-500">
-              Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-              {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of{" "}
-              {filteredUsers.length} users
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="p-2 border border-gray-200 rounded-lg disabled:opacity-50"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(
-                  (p) =>
-                    p === 1 ||
-                    p === totalPages ||
-                    Math.abs(p - currentPage) <= 1,
-                )
-                .map((page, idx, arr) => (
-                  <React.Fragment key={page}>
-                    {idx > 0 && arr[idx - 1] !== page - 1 && (
-                      <span className="text-gray-400">...</span>
-                    )}
-                    <button
-                      onClick={() => setCurrentPage(page)}
-                      className={`w-8 h-8 rounded-lg text-sm ${
-                        currentPage === page
-                          ? "bg-movezy-500 text-white"
-                          : "border border-gray-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  </React.Fragment>
-                ))}
-              <button
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(totalPages, p + 1))
-                }
-                disabled={currentPage === totalPages}
-                className="p-2 border border-gray-200 rounded-lg disabled:opacity-50"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="users"
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       {/* User Detail Modal */}
@@ -1064,7 +1032,7 @@ const AppUserManagement: React.FC = () => {
                   onChange={(e) =>
                     setCoinAdjustment({
                       ...coinAdjustment,
-                      amount: parseInt(e.target.value) || 0,
+                      amount: e.target.value === '' ? '' : Number(e.target.value),
                     })
                   }
                   min="1"

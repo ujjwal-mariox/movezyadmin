@@ -15,6 +15,8 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
@@ -60,20 +62,31 @@ const AutomationRulesPage: React.FC = () => {
   const [formDescription, setFormDescription] = useState("");
   const [formTriggerType, setFormTriggerType] = useState("");
   const [formOperator, setFormOperator] = useState("gt");
-  const [formThreshold, setFormThreshold] = useState(30);
-  const [formTimeWindow, setFormTimeWindow] = useState(7);
-  const [formConsecutive, setFormConsecutive] = useState(5);
+  const [formThreshold, setFormThreshold] = useState<number | string>(30);
+  const [formTimeWindow, setFormTimeWindow] = useState<number | string>(7);
+  const [formConsecutive, setFormConsecutive] = useState<number | string>(5);
   const [formActionType, setFormActionType] = useState("flag_driver");
 
-  const loadData = useCallback(async () => {
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
+
+  const loadData = useCallback(async (p = page, l = limit) => {
     setLoading(true);
     try {
       const [rulesRes, triggersRes, actionsRes] = await Promise.all([
-        fetchApi("/admin/automation/rules"),
+        fetchApi(`/admin/automation/rules?page=${p}&limit=${l}`),
         fetchApi("/admin/automation/trigger-types"),
         fetchApi("/admin/automation/action-types"),
       ]);
       setRules(rulesRes.data?.rules || []);
+      if (rulesRes.data?.pagination) {
+        setPaginationMeta({
+          total: rulesRes.data.pagination.total || 0,
+          pages: rulesRes.data.pagination.pages || 0,
+        });
+      }
       setTriggerTypes(triggersRes.data || []);
       setActionTypes(actionsRes.data || []);
     } catch (err) {
@@ -81,19 +94,26 @@ const AutomationRulesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, limit]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadData(page, limit); }, [page, limit, loadData]);
+
+  // Server-side: rules IS the current page
+  const paginatedRules = rules;
+  const totalItems = paginationMeta.total;
+  const totalPages = paginationMeta.pages;
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
+  const endIndex = Math.min(page * limit, totalItems);
 
   const handleToggle = async (id: string) => {
     await fetchApi(`/admin/automation/rules/${id}/toggle`, { method: "PUT" });
-    loadData();
+    loadData(page, limit);
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this automation rule?")) return;
     await fetchApi(`/admin/automation/rules/${id}`, { method: "DELETE" });
-    loadData();
+    loadData(page, limit);
   };
 
   const openCreateForm = () => {
@@ -131,9 +151,9 @@ const AutomationRulesPage: React.FC = () => {
         type: formTriggerType,
         metric: selectedTrigger?.defaultMetric || formTriggerType,
         operator: formOperator,
-        threshold: formThreshold,
-        timeWindowDays: formTimeWindow,
-        consecutiveCount: formTriggerType === "low_rating_consecutive" ? formConsecutive : undefined,
+        threshold: Number(formThreshold) || 0,
+        timeWindowDays: Number(formTimeWindow) || 0,
+        consecutiveCount: formTriggerType === "low_rating_consecutive" ? Number(formConsecutive) || 0 : undefined,
       },
       action: { type: formActionType },
     };
@@ -150,7 +170,7 @@ const AutomationRulesPage: React.FC = () => {
       });
     }
     setShowForm(false);
-    loadData();
+    loadData(page, limit);
   };
 
   return (
@@ -166,7 +186,7 @@ const AutomationRulesPage: React.FC = () => {
             <Plus className="w-4 h-4" />
             Create Rule
           </button>
-          <button onClick={loadData} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
+          <button onClick={() => loadData(page, limit)} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
             <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
@@ -218,7 +238,7 @@ const AutomationRulesPage: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-3">
-          {rules.map((rule: any) => {
+          {paginatedRules.map((rule: any) => {
             const TriggerIcon = TRIGGER_ICONS[rule.trigger?.type] || Zap;
             return (
               <div key={rule._id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
@@ -266,6 +286,19 @@ const AutomationRulesPage: React.FC = () => {
             );
           })}
         </div>
+      )}
+      {!loading && rules.length > 0 && (
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="rules"
+          pageSize={limit}
+          onPageSizeChange={(size) => { setLimit(size as PageSize); setPage(1); }}
+        />
       )}
 
       {/* Create/Edit Modal */}
@@ -318,18 +351,18 @@ const AutomationRulesPage: React.FC = () => {
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Threshold</label>
-                    <input type="number" value={formThreshold} onChange={(e) => setFormThreshold(Number(e.target.value))}
+                    <input type="number" value={formThreshold} onChange={(e) => setFormThreshold(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Time Window (days)</label>
-                    <input type="number" value={formTimeWindow} onChange={(e) => setFormTimeWindow(Number(e.target.value))}
+                    <input type="number" value={formTimeWindow} onChange={(e) => setFormTimeWindow(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
                   {formTriggerType === "low_rating_consecutive" && (
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Consecutive Count</label>
-                      <input type="number" value={formConsecutive} onChange={(e) => setFormConsecutive(Number(e.target.value))}
+                      <input type="number" value={formConsecutive} onChange={(e) => setFormConsecutive(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full px-3 py-2 border rounded-lg text-sm" />
                     </div>
                   )}

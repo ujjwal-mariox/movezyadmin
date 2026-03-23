@@ -33,6 +33,10 @@ const FinanceModule = lazy(() => import("../pages/FinanceModule"));
 const AuditLogPage = lazy(() => import("../pages/AuditLogPage"));
 const AutomationRulesPage = lazy(() => import("../pages/AutomationRulesPage"));
 const DocumentCompliancePage = lazy(() => import("../pages/DocumentCompliancePage"));
+const MasterDataManagement = lazy(() => import("../pages/MasterDataManagement"));
+const DriverInstructionManagement = lazy(() => import("../pages/DriverInstructionManagement"));
+const BadgeManagement = lazy(() => import("../pages/BadgeManagement"));
+const TrainingManagement = lazy(() => import("../pages/TrainingManagement"));
 
 export const authRoutes = [
   {
@@ -149,5 +153,21 @@ export const adminRoutes = [
   {
     path: "compliance",
     element: DocumentCompliancePage,
+  },
+  {
+    path: "master-data",
+    element: MasterDataManagement,
+  },
+  {
+    path: "driver-instructions",
+    element: DriverInstructionManagement,
+  },
+  {
+    path: "badges",
+    element: BadgeManagement,
+  },
+  {
+    path: "training",
+    element: TrainingManagement,
   },
 ];

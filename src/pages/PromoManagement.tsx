@@ -1,5 +1,5 @@
 // src/pages/PromoManagement.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Tag,
   Plus,
@@ -21,6 +21,8 @@ import {
   deletePromo as deletePromoApi,
   type PromoCodeItem,
 } from "../services/api";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 const PromoManagement: React.FC = () => {
   const [promos, setPromos] = useState<PromoCodeItem[]>([]);
@@ -29,14 +31,28 @@ const PromoManagement: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<
     "ALL" | "ACTIVE" | "EXPIRED"
   >("ALL");
+  const [page, setPage] = useState(0);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, totalPages: 0 });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingPromo, setEditingPromo] = useState<PromoCodeItem | null>(null);
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    code: string;
+    description: string;
+    discountType: "PERCENTAGE" | "FIXED";
+    discountValue: number | string;
+    minOrderValue: number | string;
+    maxDiscount: number | string;
+    maxUsage: number | string;
+    perUserLimit: number | string;
+    validFrom: string;
+    validTo: string;
+  }>({
     code: "",
     description: "",
-    discountType: "PERCENTAGE" as "PERCENTAGE" | "FIXED",
+    discountType: "PERCENTAGE",
     discountValue: 10,
     minOrderValue: 0,
     maxDiscount: 0,
@@ -46,37 +62,48 @@ const PromoManagement: React.FC = () => {
     validTo: "",
   });
 
-  const loadPromos = async () => {
+  const loadPromos = useCallback(async (p: number, l: number) => {
     try {
       setLoading(true);
-      const res = await fetchPromos(1, 100);
+      const statusParam = statusFilter !== "ALL" ? statusFilter.toLowerCase() : undefined;
+      const res = await fetchPromos(p, l, searchQuery || undefined, statusParam);
       setPromos(res.data?.promos || res.promos || []);
+      setPaginationMeta({
+        total: res.data?.total || 0,
+        totalPages: res.data?.totalPages || 0,
+      });
     } catch (err) {
       console.error("Failed to load promos", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchQuery, statusFilter]);
 
+  // When filters change, reset to first page; otherwise load current page
+  const prevFiltersRef = React.useRef({ searchQuery, statusFilter });
   useEffect(() => {
-    loadPromos();
-  }, []);
+    const filtersChanged =
+      prevFiltersRef.current.searchQuery !== searchQuery ||
+      prevFiltersRef.current.statusFilter !== statusFilter;
+    prevFiltersRef.current = { searchQuery, statusFilter };
 
-  const filteredPromos = promos.filter((promo) => {
-    const matchesSearch =
-      promo.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      promo.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    const now = new Date();
-    const endDate = new Date(promo.validTo);
-    const isExpired = endDate < now || !promo.isActive;
+    if (filtersChanged && page !== 0) {
+      setPage(0); // will re-trigger this effect with page=0
+    } else {
+      loadPromos(page, limit);
+    }
+  }, [page, limit, searchQuery, statusFilter, loadPromos]);
 
-    if (statusFilter === "ACTIVE") return matchesSearch && !isExpired;
-    if (statusFilter === "EXPIRED") return matchesSearch && isExpired;
-    return matchesSearch;
-  });
+  // Server-side pagination: promos IS already the current page
+  const paginatedPromos = promos;
+  const currentPage = page + 1; // convert 0-based to 1-based for UI
+  const totalPages = paginationMeta.totalPages;
+  const totalItems = paginationMeta.total;
+  const startIndex = totalItems === 0 ? 0 : page * limit + 1;
+  const endIndex = Math.min((page + 1) * limit, totalItems);
 
   const stats = {
-    total: promos.length,
+    total: paginationMeta.total,
     active: promos.filter(
       (p) => p.isActive && new Date(p.validTo) >= new Date(),
     ).length,
@@ -95,11 +122,11 @@ const PromoManagement: React.FC = () => {
         await updatePromo(editingPromo._id, {
           description: formData.description,
           discountType: formData.discountType,
-          discountValue: formData.discountValue,
-          minOrderValue: formData.minOrderValue,
-          maxDiscount: formData.maxDiscount,
-          maxUsage: formData.maxUsage,
-          perUserLimit: formData.perUserLimit,
+          discountValue: Number(formData.discountValue) || 0,
+          minOrderValue: Number(formData.minOrderValue) || 0,
+          maxDiscount: Number(formData.maxDiscount) || 0,
+          maxUsage: Number(formData.maxUsage) || 0,
+          perUserLimit: Number(formData.perUserLimit) || 0,
           validFrom: formData.validFrom,
           validTo: formData.validTo,
         } as any);
@@ -108,18 +135,18 @@ const PromoManagement: React.FC = () => {
           code: formData.code,
           description: formData.description,
           discountType: formData.discountType,
-          discountValue: formData.discountValue,
-          minOrderValue: formData.minOrderValue,
-          maxDiscount: formData.maxDiscount,
-          maxUsage: formData.maxUsage,
-          perUserLimit: formData.perUserLimit,
+          discountValue: Number(formData.discountValue) || 0,
+          minOrderValue: Number(formData.minOrderValue) || 0,
+          maxDiscount: Number(formData.maxDiscount) || 0,
+          maxUsage: Number(formData.maxUsage) || 0,
+          perUserLimit: Number(formData.perUserLimit) || 0,
           validFrom: formData.validFrom,
           validTo: formData.validTo,
         } as any);
       }
       setShowCreateModal(false);
       resetForm();
-      loadPromos();
+      loadPromos(page, limit);
     } catch (err) {
       console.error("Failed to save promo", err);
     }
@@ -129,7 +156,7 @@ const PromoManagement: React.FC = () => {
     if (confirm("Are you sure you want to delete this promo code?")) {
       try {
         await deletePromoApi(id);
-        loadPromos();
+        loadPromos(page, limit);
       } catch (err) {
         console.error("Failed to delete promo", err);
       }
@@ -139,7 +166,7 @@ const PromoManagement: React.FC = () => {
   const handleToggleActive = async (id: string) => {
     try {
       await togglePromo(id);
-      loadPromos();
+      loadPromos(page, limit);
     } catch (err) {
       console.error("Failed to toggle promo", err);
     }
@@ -305,7 +332,7 @@ const PromoManagement: React.FC = () => {
             No promo codes found
           </div>
         ) : (
-          filteredPromos.map((promo) => {
+          paginatedPromos.map((promo) => {
             const isExpired =
               new Date(promo.validTo) < new Date() || !promo.isActive;
             const usagePercent = promo.maxUsage
@@ -459,6 +486,17 @@ const PromoManagement: React.FC = () => {
           })
         )}
       </div>
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={(p) => setPage(p - 1)}
+        totalItems={totalItems}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        itemLabel="promos"
+        pageSize={limit}
+        onPageSizeChange={(size) => { setLimit(size); setPage(0); }}
+      />
 
       {/* Create/Edit Modal */}
       {showCreateModal && (
@@ -533,7 +571,7 @@ const PromoManagement: React.FC = () => {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        discountValue: Number(e.target.value),
+                        discountValue: e.target.value === '' ? '' : Number(e.target.value),
                       })
                     }
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"
@@ -552,7 +590,7 @@ const PromoManagement: React.FC = () => {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        minOrderValue: Number(e.target.value),
+                        minOrderValue: e.target.value === '' ? '' : Number(e.target.value),
                       })
                     }
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"
@@ -569,7 +607,7 @@ const PromoManagement: React.FC = () => {
                       onChange={(e) =>
                         setFormData({
                           ...formData,
-                          maxDiscount: Number(e.target.value),
+                          maxDiscount: e.target.value === '' ? '' : Number(e.target.value),
                         })
                       }
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"
@@ -589,7 +627,7 @@ const PromoManagement: React.FC = () => {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        maxUsage: Number(e.target.value),
+                        maxUsage: e.target.value === '' ? '' : Number(e.target.value),
                       })
                     }
                     placeholder="0 for unlimited"
@@ -606,7 +644,7 @@ const PromoManagement: React.FC = () => {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        perUserLimit: Number(e.target.value),
+                        perUserLimit: e.target.value === '' ? '' : Number(e.target.value),
                       })
                     }
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Edit2,
@@ -16,6 +16,8 @@ import {
   Users,
   Car,
 } from "lucide-react";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 import {
   fetchCancellationReasons,
   createCancellationReason,
@@ -29,10 +31,10 @@ interface FormData {
   code: string;
   applicableTo: "USER" | "DRIVER" | "BOTH";
   penaltyType: "NONE" | "FIXED" | "PERCENTAGE";
-  penaltyValue: number;
+  penaltyValue: number | string;
   isRefundable: boolean;
-  refundPercentage: number;
-  sortOrder: number;
+  refundPercentage: number | string;
+  sortOrder: number | string;
 }
 
 const initialFormData: FormData = {
@@ -60,24 +62,51 @@ const CancellationReasonManagement: React.FC = () => {
   const [filterApplicable, setFilterApplicable] = useState<"all" | "USER" | "DRIVER" | "BOTH">("all");
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
+
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async (p: number, l: number) => {
     try {
       setLoading(true);
-      const res = await fetchCancellationReasons();
+      const res = await fetchCancellationReasons({
+        page: p,
+        limit: l,
+        activeOnly: filterStatus === "active" ? "true" : filterStatus === "inactive" ? "false" : undefined,
+        applicableTo: filterApplicable !== "all" ? filterApplicable : undefined,
+      });
       setReasons(res.data?.reasons || res.reasons || []);
+      if (res.data?.pagination) {
+        setPaginationMeta({
+          total: res.data.pagination.total || 0,
+          pages: res.data.pagination.pages || 0,
+        });
+      }
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to load cancellation reasons");
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus, filterApplicable]);
 
-  useEffect(() => { loadData(); }, []);
+  const prevFiltersRef = React.useRef({ filterStatus, filterApplicable });
+  useEffect(() => {
+    const filtersChanged =
+      prevFiltersRef.current.filterStatus !== filterStatus ||
+      prevFiltersRef.current.filterApplicable !== filterApplicable;
+    prevFiltersRef.current = { filterStatus, filterApplicable };
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+    } else {
+      loadData(page, limit);
+    }
+  }, [page, limit, filterStatus, filterApplicable, loadData]);
 
   const handleAdd = () => {
     setFormData(initialFormData);
@@ -106,17 +135,18 @@ const CancellationReasonManagement: React.FC = () => {
     e.preventDefault();
     try {
       setActionLoading("submit");
+      const payload = { ...formData, penaltyValue: Number(formData.penaltyValue) || 0, refundPercentage: Number(formData.refundPercentage) || 0, sortOrder: Number(formData.sortOrder) || 0 };
       if (isEditing && editingId) {
-        const res = await updateCancellationReason(editingId, formData);
+        const res = await updateCancellationReason(editingId, payload);
         if (res.success === false) throw new Error(res.message || "Update failed");
         showNotification("success", "Cancellation reason updated");
       } else {
-        const res = await createCancellationReason(formData);
+        const res = await createCancellationReason(payload);
         if (res.success === false) throw new Error(res.message || "Create failed");
         showNotification("success", "Cancellation reason created");
       }
       setIsModalOpen(false);
-      loadData();
+      loadData(page, limit);
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to save");
     } finally {
@@ -128,7 +158,7 @@ const CancellationReasonManagement: React.FC = () => {
     try {
       setActionLoading(item._id);
       await updateCancellationReason(item._id, { isActive: !item.isActive } as any);
-      loadData();
+      loadData(page, limit);
       showNotification("success", `Reason ${item.isActive ? "deactivated" : "activated"}`);
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to toggle");
@@ -142,7 +172,7 @@ const CancellationReasonManagement: React.FC = () => {
     try {
       setActionLoading(id);
       await deleteCancellationReason(id);
-      loadData();
+      loadData(page, limit);
       showNotification("success", "Cancellation reason deleted");
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to delete");
@@ -152,18 +182,17 @@ const CancellationReasonManagement: React.FC = () => {
   };
 
   // Stats
-  const totalReasons = reasons.length;
+  const totalReasons = paginationMeta.total;
   const activeReasons = reasons.filter((r) => r.isActive).length;
   const userReasons = reasons.filter((r) => r.applicableTo === "USER" || r.applicableTo === "BOTH").length;
   const driverReasons = reasons.filter((r) => r.applicableTo === "DRIVER" || r.applicableTo === "BOTH").length;
 
-  // Filters
-  const filtered = reasons.filter((r) => {
-    if (filterStatus === "active" && !r.isActive) return false;
-    if (filterStatus === "inactive" && r.isActive) return false;
-    if (filterApplicable !== "all" && r.applicableTo !== filterApplicable) return false;
-    return true;
-  });
+  // Server-side: data is already filtered and paginated
+  const paginatedFiltered = reasons;
+  const totalItems = paginationMeta.total;
+  const totalPages = paginationMeta.pages;
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
+  const endIndex = Math.min(page * limit, totalItems);
 
   const applicableLabel = (val: string) => {
     switch (val) {
@@ -259,6 +288,7 @@ const CancellationReasonManagement: React.FC = () => {
       {loading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 animate-spin" /></div>
       ) : (
+        <>
         <div className="overflow-hidden bg-white border border-gray-100 shadow-sm rounded-xl">
           <table className="w-full">
             <thead className="bg-gray-50">
@@ -274,7 +304,7 @@ const CancellationReasonManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filtered.map((item) => (
+              {paginatedFiltered.map((item) => (
                 <tr key={item._id} className={`hover:bg-gray-50 transition-colors ${!item.isActive ? "bg-yellow-50" : ""}`}>
                   <td className="px-4 py-3 text-sm text-gray-600">{item.sortOrder}</td>
                   <td className="px-4 py-3">
@@ -319,10 +349,21 @@ const CancellationReasonManagement: React.FC = () => {
             </tbody>
           </table>
         </div>
-      )}
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="reasons"
+          pageSize={limit}
+          onPageSizeChange={(size) => { setLimit(size as PageSize); setPage(1); }}
+        />
+        </>)}
 
       {/* Empty */}
-      {!loading && filtered.length === 0 && (
+      {!loading && paginatedFiltered.length === 0 && (
         <div className="py-16 text-center">
           <Ban className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-900">No cancellation reasons found</h3>
@@ -367,7 +408,7 @@ const CancellationReasonManagement: React.FC = () => {
                 </div>
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-700">Sort Order</label>
-                  <input type="number" min="0" value={formData.sortOrder} onChange={(e) => setFormData({ ...formData, sortOrder: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="number" min="0" value={formData.sortOrder} onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
 
@@ -389,7 +430,7 @@ const CancellationReasonManagement: React.FC = () => {
                       <label className="block mb-1 text-sm font-medium text-gray-700">
                         Penalty Value {formData.penaltyType === "FIXED" ? "(₹)" : "(%)"}
                       </label>
-                      <input type="number" min="0" max={formData.penaltyType === "PERCENTAGE" ? 100 : undefined} value={formData.penaltyValue} onChange={(e) => setFormData({ ...formData, penaltyValue: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" min="0" max={formData.penaltyType === "PERCENTAGE" ? 100 : undefined} value={formData.penaltyValue} onChange={(e) => setFormData({ ...formData, penaltyValue: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   )}
                 </div>
@@ -405,7 +446,7 @@ const CancellationReasonManagement: React.FC = () => {
                   {formData.isRefundable && (
                     <div>
                       <label className="block mb-1 text-sm font-medium text-gray-700">Refund Percentage</label>
-                      <input type="number" min="0" max="100" value={formData.refundPercentage} onChange={(e) => setFormData({ ...formData, refundPercentage: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" min="0" max="100" value={formData.refundPercentage} onChange={(e) => setFormData({ ...formData, refundPercentage: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   )}
                 </div>

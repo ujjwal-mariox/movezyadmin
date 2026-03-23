@@ -13,6 +13,8 @@ import {
   Phone,
 } from "lucide-react";
 import type { SupportTicket, SupportMessage } from "../types/admin";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 const SupportTickets: React.FC = () => {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -213,6 +215,18 @@ const SupportTickets: React.FC = () => {
       priorityFilter === "ALL" || ticket.priority === priorityFilter;
     return matchesSearch && matchesStatus && matchesPriority;
   });
+
+  const {
+    paginatedData: paginatedTickets,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(filteredTickets, 10);
 
   const stats = {
     open: tickets.filter((t) => t.status === "OPEN").length,
@@ -438,7 +452,7 @@ const SupportTickets: React.FC = () => {
                 No tickets found
               </div>
             ) : (
-              filteredTickets.map((ticket) => (
+              paginatedTickets.map((ticket) => (
                 <div
                   key={ticket._id}
                   onClick={() => setSelectedTicket(ticket)}
@@ -487,6 +501,19 @@ const SupportTickets: React.FC = () => {
               ))
             )}
           </div>
+          {!loading && filteredTickets.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              totalItems={totalItems}
+              startIndex={startIndex}
+              endIndex={endIndex}
+              itemLabel="tickets"
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
+            />
+          )}
         </div>
 
         {/* Ticket Detail */}

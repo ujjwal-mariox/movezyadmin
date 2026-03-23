@@ -24,6 +24,10 @@ import {
   Zap,
   FileCheck,
   ScrollText,
+  Database,
+  FileText,
+  Award,
+  GraduationCap,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
@@ -89,6 +93,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: "addon-services", label: "Add-on Services", icon: Wrench },
         { id: "cancellation-reasons", label: "Cancellation Reasons", icon: Ban },
         { id: "prohibited-items", label: "Prohibited Items", icon: Ban },
+        { id: "master-data", label: "Master Data", icon: Database },
+        { id: "driver-instructions", label: "Driver Instructions", icon: FileText },
+        { id: "badges", label: "Badges", icon: Award },
+        { id: "training", label: "Training & Learning", icon: GraduationCap },
       ],
     },
     {

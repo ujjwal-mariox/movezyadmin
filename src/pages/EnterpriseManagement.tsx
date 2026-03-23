@@ -19,6 +19,8 @@ import {
   Edit2,
 } from "lucide-react";
 import type { Enterprise } from "../types/admin";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 import {
   fetchEnterprises,
   createEnterprise,
@@ -120,22 +122,35 @@ const AccountsTab: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   // Approve, reject, suspend
-  const [creditLimit, setCreditLimit] = useState<number>(50000);
-  const [discountPct, setDiscountPct] = useState<number>(0);
-  const [paymentTerms, setPaymentTerms] = useState<number>(30);
+  const [creditLimit, setCreditLimit] = useState<number | string>(50000);
+  const [discountPct, setDiscountPct] = useState<number | string>(0);
+  const [paymentTerms, setPaymentTerms] = useState<number | string>(30);
   const [rejectReason, setRejectReason] = useState("");
   const [suspendReason, setSuspendReason] = useState("");
 
-  const loadEnterprises = useCallback(async () => {
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
+
+  const loadEnterprises = useCallback(async (p: number, l: number) => {
     try {
       setLoading(true);
       const res = await fetchEnterprises(
         statusFilter !== "ALL" ? statusFilter : undefined,
         searchQuery || undefined,
+        p,
+        l,
       );
       if (res.success) {
         const list = Array.isArray(res.data) ? res.data : res.data?.enterprises ?? [];
         setEnterprises(list);
+        if (res.data?.pagination) {
+          setPaginationMeta({
+            total: res.data.pagination.total || 0,
+            pages: res.data.pagination.pages || 0,
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to load enterprises", err);
@@ -144,10 +159,29 @@ const AccountsTab: React.FC = () => {
     }
   }, [statusFilter, searchQuery]);
 
-  useEffect(() => { loadEnterprises(); }, [loadEnterprises]);
+  // Single useEffect: reset page on filter change, otherwise fetch
+  const prevFiltersRef = React.useRef({ searchQuery, statusFilter });
+  useEffect(() => {
+    const filtersChanged =
+      prevFiltersRef.current.searchQuery !== searchQuery ||
+      prevFiltersRef.current.statusFilter !== statusFilter;
+    prevFiltersRef.current = { searchQuery, statusFilter };
+    if (filtersChanged && page !== 1) {
+      setPage(1);
+    } else {
+      loadEnterprises(page, limit);
+    }
+  }, [page, limit, searchQuery, statusFilter, loadEnterprises]);
+
+  // Server-side provides the page directly
+  const paginatedEnterprises = enterprises;
+  const entTotalItems = paginationMeta.total;
+  const entTotalPages = paginationMeta.pages;
+  const entStart = entTotalItems === 0 ? 0 : (page - 1) * limit + 1;
+  const entEnd = Math.min(page * limit, entTotalItems);
 
   const stats = {
-    total: enterprises.length,
+    total: paginationMeta.total,
     pending: enterprises.filter((e) => e.status === "PENDING").length,
     approved: enterprises.filter((e) => e.status === "APPROVED").length,
     suspended: enterprises.filter((e) => e.status === "SUSPENDED").length,
@@ -169,15 +203,16 @@ const AccountsTab: React.FC = () => {
   const handleSaveForm = async () => {
     setSaving(true);
     try {
+      const payload = { ...formData, creditLimit: Number(formData.creditLimit) || 0, discountPercentage: Number(formData.discountPercentage) || 0, paymentTerms: Number(formData.paymentTerms) || 0 };
       if (isEditing && formData._id) {
-        const res = await updateEnterprise(formData._id, formData);
+        const res = await updateEnterprise(formData._id, payload);
         if (!res.success) return alert(res.message || "Update failed");
       } else {
-        const res = await createEnterprise(formData);
+        const res = await createEnterprise(payload);
         if (!res.success) return alert(res.message || "Create failed");
       }
       setShowFormModal(false);
-      await loadEnterprises();
+      await loadEnterprises(page, limit);
     } catch (err) { console.error(err); }
     finally { setSaving(false); }
   };
@@ -185,8 +220,8 @@ const AccountsTab: React.FC = () => {
   const handleApprove = async () => {
     if (!selectedEnterprise) return;
     try {
-      const res = await approveEnterprise(selectedEnterprise._id, { creditLimit, discountPercentage: discountPct, paymentTerms });
-      if (res.success) await loadEnterprises();
+      const res = await approveEnterprise(selectedEnterprise._id, { creditLimit: Number(creditLimit) || 0, discountPercentage: Number(discountPct) || 0, paymentTerms: Number(paymentTerms) || 0 });
+      if (res.success) await loadEnterprises(page, limit);
     } catch (err) { console.error("Approve failed", err); }
     setShowApproveModal(false);
     setSelectedEnterprise(null);
@@ -196,7 +231,7 @@ const AccountsTab: React.FC = () => {
     if (!selectedEnterprise || !rejectReason) return;
     try {
       const res = await rejectEnterprise(selectedEnterprise._id, { reason: rejectReason });
-      if (res.success) await loadEnterprises();
+      if (res.success) await loadEnterprises(page, limit);
     } catch (err) { console.error("Reject failed", err); }
     setShowRejectModal(false);
     setSelectedEnterprise(null);
@@ -207,7 +242,7 @@ const AccountsTab: React.FC = () => {
     if (!selectedEnterprise || !suspendReason) return;
     try {
       const res = await suspendEnterprise(selectedEnterprise._id, { reason: suspendReason });
-      if (res.success) await loadEnterprises();
+      if (res.success) await loadEnterprises(page, limit);
     } catch (err) { console.error("Suspend failed", err); }
     setShowSuspendModal(false);
     setSelectedEnterprise(null);
@@ -218,7 +253,7 @@ const AccountsTab: React.FC = () => {
     if (!selectedEnterprise) return;
     try {
       const res = await deleteEnterprise(selectedEnterprise._id);
-      if (res.success) await loadEnterprises();
+      if (res.success) await loadEnterprises(page, limit);
     } catch (err) { console.error("Delete failed", err); }
     setShowDeleteModal(false);
     setSelectedEnterprise(null);
@@ -305,7 +340,7 @@ const AccountsTab: React.FC = () => {
               ) : enterprises.length === 0 ? (
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">No enterprises found</td></tr>
               ) : (
-                enterprises.map((ent) => (
+                paginatedEnterprises.map((ent) => (
                   <tr key={ent._id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <p className="font-medium text-gray-800">{ent.companyName}</p>
@@ -359,6 +394,17 @@ const AccountsTab: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={page}
+          totalPages={entTotalPages}
+          onPageChange={setPage}
+          totalItems={entTotalItems}
+          startIndex={entStart}
+          endIndex={entEnd}
+          itemLabel="enterprises"
+          pageSize={limit}
+          onPageSizeChange={(size) => { setLimit(size as PageSize); setPage(1); }}
+        />
       </div>
 
       {/* ── Create / Edit Modal ── */}
@@ -442,17 +488,17 @@ const AccountsTab: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Credit Limit (₹)</label>
-                    <input type="number" value={formData.creditLimit || 0} onChange={(e) => updateField("creditLimit", Number(e.target.value))}
+                    <input type="number" value={formData.creditLimit ?? ''} onChange={(e) => updateField("creditLimit", e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Discount %</label>
-                    <input type="number" min={0} max={50} value={formData.discountPercentage || 0} onChange={(e) => updateField("discountPercentage", Number(e.target.value))}
+                    <input type="number" min={0} max={50} value={formData.discountPercentage ?? ''} onChange={(e) => updateField("discountPercentage", e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms (days)</label>
-                    <input type="number" value={formData.paymentTerms || 30} onChange={(e) => updateField("paymentTerms", Number(e.target.value))}
+                    <input type="number" value={formData.paymentTerms ?? ''} onChange={(e) => updateField("paymentTerms", e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" />
                   </div>
                 </div>
@@ -481,18 +527,18 @@ const AccountsTab: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Credit Limit (₹)</label>
                 <div className="relative">
                   <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                  <input type="number" value={creditLimit} onChange={(e) => setCreditLimit(Number(e.target.value))}
+                  <input type="number" value={creditLimit} onChange={(e) => setCreditLimit(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Discount Percentage</label>
-                <input type="number" min={0} max={50} value={discountPct} onChange={(e) => setDiscountPct(Number(e.target.value))}
+                <input type="number" min={0} max={50} value={discountPct} onChange={(e) => setDiscountPct(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Payment Terms (days)</label>
-                <input type="number" value={paymentTerms} onChange={(e) => setPaymentTerms(Number(e.target.value))}
+                <input type="number" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl" />
               </div>
             </div>
@@ -610,12 +656,28 @@ const InquiriesTab: React.FC = () => {
   const [editStatus, setEditStatus] = useState("");
   const [editNotes, setEditNotes] = useState("");
 
-  const loadInquiries = useCallback(async () => {
+  // Server-side pagination state
+  const [inqPage, setInqPage] = useState(1);
+  const [inqLimit, setInqLimit] = useState<PageSize>(10);
+  const [inqPaginationMeta, setInqPaginationMeta] = useState({ total: 0, pages: 0 });
+
+  const loadInquiries = useCallback(async (p: number, l: number) => {
     setLoading(true);
     try {
-      const res = await fetchEnterpriseInquiries(statusFilter, searchQuery);
+      const res = await fetchEnterpriseInquiries(
+        statusFilter !== "ALL" ? statusFilter : undefined,
+        searchQuery || undefined,
+        p,
+        l,
+      );
       if (res.success) {
         setInquiries(res.data?.inquiries || []);
+        if (res.data?.pagination) {
+          setInqPaginationMeta({
+            total: res.data.pagination.total || 0,
+            pages: res.data.pagination.pages || 0,
+          });
+        }
       }
     } catch (e) {
       console.error("Failed to fetch inquiries:", e);
@@ -624,14 +686,31 @@ const InquiriesTab: React.FC = () => {
     }
   }, [statusFilter, searchQuery]);
 
-  useEffect(() => { loadInquiries(); }, [loadInquiries]);
+  const prevInqFiltersRef = React.useRef({ searchQuery, statusFilter });
+  useEffect(() => {
+    const filtersChanged =
+      prevInqFiltersRef.current.searchQuery !== searchQuery ||
+      prevInqFiltersRef.current.statusFilter !== statusFilter;
+    prevInqFiltersRef.current = { searchQuery, statusFilter };
+    if (filtersChanged && inqPage !== 1) {
+      setInqPage(1);
+    } else {
+      loadInquiries(inqPage, inqLimit);
+    }
+  }, [inqPage, inqLimit, searchQuery, statusFilter, loadInquiries]);
+
+  const paginatedInquiries = inquiries;
+  const inqTotalItems = inqPaginationMeta.total;
+  const inqTotalPages = inqPaginationMeta.pages;
+  const inqStart = inqTotalItems === 0 ? 0 : (inqPage - 1) * inqLimit + 1;
+  const inqEnd = Math.min(inqPage * inqLimit, inqTotalItems);
 
   const handleUpdate = async (id: string) => {
     try {
       const res = await updateEnterpriseInquiry(id, { status: editStatus, adminNotes: editNotes });
       if (res.success) {
         setEditingId(null);
-        loadInquiries();
+        loadInquiries(inqPage, inqLimit);
       }
     } catch (e) { console.error(e); }
   };
@@ -640,7 +719,7 @@ const InquiriesTab: React.FC = () => {
     if (!confirm("Delete this inquiry?")) return;
     try {
       const res = await deleteEnterpriseInquiry(id);
-      if (res.success) loadInquiries();
+      if (res.success) loadInquiries(inqPage, inqLimit);
     } catch (e) { console.error(e); }
   };
 
@@ -696,7 +775,7 @@ const InquiriesTab: React.FC = () => {
               ) : inquiries.length === 0 ? (
                 <tr><td colSpan={8} className="px-5 py-12 text-center text-gray-500">No inquiries found</td></tr>
               ) : (
-                inquiries.map((inq) => (
+                paginatedInquiries.map((inq) => (
                   <tr key={inq._id} className="hover:bg-gray-50">
                     <td className="px-5 py-3">
                       <p className="font-medium text-gray-800">{inq.name}</p>
@@ -761,6 +840,17 @@ const InquiriesTab: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={inqPage}
+          totalPages={inqTotalPages}
+          onPageChange={setInqPage}
+          totalItems={inqTotalItems}
+          startIndex={inqStart}
+          endIndex={inqEnd}
+          itemLabel="inquiries"
+          pageSize={inqLimit}
+          onPageSizeChange={(size) => { setInqLimit(size as PageSize); setInqPage(1); }}
+        />
       </div>
     </>
   );

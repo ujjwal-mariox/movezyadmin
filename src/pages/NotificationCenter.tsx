@@ -13,6 +13,8 @@ import {
   Edit2,
 } from "lucide-react";
 import type { NotificationTemplate, NotificationHistory } from "../types/admin";
+import { usePagination } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 const NotificationCenter: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"send" | "templates" | "history">(
@@ -118,7 +120,31 @@ const NotificationCenter: React.FC = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString("en-IN", {
+
+
+  const {
+    paginatedData: paginatedTemplates,
+    currentPage: templatesPage,
+    totalPages: templatesTotalPages,
+    setCurrentPage: setTemplatesPage,
+    totalItems: templatesTotalItems,
+    startIndex: templatesStart,
+    endIndex: templatesEnd,
+    pageSize: templatesPageSize,
+    setPageSize: setTemplatesPageSize,
+  } = usePagination(templates, 10);
+
+  const {
+    paginatedData: paginatedHistory,
+    currentPage: historyPage,
+    totalPages: historyTotalPages,
+    setCurrentPage: setHistoryPage,
+    totalItems: historyTotalItems,
+    startIndex: historyStart,
+    endIndex: historyEnd,
+    pageSize: historyPageSize,
+    setPageSize: setHistoryPageSize,
+  } = usePagination(history, 10);    return new Date(dateString).toLocaleString("en-IN", {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -345,7 +371,7 @@ const NotificationCenter: React.FC = () => {
                 </button>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {templates.map((template) => (
+                {paginatedTemplates.map((template) => (
                   <div
                     key={template._id}
                     className="p-4 border border-gray-100 bg-gray-50 rounded-xl"
@@ -383,6 +409,17 @@ const NotificationCenter: React.FC = () => {
                   </div>
                 ))}
               </div>
+              <Pagination
+                currentPage={templatesPage}
+                totalPages={templatesTotalPages}
+                onPageChange={setTemplatesPage}
+                totalItems={templatesTotalItems}
+                startIndex={templatesStart}
+                endIndex={templatesEnd}
+                itemLabel="templates"
+                pageSize={templatesPageSize}
+                onPageSizeChange={setTemplatesPageSize}
+              />
             </div>
           )}
 
@@ -413,7 +450,7 @@ const NotificationCenter: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {history.map((item) => (
+                  {paginatedHistory.map((item) => (
                     <tr key={item._id} className="hover:bg-gray-50">
                       <td className="px-4 py-4">
                         <p className="font-medium text-gray-800">
@@ -452,6 +489,17 @@ const NotificationCenter: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                currentPage={historyPage}
+                totalPages={historyTotalPages}
+                onPageChange={setHistoryPage}
+                totalItems={historyTotalItems}
+                startIndex={historyStart}
+                endIndex={historyEnd}
+                itemLabel="notifications"
+                pageSize={historyPageSize}
+                onPageSizeChange={setHistoryPageSize}
+              />
             </div>
           )}
         </div>

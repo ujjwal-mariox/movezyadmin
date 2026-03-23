@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Edit2,
@@ -25,6 +25,8 @@ import {
   type AddonServiceItem,
   type VehicleTypeItem,
 } from "../services/api";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 interface FormData {
   name: string;
@@ -32,9 +34,9 @@ interface FormData {
   description: string;
   icon: string;
   priceType: "FIXED" | "PER_FLOOR" | "PER_KG";
-  price: number;
+  price: number | string;
   applicableVehicleTypes: string[];
-  sortOrder: number;
+  sortOrder: number | string;
 }
 
 const initialFormData: FormData = {
@@ -62,25 +64,52 @@ const AddonServiceManagement: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
   const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
+
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async (p: number, l: number) => {
     try {
       setLoading(true);
-      const [addonRes, vtRes] = await Promise.all([fetchAddonServices(), fetchVehicleTypes()]);
+      const [addonRes, vtRes] = await Promise.all([
+        fetchAddonServices({
+          page: p,
+          limit: l,
+          status: filterStatus !== "all" ? filterStatus : undefined,
+        }),
+        fetchVehicleTypes(),
+      ]);
       setAddons(addonRes.data?.addonServices || addonRes.data?.addons || addonRes.addonServices || []);
+      if (addonRes.data?.pagination) {
+        setPaginationMeta({
+          total: addonRes.data.pagination.total || 0,
+          pages: addonRes.data.pagination.pages || 0,
+        });
+      }
       setVehicleTypes(vtRes.data?.vehicleTypes || vtRes.vehicleTypes || []);
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to load data");
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterStatus]);
 
-  useEffect(() => { loadData(); }, []);
+  const prevFilterRef = React.useRef(filterStatus);
+  useEffect(() => {
+    const filterChanged = prevFilterRef.current !== filterStatus;
+    prevFilterRef.current = filterStatus;
+    if (filterChanged && page !== 1) {
+      setPage(1);
+    } else {
+      loadData(page, limit);
+    }
+  }, [page, limit, filterStatus, loadData]);
 
   const handleAdd = () => {
     setFormData(initialFormData);
@@ -109,15 +138,16 @@ const AddonServiceManagement: React.FC = () => {
     e.preventDefault();
     try {
       setActionLoading("submit");
+      const payload = { ...formData, price: Number(formData.price) || 0, sortOrder: Number(formData.sortOrder) || 0 };
       if (isEditing && editingId) {
-        await updateAddonService(editingId, formData as any);
+        await updateAddonService(editingId, payload as any);
         showNotification("success", "Add-on updated successfully");
       } else {
-        await createAddonService(formData as any);
+        await createAddonService(payload as any);
         showNotification("success", "Add-on created successfully");
       }
       setIsModalOpen(false);
-      loadData();
+      loadData(page, limit);
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to save");
     } finally {
@@ -129,7 +159,7 @@ const AddonServiceManagement: React.FC = () => {
     try {
       setActionLoading(id);
       await toggleAddonService(id);
-      loadData();
+      loadData(page, limit);
       showNotification("success", "Status updated");
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to toggle");
@@ -143,7 +173,7 @@ const AddonServiceManagement: React.FC = () => {
     try {
       setActionLoading(id);
       await deleteAddonService(id);
-      loadData();
+      loadData(page, limit);
       showNotification("success", "Add-on deleted");
     } catch (error: unknown) {
       showNotification("error", error instanceof Error ? error.message : "Failed to delete");
@@ -169,14 +199,15 @@ const AddonServiceManagement: React.FC = () => {
     }
   };
 
-  const totalAddons = addons.length;
+  const totalAddons = paginationMeta.total;
   const activeAddons = addons.filter((a) => a.isActive).length;
 
-  const filtered = addons.filter((a) => {
-    if (filterStatus === "active") return a.isActive;
-    if (filterStatus === "inactive") return !a.isActive;
-    return true;
-  });
+  // Server-side: data is already filtered and paginated
+  const paginatedAddons = addons;
+  const totalItems = paginationMeta.total;
+  const totalPages = paginationMeta.pages;
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
+  const endIndex = Math.min(page * limit, totalItems);
 
   return (
     <div className="min-h-screen p-6 bg-gray-50">
@@ -239,8 +270,9 @@ const AddonServiceManagement: React.FC = () => {
       {loading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 text-blue-600 animate-spin" /></div>
       ) : (
+        <>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((addon) => (
+          {paginatedAddons.map((addon) => (
             <div key={addon._id} className={`bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-all ${addon.isActive ? "border-gray-100" : "border-yellow-200 bg-yellow-50"}`}>
               <div className="p-4 border-b border-gray-100">
                 <div className="flex items-start justify-between">
@@ -299,10 +331,22 @@ const AddonServiceManagement: React.FC = () => {
             </div>
           ))}
         </div>
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="services"
+          pageSize={limit}
+          onPageSizeChange={(size) => { setLimit(size as PageSize); setPage(1); }}
+        />
+        </>
       )}
 
       {/* Empty */}
-      {!loading && filtered.length === 0 && (
+      {!loading && paginatedAddons.length === 0 && (
         <div className="py-16 text-center">
           <Wrench className="w-16 h-16 mx-auto mb-4 text-gray-300" />
           <h3 className="text-lg font-medium text-gray-900">No add-on services found</h3>
@@ -358,11 +402,11 @@ const AddonServiceManagement: React.FC = () => {
                   </div>
                   <div>
                     <label className="block mb-1 text-sm font-medium text-gray-700">Price (₹) *</label>
-                    <input type="number" required min="0" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="number" required min="0" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block mb-1 text-sm font-medium text-gray-700">Sort Order</label>
-                    <input type="number" min="0" value={formData.sortOrder} onChange={(e) => setFormData({ ...formData, sortOrder: Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="number" min="0" value={formData.sortOrder} onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
               </div>

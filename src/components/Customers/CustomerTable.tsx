@@ -2,6 +2,8 @@
 import React, { useState } from "react";
 import { Eye, Edit, Trash2, Search } from "lucide-react";
 import type { Customer } from "../../types";
+import { usePagination } from "../../hooks/usePagination";
+import Pagination from "../../components/Pagination";
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -16,6 +18,18 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers }) => {
       customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.phone.includes(searchTerm)
   );
+
+  const {
+    paginatedData: paginatedCustomers,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(filteredCustomers, 10);
 
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden">
@@ -62,7 +76,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers }) => {
             </tr>
           </thead>
           <tbody>
-            {filteredCustomers.map((customer) => (
+            {paginatedCustomers.map((customer) => (
               <tr
                 key={customer.id}
                 className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
@@ -137,20 +151,17 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers }) => {
         </div>
       )}
 
-      {/* Pagination Footer */}
-      <div className="p-4 border-t border-gray-200 flex items-center justify-between">
-        <div className="text-sm text-gray-600">
-          Showing {filteredCustomers.length} of {customers.length} customers
-        </div>
-        <div className="flex space-x-2">
-          <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-            Previous
-          </button>
-          <button className="px-4 py-2 bg-movezy-500 text-white rounded-lg text-sm font-medium hover:bg-movezy-600">
-            Next
-          </button>
-        </div>
-      </div>
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        totalItems={totalItems}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        itemLabel="customers"
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+      />
     </div>
   );
 };

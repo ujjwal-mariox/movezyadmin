@@ -21,6 +21,7 @@ import {
   type WalletTransactionItem,
   type PaginationMeta,
 } from "../services/api";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
 
 type TabType = "wallets" | "transactions";
 
@@ -31,16 +32,18 @@ export default function WalletManagement() {
   const [transactions, setTransactions] = useState<WalletTransactionItem[]>([]);
   const [walletPagination, setWalletPagination] = useState<PaginationMeta>({
     page: 1,
-    limit: 20,
+    limit: 10,
     total: 0,
     pages: 0,
   });
   const [txnPagination, setTxnPagination] = useState<PaginationMeta>({
     page: 1,
-    limit: 20,
+    limit: 10,
     total: 0,
     pages: 0,
   });
+  const [walletLimit, setWalletLimit] = useState<PageSize>(10);
+  const [txnLimit, setTxnLimit] = useState<PageSize>(10);
   const [loading, setLoading] = useState(true);
   const [txnTypeFilter, setTxnTypeFilter] = useState("");
   const [selectedUser, setSelectedUser] = useState<{
@@ -62,7 +65,7 @@ export default function WalletManagement() {
     async (page = 1) => {
       setLoading(true);
       try {
-        const res = await fetchAllWallets(page, 20, search || undefined);
+        const res = await fetchAllWallets(page, walletLimit, search || undefined);
         if (res.success) {
           setWallets(res.data.wallets);
           setWalletPagination(res.data.pagination);
@@ -72,7 +75,7 @@ export default function WalletManagement() {
       }
       setLoading(false);
     },
-    [search]
+    [search, walletLimit]
   );
 
   const loadTransactions = useCallback(
@@ -81,7 +84,7 @@ export default function WalletManagement() {
       try {
         const res = await fetchAllTransactions(
           page,
-          20,
+          txnLimit,
           txnTypeFilter || undefined
         );
         if (res.success) {
@@ -93,7 +96,7 @@ export default function WalletManagement() {
       }
       setLoading(false);
     },
-    [txnTypeFilter]
+    [txnTypeFilter, txnLimit]
   );
 
   useEffect(() => {
@@ -226,6 +229,8 @@ export default function WalletManagement() {
           wallets={wallets}
           pagination={walletPagination}
           onPageChange={loadWallets}
+          pageSize={walletLimit}
+          onPageSizeChange={(size) => { setWalletLimit(size); loadWallets(1); }}
           onView={handleViewUser}
           onCredit={(userId, name) =>
             setAdjustModal({ userId, name, type: "credit" })
@@ -240,6 +245,8 @@ export default function WalletManagement() {
           transactions={transactions}
           pagination={txnPagination}
           onPageChange={loadTransactions}
+          pageSize={txnLimit}
+          onPageSizeChange={(size) => { setTxnLimit(size); loadTransactions(1); }}
           formatDate={formatDate}
         />
       )}
@@ -364,6 +371,8 @@ function WalletsTable({
   wallets,
   pagination,
   onPageChange,
+  pageSize,
+  onPageSizeChange,
   onView,
   onCredit,
   onDebit,
@@ -372,6 +381,8 @@ function WalletsTable({
   wallets: WalletUser[];
   pagination: PaginationMeta;
   onPageChange: (page: number) => void;
+  pageSize: PageSize;
+  onPageSizeChange: (size: PageSize) => void;
   onView: (userId: string, name: string) => void;
   onCredit: (userId: string, name: string) => void;
   onDebit: (userId: string, name: string) => void;
@@ -447,7 +458,7 @@ function WalletsTable({
           </tbody>
         </table>
       </div>
-      <Pagination pagination={pagination} onPageChange={onPageChange} />
+      <Pagination pagination={pagination} onPageChange={onPageChange} pageSize={pageSize} onPageSizeChange={onPageSizeChange} />
     </div>
   );
 }
@@ -456,11 +467,15 @@ function TransactionsTable({
   transactions,
   pagination,
   onPageChange,
+  pageSize,
+  onPageSizeChange,
   formatDate,
 }: {
   transactions: WalletTransactionItem[];
   pagination: PaginationMeta;
   onPageChange: (page: number) => void;
+  pageSize: PageSize;
+  onPageSizeChange: (size: PageSize) => void;
   formatDate: (d: string) => string;
 }) {
   if (transactions.length === 0) {
@@ -550,7 +565,7 @@ function TransactionsTable({
           </tbody>
         </table>
       </div>
-      <Pagination pagination={pagination} onPageChange={onPageChange} />
+      <Pagination pagination={pagination} onPageChange={onPageChange} pageSize={pageSize} onPageSizeChange={onPageSizeChange} />
     </div>
   );
 }
@@ -558,18 +573,36 @@ function TransactionsTable({
 function Pagination({
   pagination,
   onPageChange,
+  pageSize,
+  onPageSizeChange,
 }: {
   pagination: PaginationMeta;
   onPageChange: (page: number) => void;
+  pageSize: PageSize;
+  onPageSizeChange: (size: PageSize) => void;
 }) {
-  if (pagination.pages <= 1) return null;
+  if (pagination.total === 0) return null;
   return (
     <div className="flex items-center justify-between mt-4 text-sm text-gray-500">
-      <span>
-        Showing {(pagination.page - 1) * pagination.limit + 1}-
-        {Math.min(pagination.page * pagination.limit, pagination.total)} of{" "}
-        {pagination.total}
-      </span>
+      <div className="flex items-center gap-4">
+        <span>
+          Showing {(pagination.page - 1) * pagination.limit + 1}-
+          {Math.min(pagination.page * pagination.limit, pagination.total)} of{" "}
+          {pagination.total}
+        </span>
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-gray-500">Show</label>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value) as PageSize)}
+            className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
+          >
+            {PAGE_SIZE_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="flex gap-2">
         <button
           disabled={pagination.page <= 1}

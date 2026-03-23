@@ -529,6 +529,7 @@ export const driversApi = {
   // Get all drivers with filters
   getAll: (params?: {
     status?: string;
+    isActive?: boolean;
     isOnline?: boolean;
     search?: string;
     page?: number;
@@ -569,7 +570,10 @@ export const driversApi = {
     }),
 
   // Update driver status
-  updateStatus: (id: string, data: { status: string; reason?: string }) =>
+  updateStatus: (
+    id: string,
+    data: { status?: string; isActive?: boolean; reason?: string },
+  ) =>
     fetchWithAuth(`/admin/drivers/${id}/status`, {
       method: "PUT",
       body: JSON.stringify(data),
@@ -825,8 +829,15 @@ export const usersApi = {
 
 // ==================== VEHICLE TYPES API ====================
 export const vehicleTypesApi = {
-  // Get all vehicle types
-  getAll: () => fetchWithAuth("/admin/config/vehicle-types"),
+  // Get all vehicle types (with pagination)
+  getAll: (params?: { page?: number; limit?: number; search?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.search) query.set("search", params.search);
+    if (params?.status) query.set("status", params.status);
+    return fetchWithAuth(`/admin/config/vehicle-types?${query}`);
+  },
 
   // Create vehicle type (supports image file upload)
   create: (data: Record<string, any>, imageFile?: File) => {
@@ -877,6 +888,62 @@ export const vehicleTypesApi = {
     }),
 };
 
+// ==================== TRAINING MATERIALS API ====================
+export interface TrainingMaterialItem {
+  _id: string;
+  title: string;
+  description: string;
+  type: "youtube" | "video" | "image" | "document";
+  url: string;
+  thumbnailUrl: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const trainingApi = {
+  getAll: (params?: { page?: number; limit?: number; search?: string; status?: string; type?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.search) query.set("search", params.search);
+    if (params?.status) query.set("status", params.status);
+    if (params?.type) query.set("type", params.type);
+    return fetchWithAuth(`/admin/training?${query}`);
+  },
+
+  create: (data: Record<string, any>, file?: File) => {
+    const formData = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) formData.append(key, String(value));
+    });
+    if (file) formData.append("file", file);
+    return fetchFormData("/admin/training", formData, "POST");
+  },
+
+  update: (id: string, data: Record<string, any>, file?: File) => {
+    if (file) {
+      const formData = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) formData.append(key, String(value));
+      });
+      formData.append("file", file);
+      return fetchFormData(`/admin/training/${id}`, formData, "PUT");
+    }
+    return fetchWithAuth(`/admin/training/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  toggle: (id: string) =>
+    fetchWithAuth(`/admin/training/${id}/toggle`, { method: "PUT" }),
+
+  delete: (id: string) =>
+    fetchWithAuth(`/admin/training/${id}`, { method: "DELETE" }),
+};
+
 // ==================== DEFAULT EXPORT ====================
 
 // ==================== AUDIT LOG API ====================
@@ -925,6 +992,57 @@ export const dashboardLiveApi = {
   getEventTimeline: (limit: number = 10) => fetchWithAuth(`/admin/dashboard/event-timeline?limit=${limit}`),
 };
 
+// ==================== MASTER DATA API ====================
+export const masterDataApi = {
+  // Cities
+  getCities: (params?: { page?: number; limit?: number; search?: string; activeOnly?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.search) query.set("search", params.search);
+    if (params?.activeOnly) query.set("activeOnly", params.activeOnly);
+    return fetchWithAuth(`/admin/config/cities?${query.toString()}`);
+  },
+  createCity: (data: { name: string; state: string; sortOrder?: number }) =>
+    fetchWithAuth("/admin/config/cities", { method: "POST", body: JSON.stringify(data) }),
+  updateCity: (id: string, data: Record<string, unknown>) =>
+    fetchWithAuth(`/admin/config/cities/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteCity: (id: string) =>
+    fetchWithAuth(`/admin/config/cities/${id}`, { method: "DELETE" }),
+
+  // Body Types
+  getBodyTypes: (params?: { page?: number; limit?: number; search?: string; activeOnly?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.search) query.set("search", params.search);
+    if (params?.activeOnly) query.set("activeOnly", params.activeOnly);
+    return fetchWithAuth(`/admin/config/body-types?${query.toString()}`);
+  },
+  createBodyType: (data: { name: string; sortOrder?: number }) =>
+    fetchWithAuth("/admin/config/body-types", { method: "POST", body: JSON.stringify(data) }),
+  updateBodyType: (id: string, data: Record<string, unknown>) =>
+    fetchWithAuth(`/admin/config/body-types/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteBodyType: (id: string) =>
+    fetchWithAuth(`/admin/config/body-types/${id}`, { method: "DELETE" }),
+
+  // Fuel Types
+  getFuelTypes: (params?: { page?: number; limit?: number; search?: string; activeOnly?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.search) query.set("search", params.search);
+    if (params?.activeOnly) query.set("activeOnly", params.activeOnly);
+    return fetchWithAuth(`/admin/config/fuel-types?${query.toString()}`);
+  },
+  createFuelType: (data: { name: string; sortOrder?: number }) =>
+    fetchWithAuth("/admin/config/fuel-types", { method: "POST", body: JSON.stringify(data) }),
+  updateFuelType: (id: string, data: Record<string, unknown>) =>
+    fetchWithAuth(`/admin/config/fuel-types/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteFuelType: (id: string) =>
+    fetchWithAuth(`/admin/config/fuel-types/${id}`, { method: "DELETE" }),
+};
+
 export default {
   enterprise: enterpriseApi,
   sos: sosApi,
@@ -943,4 +1061,5 @@ export default {
   automation: automationApi,
   finance: financeApi,
   dashboardLive: dashboardLiveApi,
+  masterData: masterDataApi,
 };

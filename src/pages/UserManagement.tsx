@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { usersApi } from "../services/admin-api";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
 
 // ==================== TYPES ====================
 interface UserAddress {
@@ -96,7 +97,7 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [page, setPage] = useState(0);
-  const [limit] = useState(15);
+  const [limit, setLimit] = useState<PageSize>(10);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -710,7 +711,24 @@ const UserManagement: React.FC = () => {
 
         {/* Pagination */}
         <div className="flex flex-col gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 md:flex-row md:items-center md:justify-between">
-          <span className="text-sm text-gray-500">{paginationLabel}</span>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">{paginationLabel}</span>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-500">Show</label>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value) as PageSize);
+                  setPage(0);
+                }}
+                className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
+              >
+                {PAGE_SIZE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => {

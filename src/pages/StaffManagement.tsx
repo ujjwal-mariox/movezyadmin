@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { staffApi, rolesApi } from "../services/admin-api";
 import { useAuth } from "../auth/useAuth";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 
 // Types
 interface Role {
@@ -391,6 +393,9 @@ const StaffManagement: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -448,7 +453,13 @@ const StaffManagement: React.FC = () => {
     setError(null);
     try {
       const [staffResponse, rolesResponse] = await Promise.all([
-        staffApi.getAll(),
+        staffApi.getAll({
+          page,
+          limit,
+          search: searchQuery || undefined,
+          role: roleFilter !== "ALL" ? roleFilter : undefined,
+          status: statusFilter !== "ALL" ? statusFilter.toLowerCase() : undefined,
+        }),
         rolesApi.getAll(),
       ]);
 
@@ -465,6 +476,12 @@ const StaffManagement: React.FC = () => {
             },
         }));
         setStaffMembers(mappedStaff);
+        if (staffResponse.data.pagination) {
+          setPaginationMeta({
+            total: staffResponse.data.pagination.total || 0,
+            pages: staffResponse.data.pagination.pages || 0,
+          });
+        }
       }
       if (rolesResponse.success) {
         setRoles(rolesResponse.data.roles || []);
@@ -474,36 +491,33 @@ const StaffManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, limit, searchQuery, roleFilter, statusFilter]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const filteredStaff = useMemo(() => {
-    return staffMembers.filter((staff) => {
-      const staffName = staff.name || staff.fullName || "";
-      const matchesSearch =
-        staffName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (staff.email || "").toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesRole =
-        roleFilter === "ALL" || staff.role?._id === roleFilter;
-      const matchesStatus =
-        statusFilter === "ALL" ||
-        (statusFilter === "ACTIVE" && staff.isActive) ||
-        (statusFilter === "INACTIVE" && !staff.isActive);
-      return matchesSearch && matchesRole && matchesStatus;
-    });
-  }, [staffMembers, searchQuery, roleFilter, statusFilter]);
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, roleFilter, statusFilter]);
+
+  // Server-side pagination: staffMembers IS already the current page data
+  const paginatedStaff = staffMembers;
+  const currentPage = page;
+  const totalPages = paginationMeta.pages;
+  const totalItems = paginationMeta.total;
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
+  const endIndex = Math.min(page * limit, totalItems);
 
   const stats = useMemo(
     () => ({
-      total: staffMembers.length,
+      total: paginationMeta.total,
       active: staffMembers.filter((s) => s.isActive).length,
       inactive: staffMembers.filter((s) => !s.isActive).length,
       roles: roles.length,
     }),
-    [staffMembers, roles],
+    [staffMembers, roles, paginationMeta],
   );
 
   const getTimeAgo = (dateString?: string) => {
@@ -975,7 +989,7 @@ const StaffManagement: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredStaff.map((staff) => (
+                  paginatedStaff.map((staff) => (
                     <tr key={staff._id} className="hover:bg-gray-50">
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
@@ -1082,6 +1096,17 @@ const StaffManagement: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            totalItems={totalItems}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            itemLabel="staff members"
+            pageSize={limit}
+            onPageSizeChange={(size) => { setLimit(size); setPage(1); }}
+          />
         </div>
       )}
 

@@ -37,6 +37,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { driversApi } from "../services/admin-api";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
 
 // ==================== TYPES ====================
 type DriverStatus =
@@ -47,6 +48,9 @@ type DriverStatus =
   | "approved"
   | "rejected"
   | "suspended";
+
+type ApprovalFilter = "all" | "approved" | "document_not_complete" | "blocked";
+type AccountFilter = "all" | "active" | "inactive";
 
 interface DriverBankDetails {
   accountHolderName?: string;
@@ -146,6 +150,8 @@ interface Driver {
 interface DriverStats {
   byStatus: { _id: DriverStatus; count: number }[];
   onlineDrivers: number;
+  activeDrivers: number;
+  inactiveDrivers: number;
 }
 
 interface ToastState {
@@ -230,6 +236,51 @@ const statusConfig: Record<
   },
 };
 
+const approvalConfig = {
+  approved: {
+    label: "Approved",
+    color: "text-green-700",
+    bgColor: "bg-green-100",
+    icon: CheckCircle,
+  },
+  document_not_complete: {
+    label: "Document Not Complete",
+    color: "text-yellow-700",
+    bgColor: "bg-yellow-100",
+    icon: FileText,
+  },
+  blocked: {
+    label: "Blocked",
+    color: "text-red-700",
+    bgColor: "bg-red-100",
+    icon: Ban,
+  },
+} as const;
+
+const accountStatusConfig = {
+  active: {
+    label: "Active",
+    color: "text-emerald-700",
+    bgColor: "bg-emerald-100",
+  },
+  inactive: {
+    label: "Inactive",
+    color: "text-gray-700",
+    bgColor: "bg-gray-100",
+  },
+} as const;
+
+const getApprovalState = (driver: Driver) => {
+  if (driver.status === "approved") return "approved" as const;
+  if (driver.status === "suspended") return "blocked" as const;
+  return "document_not_complete" as const;
+};
+
+const isVerificationPending = (status: DriverStatus) =>
+  ["draft", "documents_uploaded", "vehicle_added", "under_verification"].includes(
+    status,
+  );
+
 // ==================== COMPONENT ====================
 const DriverManagement: React.FC = () => {
   // State
@@ -238,9 +289,10 @@ const DriverManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(0);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
-  const [limit] = useState(15);
+  const [limit, setLimit] = useState<PageSize>(10);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<DriverStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<ApprovalFilter>("all");
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>("all");
   const [onlineFilter, setOnlineFilter] = useState<
     "all" | "online" | "offline"
   >("all");
@@ -283,6 +335,8 @@ const DriverManagement: React.FC = () => {
       const response = await driversApi.getAll({
         search: search || undefined,
         status: statusFilter !== "all" ? statusFilter : undefined,
+        isActive:
+          accountFilter === "all" ? undefined : accountFilter === "active",
         isOnline:
           onlineFilter === "all" ? undefined : onlineFilter === "online",
         page,
@@ -299,7 +353,15 @@ const DriverManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, onlineFilter, page, limit, showToast]);
+  }, [
+    search,
+    statusFilter,
+    accountFilter,
+    onlineFilter,
+    page,
+    limit,
+    showToast,
+  ]);
 
   useEffect(() => {
     fetchStats();
@@ -384,9 +446,10 @@ const DriverManagement: React.FC = () => {
     try {
       await driversApi.updateStatus(selectedDriver._id, {
         status: "suspended",
+        isActive: false,
         reason: suspensionReason,
       });
-      showToast({ type: "success", message: "Driver suspended successfully" });
+      showToast({ type: "success", message: "Driver blocked successfully" });
       setSuspendModalOpen(false);
       loadDrivers();
       fetchStats();
@@ -401,10 +464,13 @@ const DriverManagement: React.FC = () => {
   const handleReactivate = async (driver: Driver) => {
     setActionLoading(true);
     try {
-      await driversApi.updateStatus(driver._id, { status: "approved" });
+      await driversApi.updateStatus(driver._id, {
+        status: "approved",
+        isActive: true,
+      });
       showToast({
         type: "success",
-        message: "Driver reactivated successfully",
+        message: "Driver activated successfully",
       });
       loadDrivers();
       fetchStats();
@@ -412,6 +478,29 @@ const DriverManagement: React.FC = () => {
       showToast({
         type: "error",
         message: err.message || "Reactivation failed",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAccountStatusChange = async (
+    driver: Driver,
+    isActive: boolean,
+  ) => {
+    setActionLoading(true);
+    try {
+      await driversApi.updateStatus(driver._id, { isActive });
+      showToast({
+        type: "success",
+        message: `Driver marked as ${isActive ? "active" : "inactive"}`,
+      });
+      loadDrivers();
+      fetchStats();
+    } catch (err: any) {
+      showToast({
+        type: "error",
+        message: err.message || "Status update failed",
       });
     } finally {
       setActionLoading(false);
@@ -458,6 +547,12 @@ const DriverManagement: React.FC = () => {
 
   const totalDrivers =
     stats?.byStatus.reduce((sum, s) => sum + s.count, 0) || 0;
+  const documentNotCompleteCount =
+    getStatCount("draft") +
+    getStatCount("documents_uploaded") +
+    getStatCount("vehicle_added") +
+    getStatCount("under_verification") +
+    getStatCount("rejected");
 
   return (
     <div className="space-y-6">
@@ -493,7 +588,7 @@ const DriverManagement: React.FC = () => {
             Driver Management
           </h1>
           <p className="text-gray-500 mt-1">
-            Manage driver onboarding, verification & status
+            Manage approval, account status, and online availability
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -547,14 +642,41 @@ const DriverManagement: React.FC = () => {
         <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Pending Review</p>
+              <p className="text-sm text-gray-500">Document Not Complete</p>
               <p className="text-2xl font-bold text-yellow-600 mt-1">
-                {getStatCount("under_verification") +
-                  getStatCount("documents_uploaded")}
+                {documentNotCompleteCount}
               </p>
             </div>
             <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-              <Clock className="w-6 h-6 text-yellow-600" />
+              <FileText className="w-6 h-6 text-yellow-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Active</p>
+              <p className="text-2xl font-bold text-emerald-600 mt-1">
+                {stats?.activeDrivers || 0}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-emerald-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Inactive</p>
+              <p className="text-2xl font-bold text-orange-600 mt-1">
+                {stats?.inactiveDrivers || 0}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+              <Clock className="w-6 h-6 text-orange-600" />
             </div>
           </div>
         </div>
@@ -563,40 +685,12 @@ const DriverManagement: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500">Online Now</p>
-              <p className="text-2xl font-bold text-emerald-600 mt-1">
+              <p className="text-2xl font-bold text-red-600 mt-1">
                 {stats?.onlineDrivers || 0}
               </p>
             </div>
-            <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-              <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Suspended</p>
-              <p className="text-2xl font-bold text-orange-600 mt-1">
-                {getStatCount("suspended")}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-              <Ban className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Rejected</p>
-              <p className="text-2xl font-bold text-red-600 mt-1">
-                {getStatCount("rejected")}
-              </p>
-            </div>
             <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-              <XCircle className="w-6 h-6 text-red-600" />
+              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
             </div>
           </div>
         </div>
@@ -626,19 +720,32 @@ const DriverManagement: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as DriverStatus | "all");
+                setStatusFilter(e.target.value as ApprovalFilter);
                 setPage(0);
               }}
               className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none bg-white"
             >
-              <option value="all">All Status</option>
-              <option value="draft">Draft</option>
-              <option value="documents_uploaded">Docs Uploaded</option>
-              <option value="vehicle_added">Vehicle Added</option>
-              <option value="under_verification">Under Review</option>
+              <option value="all">All Approvals</option>
               <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-              <option value="suspended">Suspended</option>
+              <option value="document_not_complete">
+                Document Not Complete
+              </option>
+              <option value="blocked">Blocked</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={accountFilter}
+              onChange={(e) => {
+                setAccountFilter(e.target.value as AccountFilter);
+                setPage(0);
+              }}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none bg-white"
+            >
+              <option value="all">All Account Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
           </div>
 
@@ -691,6 +798,9 @@ const DriverManagement: React.FC = () => {
                     Rating
                   </th>
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
+                    Approval
+                  </th>
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Status
                   </th>
                   <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">
@@ -703,8 +813,13 @@ const DriverManagement: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {drivers.map((driver) => {
-                  const statusInfo = statusConfig[driver.status];
-                  const StatusIcon = statusInfo.icon;
+                  const approvalState = getApprovalState(driver);
+                  const approvalInfo = approvalConfig[approvalState];
+                  const ApprovalIcon = approvalInfo.icon;
+                  const accountInfo =
+                    accountStatusConfig[
+                      driver.isActive ? "active" : "inactive"
+                    ];
 
                   return (
                     <tr
@@ -782,43 +897,53 @@ const DriverManagement: React.FC = () => {
                       {/* Status */}
                       <td className="px-6 py-4">
                         <div
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${statusInfo.bgColor}`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${approvalInfo.bgColor}`}
                         >
-                          <StatusIcon
-                            className={`w-3.5 h-3.5 ${statusInfo.color}`}
+                          <ApprovalIcon
+                            className={`w-3.5 h-3.5 ${approvalInfo.color}`}
                           />
                           <span
-                            className={`text-xs font-medium ${statusInfo.color}`}
+                            className={`text-xs font-medium ${approvalInfo.color}`}
                           >
-                            {statusInfo.label}
+                            {approvalInfo.label}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${accountInfo.bgColor}`}
+                        >
+                          <span
+                            className={`text-xs font-medium ${accountInfo.color}`}
+                          >
+                            {accountInfo.label}
                           </span>
                         </div>
                       </td>
 
                       {/* Online Status */}
                       <td className="px-6 py-4 text-center">
-                        {driver.status === "approved" && (
+                        <div
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
+                            driver.isOnline ? "bg-green-100" : "bg-gray-100"
+                          }`}
+                        >
                           <div
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
-                              driver.isOnline ? "bg-green-100" : "bg-gray-100"
+                            className={`w-2 h-2 rounded-full ${
+                              driver.isOnline ? "bg-green-500" : "bg-gray-400"
+                            }`}
+                          />
+                          <span
+                            className={`text-xs font-medium ${
+                              driver.isOnline
+                                ? "text-green-700"
+                                : "text-gray-600"
                             }`}
                           >
-                            <div
-                              className={`w-2 h-2 rounded-full ${
-                                driver.isOnline ? "bg-green-500" : "bg-gray-400"
-                              }`}
-                            />
-                            <span
-                              className={`text-xs font-medium ${
-                                driver.isOnline
-                                  ? "text-green-700"
-                                  : "text-gray-600"
-                              }`}
-                            >
-                              {driver.isOnline ? "Online" : "Offline"}
-                            </span>
-                          </div>
-                        )}
+                            {driver.isOnline ? "Online" : "Offline"}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Actions */}
@@ -832,11 +957,7 @@ const DriverManagement: React.FC = () => {
                             <Eye className="w-4 h-4 text-gray-600" />
                           </button>
 
-                          {[
-                            "documents_uploaded",
-                            "vehicle_added",
-                            "under_verification",
-                          ].includes(driver.status) && (
+                          {isVerificationPending(driver.status) && (
                             <button
                               onClick={() => openVerifyModal(driver)}
                               className="p-2 hover:bg-green-100 rounded-lg transition-colors"
@@ -846,11 +967,35 @@ const DriverManagement: React.FC = () => {
                             </button>
                           )}
 
+                          {driver.status !== "suspended" && driver.isActive && (
+                            <button
+                              onClick={() =>
+                                handleAccountStatusChange(driver, false)
+                              }
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Mark Inactive"
+                            >
+                              <Clock className="w-4 h-4 text-gray-600" />
+                            </button>
+                          )}
+
+                          {driver.status !== "suspended" && !driver.isActive && (
+                            <button
+                              onClick={() =>
+                                handleAccountStatusChange(driver, true)
+                              }
+                              className="p-2 hover:bg-emerald-100 rounded-lg transition-colors"
+                              title="Mark Active"
+                            >
+                              <CheckCircle className="w-4 h-4 text-emerald-600" />
+                            </button>
+                          )}
+
                           {driver.status === "approved" && (
                             <button
                               onClick={() => openSuspendModal(driver)}
                               className="p-2 hover:bg-orange-100 rounded-lg transition-colors"
-                              title="Suspend Driver"
+                              title="Block Driver"
                             >
                               <Ban className="w-4 h-4 text-orange-600" />
                             </button>
@@ -860,7 +1005,7 @@ const DriverManagement: React.FC = () => {
                             <button
                               onClick={() => handleReactivate(driver)}
                               className="p-2 hover:bg-green-100 rounded-lg transition-colors"
-                              title="Reactivate Driver"
+                              title="Activate Driver"
                             >
                               <CheckCircle className="w-4 h-4 text-green-600" />
                             </button>
@@ -897,13 +1042,30 @@ const DriverManagement: React.FC = () => {
         )}
 
         {/* Pagination */}
-        {pagination.totalPages > 1 && (
+        {pagination.total > 0 && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
-            <p className="text-sm text-gray-600">
-              Showing {page * limit + 1} -{" "}
-              {Math.min((page + 1) * limit, pagination.total)} of{" "}
-              {pagination.total}
-            </p>
+            <div className="flex items-center gap-4">
+              <p className="text-sm text-gray-600">
+                Showing {page * limit + 1} -{" "}
+                {Math.min((page + 1) * limit, pagination.total)} of{" "}
+                {pagination.total}
+              </p>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Show</label>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value) as PageSize);
+                    setPage(0);
+                  }}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                >
+                  {PAGE_SIZE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
@@ -962,10 +1124,27 @@ const DriverManagement: React.FC = () => {
                     </span>
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                        statusConfig[selectedDriver.status].bgColor
-                      } ${statusConfig[selectedDriver.status].color}`}
+                        approvalConfig[getApprovalState(selectedDriver)].bgColor
+                      } ${approvalConfig[getApprovalState(selectedDriver)].color}`}
                     >
-                      {statusConfig[selectedDriver.status].label}
+                      {approvalConfig[getApprovalState(selectedDriver)].label}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                        accountStatusConfig[
+                          selectedDriver.isActive ? "active" : "inactive"
+                        ].bgColor
+                      } ${
+                        accountStatusConfig[
+                          selectedDriver.isActive ? "active" : "inactive"
+                        ].color
+                      }`}
+                    >
+                      {
+                        accountStatusConfig[
+                          selectedDriver.isActive ? "active" : "inactive"
+                        ].label
+                      }
                     </span>
                   </div>
                 </div>
@@ -1136,13 +1315,53 @@ const DriverManagement: React.FC = () => {
                     </h3>
                     <div className="space-y-3">
                       <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Status</span>
+                        <span className="text-sm text-gray-500">Approval</span>
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                            statusConfig[selectedDriver.status].bgColor
-                          } ${statusConfig[selectedDriver.status].color}`}
+                            approvalConfig[getApprovalState(selectedDriver)]
+                              .bgColor
+                          } ${
+                            approvalConfig[getApprovalState(selectedDriver)]
+                              .color
+                          }`}
                         >
-                          {statusConfig[selectedDriver.status].label}
+                          {approvalConfig[getApprovalState(selectedDriver)].label}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-500">
+                          Account Status
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            accountStatusConfig[
+                              selectedDriver.isActive ? "active" : "inactive"
+                            ].bgColor
+                          } ${
+                            accountStatusConfig[
+                              selectedDriver.isActive ? "active" : "inactive"
+                            ].color
+                          }`}
+                        >
+                          {
+                            accountStatusConfig[
+                              selectedDriver.isActive ? "active" : "inactive"
+                            ].label
+                          }
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-500">
+                          Online Status
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                            selectedDriver.isOnline
+                              ? "bg-green-100 text-green-700"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {selectedDriver.isOnline ? "Online" : "Offline"}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -1684,7 +1903,7 @@ const DriverManagement: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-gray-900">
-                Suspend Driver
+                Block Driver
               </h2>
               <button
                 onClick={() => setSuspendModalOpen(false)}
@@ -1698,22 +1917,22 @@ const DriverManagement: React.FC = () => {
               <Ban className="w-8 h-8 text-orange-600" />
               <div>
                 <p className="font-medium text-gray-900">
-                  Suspending {selectedDriver.fullName}
+                  Blocking {selectedDriver.fullName}
                 </p>
                 <p className="text-sm text-gray-500">
-                  This will prevent the driver from accepting rides
+                  This will make the driver inactive and force them offline
                 </p>
               </div>
             </div>
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Suspension Reason <span className="text-red-500">*</span>
+                Blocking Reason <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={suspensionReason}
                 onChange={(e) => setSuspensionReason(e.target.value)}
-                placeholder="Enter reason for suspension..."
+                placeholder="Enter reason for blocking..."
                 rows={3}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none resize-none"
               />
@@ -1736,7 +1955,7 @@ const DriverManagement: React.FC = () => {
                 ) : (
                   <Ban className="w-4 h-4" />
                 )}
-                Suspend Driver
+                Block Driver
               </button>
             </div>
           </div>

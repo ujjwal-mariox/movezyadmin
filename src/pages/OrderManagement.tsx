@@ -5,6 +5,8 @@ import {
   Bike, Map as MapIcon, X
 } from 'lucide-react';
 import type { Order } from '../types';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/Pagination';
 
 const initialOrders: Order[] = [
   {
@@ -93,6 +95,18 @@ const OrderManagement: React.FC = () => {
     const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const {
+    paginatedData: paginatedOrders,
+    currentPage,
+    totalPages,
+    setCurrentPage,
+    totalItems,
+    startIndex,
+    endIndex,
+    pageSize,
+    setPageSize,
+  } = usePagination(filteredOrders, 10);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -205,7 +219,7 @@ const OrderManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredOrders.map((order) => (
+              {paginatedOrders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="font-medium text-gray-900">{order.id}</div>
@@ -250,6 +264,17 @@ const OrderManagement: React.FC = () => {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="orders"
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
+        />
       </div>
 
       {/* Order Details Modal */}

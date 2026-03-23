@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Edit2,
@@ -10,6 +10,8 @@ import {
   Ban,
   Palette,
 } from "lucide-react";
+import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import Pagination from "../components/Pagination";
 import {
   fetchProhibitedItems,
   createProhibitedItem,
@@ -24,7 +26,7 @@ interface FormData {
   image: string;
   bgColor: string;
   description: string;
-  sortOrder: number;
+  sortOrder: number | string;
 }
 
 const initialFormData: FormData = {
@@ -60,16 +62,34 @@ const ProhibitedItemManagement: React.FC = () => {
     message: string;
   } | null>(null);
 
+  // Server-side pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<PageSize>(10);
+  const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
+
+  // Server-side: items IS the current page
+  const paginatedItems = items;
+  const totalItems = paginationMeta.total;
+  const totalPages = paginationMeta.pages;
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
+  const endIndex = Math.min(page * limit, totalItems);
+
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async (p: number, l: number) => {
     try {
       setLoading(true);
-      const res = await fetchProhibitedItems();
+      const res = await fetchProhibitedItems({ page: p, limit: l });
       setItems(res.data?.items || res.items || []);
+      if (res.data?.pagination) {
+        setPaginationMeta({
+          total: res.data.pagination.total || 0,
+          pages: res.data.pagination.pages || 0,
+        });
+      }
     } catch (error: unknown) {
       showNotification(
         "error",
@@ -78,11 +98,11 @@ const ProhibitedItemManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(page, limit);
+  }, [page, limit, loadData]);
 
   const handleAdd = () => {
     setFormData(initialFormData);
@@ -113,15 +133,16 @@ const ProhibitedItemManagement: React.FC = () => {
 
     try {
       setActionLoading("save");
+      const payload = { ...formData, sortOrder: Number(formData.sortOrder) || 0 };
       if (isEditing && editingId) {
-        await updateProhibitedItem(editingId, formData);
+        await updateProhibitedItem(editingId, payload);
         showNotification("success", "Prohibited item updated");
       } else {
-        await createProhibitedItem(formData);
+        await createProhibitedItem(payload);
         showNotification("success", "Prohibited item created");
       }
       setIsModalOpen(false);
-      await loadData();
+      await loadData(page, limit);
     } catch (error: unknown) {
       showNotification(
         "error",
@@ -140,7 +161,7 @@ const ProhibitedItemManagement: React.FC = () => {
       setActionLoading(id);
       await deleteProhibitedItem(id);
       showNotification("success", "Item deactivated");
-      await loadData();
+      await loadData(page, limit);
     } catch (error: unknown) {
       showNotification(
         "error",
@@ -218,6 +239,7 @@ const ProhibitedItemManagement: React.FC = () => {
           </button>
         </div>
       ) : (
+        <>
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -246,7 +268,7 @@ const ProhibitedItemManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {items.map((item) => (
+              {paginatedItems.map((item) => (
                 <tr key={item._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div
@@ -334,7 +356,18 @@ const ProhibitedItemManagement: React.FC = () => {
             </tbody>
           </table>
         </div>
-      )}
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          totalItems={totalItems}
+          startIndex={startIndex}
+          endIndex={endIndex}
+          itemLabel="items"
+          pageSize={limit}
+          onPageSizeChange={(size) => { setLimit(size as PageSize); setPage(1); }}
+        />
+        </>)}
 
       {/* Modal */}
       {isModalOpen && (
@@ -465,7 +498,7 @@ const ProhibitedItemManagement: React.FC = () => {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      sortOrder: parseInt(e.target.value) || 0,
+                      sortOrder: e.target.value === '' ? '' : Number(e.target.value),
                     })
                   }
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

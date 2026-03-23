@@ -221,14 +221,24 @@ export interface PromoCodeItem {
 }
 
 // Vehicle Types
-export const fetchVehicleTypes = async () => {
-  const res = await fetch(`${API_URL}/admin/config/vehicle-types`, { headers: getHeaders() });
+export const fetchVehicleTypes = async (params?: { page?: number; limit?: number; search?: string; status?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.search) query.set("search", params.search);
+  if (params?.status) query.set("status", params.status);
+  const res = await fetch(`${API_URL}/admin/config/vehicle-types?${query}`, { headers: getHeaders() });
   return res.json();
 };
 
 // Goods Types (Delivery Categories)
-export const fetchGoodsTypes = async () => {
-  const res = await fetch(`${API_URL}/admin/config/goods-types`, { headers: getHeaders() });
+export const fetchGoodsTypes = async (params?: { page?: number; limit?: number; search?: string; status?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.search) query.set("search", params.search);
+  if (params?.status) query.set("status", params.status);
+  const res = await fetch(`${API_URL}/admin/config/goods-types?${query}`, { headers: getHeaders() });
   return res.json();
 };
 
@@ -261,8 +271,13 @@ export const deleteGoodsType = async (id: string) => {
 };
 
 // Addon Services
-export const fetchAddonServices = async () => {
-  const res = await fetch(`${API_URL}/admin/config/addon-services`, { headers: getHeaders() });
+export const fetchAddonServices = async (params?: { page?: number; limit?: number; search?: string; status?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.search) query.set("search", params.search);
+  if (params?.status) query.set("status", params.status);
+  const res = await fetch(`${API_URL}/admin/config/addon-services?${query}`, { headers: getHeaders() });
   return res.json();
 };
 
@@ -295,8 +310,10 @@ export const deleteAddonService = async (id: string) => {
 };
 
 // Promo Codes
-export const fetchPromos = async (page = 1, limit = 20) => {
+export const fetchPromos = async (page = 0, limit = 20, search?: string, status?: string) => {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (search) params.set("search", search);
+  if (status) params.set("status", status);
   const res = await fetch(`${API_URL}/admin/promos?${params}`, { headers: getHeaders() });
   return res.json();
 };
@@ -346,8 +363,14 @@ export interface CancellationReasonItem {
   updatedAt: string;
 }
 
-export const fetchCancellationReasons = async () => {
-  const res = await fetch(`${API_URL}/admin/config/cancellation-reasons`, { headers: getHeaders() });
+export const fetchCancellationReasons = async (params?: { page?: number; limit?: number; search?: string; activeOnly?: string; applicableTo?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.search) query.set("search", params.search);
+  if (params?.activeOnly) query.set("activeOnly", params.activeOnly);
+  if (params?.applicableTo) query.set("applicableTo", params.applicableTo);
+  const res = await fetch(`${API_URL}/admin/config/cancellation-reasons?${query}`, { headers: getHeaders() });
   return res.json();
 };
 
@@ -387,8 +410,13 @@ export interface ProhibitedItemData {
   updatedAt: string;
 }
 
-export const fetchProhibitedItems = async () => {
-  const res = await fetch(`${API_URL}/admin/config/prohibited-items`, { headers: getHeaders() });
+export const fetchProhibitedItems = async (params?: { page?: number; limit?: number; search?: string; status?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.search) query.set("search", params.search);
+  if (params?.status) query.set("status", params.status);
+  const res = await fetch(`${API_URL}/admin/config/prohibited-items?${query}`, { headers: getHeaders() });
   return res.json();
 };
 
@@ -551,6 +579,108 @@ export const fetchEnterpriseContent = async () => {
 export const updateEnterpriseContent = async (data: Partial<EnterpriseContentData>) => {
   const res = await fetch(`${API_URL}/admin/enterprises/content`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+// Driver Instructions
+export interface DriverInstructionItem {
+  _id: string;
+  text: string;
+  icon: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchDriverInstructions = async (params?: { page?: number; limit?: number; search?: string; status?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.search) query.set("search", params.search);
+  if (params?.status) query.set("status", params.status);
+  const res = await fetch(`${API_URL}/admin/driver-instructions?${query}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const createDriverInstruction = async (data: Partial<DriverInstructionItem>) => {
+  const res = await fetch(`${API_URL}/admin/driver-instructions`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateDriverInstruction = async (id: string, data: Partial<DriverInstructionItem>) => {
+  const res = await fetch(`${API_URL}/admin/driver-instructions/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const toggleDriverInstruction = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/driver-instructions/${id}/toggle`, {
+    method: "PUT", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const deleteDriverInstruction = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/driver-instructions/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+// Badges
+export interface BadgeItem {
+  _id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  unlockType: string;
+  unlockValue: number;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const fetchBadges = async (params?: { page?: number; limit?: number; search?: string; status?: string }) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.search) query.set("search", params.search);
+  if (params?.status) query.set("status", params.status);
+  const res = await fetch(`${API_URL}/admin/badges?${query}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const createBadge = async (data: Partial<BadgeItem>) => {
+  const res = await fetch(`${API_URL}/admin/badges`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateBadge = async (id: string, data: Partial<BadgeItem>) => {
+  const res = await fetch(`${API_URL}/admin/badges/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const toggleBadge = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/badges/${id}/toggle`, {
+    method: "PUT", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const deleteBadge = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/badges/${id}`, {
+    method: "DELETE", headers: getHeaders(),
   });
   return res.json();
 };
