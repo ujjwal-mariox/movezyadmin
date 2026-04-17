@@ -6,7 +6,6 @@ import {
   Users,
   FileText,
   Clock,
-  CheckCircle,
   AlertCircle,
   Plus,
   Trash2,
