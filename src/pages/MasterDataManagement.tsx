@@ -208,8 +208,8 @@ const MasterDataManagement: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Master Data</h1>
-          <p className="text-sm text-gray-500">Manage cities, body types, and fuel types shown in the driver app</p>
+          <h1 className="text-2xl font-bold text-gray-800">System Configuration</h1>
+          <p className="text-sm text-gray-500">Core reference data — cities, vehicle body types, and fuel types used across the platform</p>
         </div>
         <button onClick={handleAdd} className="flex items-center gap-2 px-4 py-2 text-white rounded-lg bg-movezy-500 hover:bg-movezy-600">
           <Plus className="w-4 h-4" />

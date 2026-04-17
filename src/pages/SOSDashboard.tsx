@@ -1,10 +1,9 @@
 // src/pages/SOSDashboard.tsx
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Phone,
   MapPin,
-  Clock,
   Shield,
   CheckCircle,
   User,
@@ -12,512 +11,728 @@ import {
   MessageSquare,
   ExternalLink,
   RefreshCw,
-  Bell,
+  ArrowUpRight,
+  Timer,
+  X,
+  Loader2,
 } from "lucide-react";
-import type { SOSAlert } from "../types/admin";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import {
+  fetchSOSAlerts,
+  fetchSOSStats,
+  respondToSOSAlert,
+  resolveSOSAlert,
+  notifyPoliceForSOS,
+  type SOSAlertRow,
+  type SOSStatsResponse,
+} from "../services/api";
+
+type FilterKey = "ALL" | "ACTIVE" | "RESPONDED" | "RESOLVED";
+
+const sosIcon = (status: string) => {
+  const color =
+    status === "ACTIVE" ? "#EF4444" : status === "RESPONDED" ? "#F59E0B" : "#10B981";
+  return L.divIcon({
+    className: "sos-marker",
+    html: `<div style="position:relative;display:flex;align-items:center;justify-content:center;">
+      <div style="position:absolute;width:44px;height:44px;border-radius:50%;background:${color};opacity:0.2;animation:${status === "ACTIVE" ? "sosPulse 1.5s infinite" : "none"};"></div>
+      <div style="position:relative;width:26px;height:26px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:bold;">!</div>
+      </div>
+      <style>@keyframes sosPulse{0%{transform:scale(0.9);opacity:0.5}70%{transform:scale(2);opacity:0}100%{opacity:0}}</style>`,
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
+  });
+};
+
+const FlyTo: React.FC<{ target: [number, number] | null }> = ({ target }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.flyTo(target, 14, { duration: 0.8 });
+  }, [target, map]);
+  return null;
+};
+
+const personName = (
+  p: SOSAlertRow["userId"] | SOSAlertRow["driverId"],
+): string => {
+  if (!p || typeof p === "string") return "Unknown";
+  return p.fullName || p.name || "Unknown";
+};
+
+const personPhone = (
+  p: SOSAlertRow["userId"] | SOSAlertRow["driverId"],
+): string | undefined => {
+  if (!p || typeof p === "string") return undefined;
+  return p.mobileNumber;
+};
+
+const bookingNumber = (b: SOSAlertRow["bookingId"]): string | undefined => {
+  if (!b || typeof b === "string") return undefined;
+  return b.bookingNumber || b.orderId;
+};
+
+const coordsOf = (alert: SOSAlertRow): [number, number] | null => {
+  const coords = alert.location?.coordinates;
+  if (!coords || coords.length < 2) return null;
+  const [lng, lat] = coords;
+  if (typeof lat !== "number" || typeof lng !== "number") return null;
+  return [lat, lng];
+};
 
 const SOSDashboard: React.FC = () => {
-  const [alerts, setAlerts] = useState<SOSAlert[]>([]);
+  const [alerts, setAlerts] = useState<SOSAlertRow[]>([]);
+  const [stats, setStats] = useState<SOSStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedAlert, setSelectedAlert] = useState<SOSAlert | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedAlert, setSelectedAlert] = useState<SOSAlertRow | null>(null);
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [resolution, setResolution] = useState("");
-  const [filter, setFilter] = useState<
-    "ALL" | "ACTIVE" | "RESPONDED" | "RESOLVED"
-  >("ALL");
+  const [resolveAsFalseAlarm, setResolveAsFalseAlarm] = useState(false);
+  const [filter, setFilter] = useState<FilterKey>("ALL");
+  const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [resolveSaving, setResolveSaving] = useState(false);
+  const timerRef = useRef<number | null>(null);
 
-  // Mock data
-  const mockAlerts: SOSAlert[] = [
-    {
-      _id: "1",
-      userId: "user1",
-      bookingId: "booking1",
-      triggeredBy: "USER",
-      location: {
-        lat: 28.6139,
-        lng: 77.209,
-        address: "Connaught Place, New Delhi",
-      },
-      status: "ACTIVE",
-      policeNotified: false,
-      contactsNotified: 2,
-      createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-      user: {
-        name: "Rahul Sharma",
-        phone: "+91 98765 43210",
-      },
-      driver: {
-        name: "Amit Kumar",
-        phone: "+91 98765 43220",
-      },
-      booking: {
-        bookingNumber: "MZY-2024-001234",
-      },
-    },
-    {
-      _id: "2",
-      driverId: "driver1",
-      bookingId: "booking2",
-      triggeredBy: "DRIVER",
-      location: {
-        lat: 28.5355,
-        lng: 77.391,
-        address: "Sector 18, Noida",
-      },
-      status: "RESPONDED",
-      respondedBy: "admin1",
-      respondedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-      policeNotified: true,
-      contactsNotified: 3,
-      createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-      user: {
-        name: "Priya Patel",
-        phone: "+91 98765 43211",
-      },
-      driver: {
-        name: "Vijay Singh",
-        phone: "+91 98765 43221",
-      },
-      booking: {
-        bookingNumber: "MZY-2024-001235",
-      },
-    },
-    {
-      _id: "3",
-      userId: "user2",
-      triggeredBy: "USER",
-      location: {
-        lat: 28.4595,
-        lng: 77.0266,
-        address: "DLF Cyber City, Gurugram",
-      },
-      status: "RESOLVED",
-      respondedBy: "admin1",
-      respondedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-      resolvedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      resolution: "False alarm - User accidentally triggered SOS",
-      policeNotified: false,
-      contactsNotified: 1,
-      createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-      user: {
-        name: "Arjun Reddy",
-        phone: "+91 98765 43212",
-      },
-    },
-  ];
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [alertsRes, statsRes] = await Promise.all([
+        fetchSOSAlerts({ limit: 100 }),
+        fetchSOSStats(),
+      ]);
 
-  useEffect(() => {
-    setTimeout(() => {
-      setAlerts(mockAlerts);
+      if (alertsRes?.success === false) {
+        setError(alertsRes.message || "Failed to load SOS alerts");
+      }
+      const list: SOSAlertRow[] =
+        alertsRes?.data?.alerts || alertsRes?.alerts || [];
+      setAlerts(list);
+      setStats(statsRes?.data || statsRes || null);
+
+      const firstActive = list.find((a) => a.status === "ACTIVE");
+      if (firstActive) {
+        setSelectedAlert(firstActive);
+        const c = coordsOf(firstActive);
+        if (c) setFlyTarget(c);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load SOS alerts");
+    } finally {
       setLoading(false);
-    }, 500);
+    }
   }, []);
 
-  const filteredAlerts = alerts.filter((alert) => {
-    if (filter === "ALL") return true;
-    return alert.status === filter;
-  });
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const activeCount = alerts.filter((a) => a.status === "ACTIVE").length;
+  useEffect(() => {
+    timerRef.current = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const filteredAlerts = useMemo(
+    () => alerts.filter((a) => (filter === "ALL" ? true : a.status === filter)),
+    [alerts, filter],
+  );
+
+  const activeCount = stats?.activeCount ?? alerts.filter((a) => a.status === "ACTIVE").length;
   const respondedCount = alerts.filter((a) => a.status === "RESPONDED").length;
+  const resolvedCount =
+    stats?.resolvedCount ??
+    alerts.filter((a) => a.status === "RESOLVED").length;
+  const totalCount = stats?.totalCount ?? alerts.length;
 
-  const handleRespond = async (alert: SOSAlert) => {
-    setAlerts(
-      alerts.map((a) =>
-        a._id === alert._id
-          ? {
-              ...a,
-              status: "RESPONDED" as const,
+  const activeAlerts = alerts.filter((a) => a.status === "ACTIVE");
+
+  const handleRespond = async (alert: SOSAlertRow) => {
+    setActioningId(alert._id);
+    try {
+      const res = await respondToSOSAlert(alert._id);
+      if (res?.success === false) {
+        alert && alert._id && window.alert(res.message || "Failed to respond");
+      } else {
+        const updated: SOSAlertRow | undefined = res?.data;
+        setAlerts((list) =>
+          list.map((a) =>
+            a._id === alert._id
+              ? updated || { ...a, status: "RESPONDED", respondedAt: new Date().toISOString() }
+              : a,
+          ),
+        );
+        if (selectedAlert?._id === alert._id) {
+          setSelectedAlert(
+            updated || {
+              ...alert,
+              status: "RESPONDED",
               respondedAt: new Date().toISOString(),
-            }
-          : a,
-      ),
-    );
-  };
-
-  const handleResolve = async () => {
-    if (!selectedAlert || !resolution) return;
-    setAlerts(
-      alerts.map((a) =>
-        a._id === selectedAlert._id
-          ? {
-              ...a,
-              status: "RESOLVED" as const,
-              resolvedAt: new Date().toISOString(),
-              resolution,
-            }
-          : a,
-      ),
-    );
-    setShowResolveModal(false);
-    setSelectedAlert(null);
-    setResolution("");
-  };
-
-  const handleNotifyPolice = async (alert: SOSAlert) => {
-    setAlerts(
-      alerts.map((a) =>
-        a._id === alert._id ? { ...a, policeNotified: true } : a,
-      ),
-    );
-  };
-
-  const getTimeAgo = (dateString: string) => {
-    const diff = Date.now() - new Date(dateString).getTime();
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "ACTIVE":
-        return "bg-red-100 text-red-800 animate-pulse";
-      case "RESPONDED":
-        return "bg-yellow-100 text-yellow-800";
-      case "RESOLVED":
-        return "bg-green-100 text-green-800";
-      default:
-        return "bg-gray-100 text-gray-800";
+            },
+          );
+        }
+      }
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Failed to respond");
+    } finally {
+      setActioningId(null);
     }
   };
 
+  const handleResolve = async () => {
+    if (!selectedAlert || !resolution.trim()) return;
+    setResolveSaving(true);
+    try {
+      const res = await resolveSOSAlert(selectedAlert._id, {
+        resolutionNotes: resolution.trim(),
+        isFalseAlarm: resolveAsFalseAlarm,
+      });
+      if (res?.success === false) {
+        window.alert(res.message || "Failed to resolve");
+      } else {
+        const updated: SOSAlertRow | undefined = res?.data;
+        setAlerts((list) =>
+          list.map((a) =>
+            a._id === selectedAlert._id
+              ? updated || {
+                  ...a,
+                  status: resolveAsFalseAlarm ? "FALSE_ALARM" : "RESOLVED",
+                  resolvedAt: new Date().toISOString(),
+                  resolutionNotes: resolution,
+                }
+              : a,
+          ),
+        );
+        setShowResolveModal(false);
+        setResolution("");
+        setResolveAsFalseAlarm(false);
+      }
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Failed to resolve");
+    } finally {
+      setResolveSaving(false);
+    }
+  };
+
+  const handleNotifyPolice = async (alert: SOSAlertRow) => {
+    setActioningId(alert._id);
+    try {
+      const res = await notifyPoliceForSOS(alert._id);
+      if (res?.success === false) {
+        window.alert(res.message || "Failed to notify police");
+      } else {
+        const updated: SOSAlertRow | undefined = res?.data;
+        setAlerts((list) =>
+          list.map((a) =>
+            a._id === alert._id
+              ? updated || { ...a, policeNotified: true }
+              : a,
+          ),
+        );
+      }
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Failed to notify police");
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  const fmtElapsed = (iso?: string) => {
+    if (!iso) return "—";
+    const diff = Math.floor((now - new Date(iso).getTime()) / 1000);
+    if (diff < 0) return "0s";
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    const s = diff % 60;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
+
+  const defaultCenter: [number, number] = useMemo(() => {
+    for (const a of alerts) {
+      const c = coordsOf(a);
+      if (c) return c;
+    }
+    return [28.6139, 77.209];
+  }, [alerts]);
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="space-y-5">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <AlertTriangle className="w-6 h-6 text-red-500" />
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-500" />
             SOS Emergency Dashboard
-          </h2>
-          <p className="text-sm text-gray-500">
-            Monitor and respond to emergency alerts
+          </h1>
+          <p className="text-xs text-gray-500">
+            Monitor and respond to emergency alerts in real time.
           </p>
         </div>
         <button
-          onClick={() => window.location.reload()}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-50"
+          onClick={() => void load()}
+          disabled={loading}
+          className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50"
         >
-          <RefreshCw className="w-4 h-4" />
+          {loading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
           Refresh
         </button>
       </div>
 
-      {/* Alert Banner */}
-      {activeCount > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-4 animate-pulse">
-          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-            <Bell className="w-6 h-6 text-red-600" />
-          </div>
-          <div className="flex-1">
-            <p className="font-semibold text-red-800">
-              {activeCount} Active Emergency Alert{activeCount > 1 ? "s" : ""}
-            </p>
-            <p className="text-sm text-red-600">Immediate attention required</p>
-          </div>
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-700 text-sm flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4" />
+          {error}
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div
-          className={`bg-white rounded-2xl shadow-sm p-6 border cursor-pointer transition-all ${
-            filter === "ALL"
-              ? "border-movezy-500 ring-2 ring-movezy-200"
-              : "border-gray-100"
-          }`}
-          onClick={() => setFilter("ALL")}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Total Alerts</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">
-                {alerts.length}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6 text-gray-600" />
-            </div>
-          </div>
-        </div>
-
-        <div
-          className={`bg-white rounded-2xl shadow-sm p-6 border cursor-pointer transition-all ${
-            filter === "ACTIVE"
-              ? "border-red-500 ring-2 ring-red-200"
-              : "border-gray-100"
-          }`}
-          onClick={() => setFilter("ACTIVE")}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Active</p>
-              <p className="text-2xl font-bold text-red-600 mt-1">
-                {activeCount}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center animate-pulse">
-              <AlertTriangle className="w-6 h-6 text-red-600" />
-            </div>
-          </div>
-        </div>
-
-        <div
-          className={`bg-white rounded-2xl shadow-sm p-6 border cursor-pointer transition-all ${
-            filter === "RESPONDED"
-              ? "border-yellow-500 ring-2 ring-yellow-200"
-              : "border-gray-100"
-          }`}
-          onClick={() => setFilter("RESPONDED")}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Responded</p>
-              <p className="text-2xl font-bold text-yellow-600 mt-1">
-                {respondedCount}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-              <MessageSquare className="w-6 h-6 text-yellow-600" />
-            </div>
-          </div>
-        </div>
-
-        <div
-          className={`bg-white rounded-2xl shadow-sm p-6 border cursor-pointer transition-all ${
-            filter === "RESOLVED"
-              ? "border-green-500 ring-2 ring-green-200"
-              : "border-gray-100"
-          }`}
-          onClick={() => setFilter("RESOLVED")}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Resolved</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">
-                {alerts.filter((a) => a.status === "RESOLVED").length}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Alerts List */}
-      <div className="space-y-4">
-        {loading ? (
-          <div className="bg-white rounded-2xl p-12 text-center text-gray-500">
-            Loading...
-          </div>
-        ) : filteredAlerts.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center text-gray-500">
-            No alerts found
-          </div>
-        ) : (
-          filteredAlerts.map((alert) => (
-            <div
-              key={alert._id}
-              className={`bg-white rounded-2xl shadow-sm border overflow-hidden ${
-                alert.status === "ACTIVE" ? "border-red-200" : "border-gray-100"
-              }`}
-            >
-              <div className="p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                        alert.status === "ACTIVE"
-                          ? "bg-red-100 animate-pulse"
-                          : alert.status === "RESPONDED"
-                            ? "bg-yellow-100"
-                            : "bg-green-100"
-                      }`}
-                    >
-                      {alert.triggeredBy === "USER" ? (
-                        <User
-                          className={`w-6 h-6 ${
-                            alert.status === "ACTIVE"
-                              ? "text-red-600"
-                              : alert.status === "RESPONDED"
-                                ? "text-yellow-600"
-                                : "text-green-600"
-                          }`}
-                        />
-                      ) : (
-                        <Car
-                          className={`w-6 h-6 ${
-                            alert.status === "ACTIVE"
-                              ? "text-red-600"
-                              : alert.status === "RESPONDED"
-                                ? "text-yellow-600"
-                                : "text-green-600"
-                          }`}
-                        />
-                      )}
+      {activeAlerts.length > 0 && (
+        <div className="space-y-2">
+          {activeAlerts.map((alert) => {
+            const triggered = alert.triggeredBy === "USER" ? alert.userId : alert.driverId;
+            return (
+              <div
+                key={alert._id}
+                className="relative w-full bg-gradient-to-r from-red-600 to-red-500 text-white rounded-xl p-4 md:p-5 shadow-lg overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-red-500/30 animate-pulse" aria-hidden />
+                <div className="relative flex flex-col md:flex-row md:items-center gap-3 md:gap-5">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                      <AlertTriangle className="w-6 h-6" />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(alert.status)}`}
-                        >
-                          {alert.status}
-                        </span>
-                        <span className="text-sm text-gray-500">
-                          Triggered by {alert.triggeredBy}
-                        </span>
-                        <span className="text-sm text-gray-400">•</span>
-                        <span className="text-sm text-gray-500 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {getTimeAgo(alert.createdAt)}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-bold text-base leading-tight">
+                          ACTIVE SOS · {personName(triggered)}
+                        </p>
+                        <span className="bg-white/20 text-xs px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                          <Timer className="w-3 h-3" /> {fmtElapsed(alert.createdAt)}
                         </span>
                       </div>
-                      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {alert.user && (
-                          <div className="flex items-center gap-2">
-                            <User className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-600">
-                              {alert.user.name} ({alert.user.phone})
-                            </span>
-                          </div>
-                        )}
-                        {alert.driver && (
-                          <div className="flex items-center gap-2">
-                            <Car className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm text-gray-600">
-                              {alert.driver.name} ({alert.driver.phone})
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4 text-gray-400" />
-                          <span className="text-sm text-gray-600">
-                            {alert.location.address}
-                          </span>
-                          <a
-                            href={`https://maps.google.com/?q=${alert.location.lat},${alert.location.lng}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-movezy-600 hover:underline"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                        </div>
-                        {alert.booking && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500">
-                              Booking:
-                            </span>
-                            <span className="text-sm font-mono text-gray-700">
-                              {alert.booking.bookingNumber}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      {alert.resolution && (
-                        <div className="mt-3 p-3 bg-green-50 rounded-lg">
-                          <p className="text-sm text-green-800">
-                            <strong>Resolution:</strong> {alert.resolution}
-                          </p>
-                        </div>
-                      )}
+                      <p className="text-sm text-white/90 flex items-center gap-1.5 mt-0.5 truncate">
+                        <MapPin className="w-3.5 h-3.5 flex-shrink-0" />{" "}
+                        {alert.address || "Location shared"}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2">
-                    {alert.status === "ACTIVE" && (
-                      <>
-                        <button
-                          onClick={() => handleRespond(alert)}
-                          className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-sm font-medium"
-                        >
-                          <MessageSquare className="w-4 h-4" />
-                          Respond
-                        </button>
-                        {!alert.policeNotified && (
-                          <button
-                            onClick={() => handleNotifyPolice(alert)}
-                            className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium"
-                          >
-                            <Shield className="w-4 h-4" />
-                            Notify Police
-                          </button>
-                        )}
-                      </>
-                    )}
-                    {alert.status === "RESPONDED" && (
-                      <button
-                        onClick={() => {
-                          setSelectedAlert(alert);
-                          setShowResolveModal(true);
-                        }}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                        Resolve
-                      </button>
-                    )}
-                    {(alert.user?.phone || alert.driver?.phone) && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {personPhone(triggered) && (
                       <a
-                        href={`tel:${alert.triggeredBy === "USER" ? alert.user?.phone : alert.driver?.phone}`}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                        href={`tel:${personPhone(triggered)}`}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-white text-red-600 text-sm font-semibold rounded-lg hover:bg-gray-100"
                       >
-                        <Phone className="w-4 h-4" />
-                        Call
+                        <Phone className="w-4 h-4" /> Call
                       </a>
                     )}
+                    {!alert.policeNotified && (
+                      <button
+                        onClick={() => void handleNotifyPolice(alert)}
+                        disabled={actioningId === alert._id}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-red-800 text-white text-sm font-semibold rounded-lg hover:bg-red-900 disabled:opacity-50"
+                      >
+                        <Shield className="w-4 h-4" /> Notify Police
+                      </button>
+                    )}
+                    <button
+                      onClick={() => void handleRespond(alert)}
+                      disabled={actioningId === alert._id}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-white/20 text-white text-sm font-semibold rounded-lg hover:bg-white/30 disabled:opacity-50"
+                    >
+                      <MessageSquare className="w-4 h-4" /> Respond
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedAlert(alert);
+                        const c = coordsOf(alert);
+                        if (c) setFlyTarget(c);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-white/10 text-white text-sm font-semibold rounded-lg hover:bg-white/20"
+                    >
+                      <ArrowUpRight className="w-4 h-4" /> Details
+                    </button>
                   </div>
                 </div>
-                {alert.policeNotified && (
-                  <div className="mt-4 flex items-center gap-2 text-sm text-blue-600">
-                    <Shield className="w-4 h-4" />
-                    Police has been notified
-                  </div>
-                )}
               </div>
-            </div>
-          ))
-        )}
+            );
+          })}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <FilterStat
+          label="Total"
+          count={totalCount}
+          tone="neutral"
+          active={filter === "ALL"}
+          onClick={() => setFilter("ALL")}
+        />
+        <FilterStat
+          label="Active"
+          count={activeCount}
+          tone="danger"
+          pulse={activeCount > 0}
+          active={filter === "ACTIVE"}
+          onClick={() => setFilter("ACTIVE")}
+        />
+        <FilterStat
+          label="Responded"
+          count={respondedCount}
+          tone="warning"
+          active={filter === "RESPONDED"}
+          onClick={() => setFilter("RESPONDED")}
+        />
+        <FilterStat
+          label="Resolved"
+          count={resolvedCount}
+          tone="success"
+          active={filter === "RESOLVED"}
+          onClick={() => setFilter("RESOLVED")}
+        />
       </div>
 
-      {/* Resolve Modal */}
-      {showResolveModal && selectedAlert && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">
-              Resolve SOS Alert
+      <div className="grid grid-cols-1 lg:grid-cols-10 gap-4">
+        <div className="lg:col-span-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between p-3 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-red-500" /> Incident Map
             </h3>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Resolution Notes
-              </label>
-              <textarea
-                value={resolution}
-                onChange={(e) => setResolution(e.target.value)}
-                rows={4}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-movezy-500"
-                placeholder="Describe how the situation was resolved..."
+            <span className="text-xs text-gray-500">
+              {filteredAlerts.length} incidents
+            </span>
+          </div>
+          <div className="h-[480px]">
+            <MapContainer
+              center={defaultCenter}
+              zoom={11}
+              style={{ height: "100%", width: "100%" }}
+              zoomControl={false}
+            >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution="&copy; OSM"
               />
+              <FlyTo target={flyTarget} />
+              {filteredAlerts.map((a) => {
+                const c = coordsOf(a);
+                if (!c) return null;
+                const triggered = a.triggeredBy === "USER" ? a.userId : a.driverId;
+                return (
+                  <Marker
+                    key={a._id}
+                    position={c}
+                    icon={sosIcon(a.status)}
+                    eventHandlers={{ click: () => setSelectedAlert(a) }}
+                  >
+                    <Popup>
+                      <div className="text-sm min-w-[180px]">
+                        <p className="font-semibold text-red-600">{a.status}</p>
+                        <p className="text-gray-700">{personName(triggered)}</p>
+                        <p className="text-xs text-gray-500">
+                          {a.address || "Location shared"}
+                        </p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+            </MapContainer>
+          </div>
+        </div>
+
+        <div className="lg:col-span-4 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
+          <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-800 text-sm">Live Feed</h3>
+            <span className="text-xs text-gray-500">
+              {filter === "ALL" ? "All" : filter.toLowerCase()} ·{" "}
+              {filteredAlerts.length}
+            </span>
+          </div>
+          <div className="flex-1 max-h-[480px] overflow-y-auto divide-y divide-gray-100">
+            {loading ? (
+              <div className="p-6 text-center text-sm text-gray-400">
+                <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
+                Loading…
+              </div>
+            ) : filteredAlerts.length === 0 ? (
+              <div className="p-6 text-center text-sm text-gray-400">
+                No alerts in this view.
+              </div>
+            ) : (
+              filteredAlerts.map((a) => {
+                const isSelected = selectedAlert?._id === a._id;
+                const isActive = a.status === "ACTIVE";
+                const triggered = a.triggeredBy === "USER" ? a.userId : a.driverId;
+                const phone = personPhone(triggered);
+                return (
+                  <button
+                    key={a._id}
+                    onClick={() => {
+                      setSelectedAlert(a);
+                      const c = coordsOf(a);
+                      if (c) setFlyTarget(c);
+                    }}
+                    className={`w-full text-left p-3 transition hover:bg-gray-50 ${
+                      isSelected ? "bg-red-50/60" : ""
+                    } ${isActive ? "border-l-4 border-l-red-500" : ""}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          a.status === "ACTIVE"
+                            ? "bg-red-100 text-red-600"
+                            : a.status === "RESPONDED"
+                              ? "bg-amber-100 text-amber-600"
+                              : "bg-green-100 text-green-600"
+                        }`}
+                      >
+                        {a.triggeredBy === "USER" ? (
+                          <User className="w-4 h-4" />
+                        ) : (
+                          <Car className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold text-sm text-gray-900 truncate">
+                            {personName(triggered)}
+                          </p>
+                          <span
+                            className={`flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded ${
+                              a.status === "ACTIVE"
+                                ? "bg-red-600 text-white"
+                                : a.status === "RESPONDED"
+                                  ? "bg-amber-500 text-white"
+                                  : "bg-green-500 text-white"
+                            }`}
+                          >
+                            <Timer className="w-3 h-3" />{" "}
+                            {fmtElapsed(a.createdAt)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 truncate flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3" />{" "}
+                          {a.address || "Location shared"}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-2">
+                          {phone && (
+                            <a
+                              href={`tel:${phone}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-[11px] font-semibold rounded"
+                            >
+                              <Phone className="w-3 h-3" /> Call
+                            </a>
+                          )}
+                          {!a.policeNotified && a.status === "ACTIVE" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleNotifyPolice(a);
+                              }}
+                              disabled={actioningId === a._id}
+                              className="flex items-center gap-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-[11px] font-semibold rounded disabled:opacity-50"
+                            >
+                              <Shield className="w-3 h-3" /> Police
+                            </button>
+                          )}
+                          {a.status === "ACTIVE" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleRespond(a);
+                              }}
+                              disabled={actioningId === a._id}
+                              className="flex items-center gap-1 px-2 py-1 border border-gray-200 hover:bg-gray-100 text-gray-700 text-[11px] font-semibold rounded disabled:opacity-50"
+                            >
+                              <ArrowUpRight className="w-3 h-3" /> Respond
+                            </button>
+                          )}
+                          {a.status === "RESPONDED" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedAlert(a);
+                                setShowResolveModal(true);
+                              }}
+                              className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 text-[11px] font-semibold rounded"
+                            >
+                              <CheckCircle className="w-3 h-3" /> Resolve
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {selectedAlert && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-semibold text-gray-900">
+                  Incident{" "}
+                  {bookingNumber(selectedAlert.bookingId) || selectedAlert._id}
+                </h3>
+                <span
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    selectedAlert.status === "ACTIVE"
+                      ? "bg-red-100 text-red-700"
+                      : selectedAlert.status === "RESPONDED"
+                        ? "bg-amber-100 text-amber-700"
+                        : selectedAlert.status === "FALSE_ALARM"
+                          ? "bg-gray-100 text-gray-700"
+                          : "bg-green-100 text-green-700"
+                  }`}
+                >
+                  {selectedAlert.status}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500">
+                Triggered by {selectedAlert.triggeredBy} ·{" "}
+                {fmtElapsed(selectedAlert.createdAt)} ago
+              </p>
             </div>
-            <div className="flex gap-3 mt-6">
+            {(() => {
+              const c = coordsOf(selectedAlert);
+              if (!c) return null;
+              return (
+                <a
+                  href={`https://maps.google.com/?q=${c[0]},${c[1]}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-movezy-600 text-sm hover:underline flex items-center gap-1"
+                >
+                  Open in Maps <ExternalLink className="w-3 h-3" />
+                </a>
+              );
+            })()}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            {selectedAlert.userId && (
+              <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                <User className="w-4 h-4 text-gray-400" />
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Customer</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {personName(selectedAlert.userId)}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {personPhone(selectedAlert.userId) || "—"}
+                  </p>
+                </div>
+              </div>
+            )}
+            {selectedAlert.driverId && (
+              <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                <Car className="w-4 h-4 text-gray-400" />
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Driver</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {personName(selectedAlert.driverId)}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {personPhone(selectedAlert.driverId) || "—"}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {selectedAlert.policeNotified && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg">
+              <Shield className="w-4 h-4" /> Police has been notified.
+            </div>
+          )}
+
+          {selectedAlert.resolutionNotes && (
+            <div className="mt-3 p-3 bg-green-50 rounded-lg text-sm text-green-800">
+              <strong>Resolution:</strong> {selectedAlert.resolutionNotes}
+            </div>
+          )}
+
+          {selectedAlert.status === "RESPONDED" && (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setShowResolveModal(true)}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold flex items-center gap-2"
+              >
+                <CheckCircle className="w-4 h-4" /> Mark as Resolved
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showResolveModal && selectedAlert && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-5 max-w-md w-full">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-bold text-gray-900">
+                Resolve SOS Alert
+              </h3>
               <button
                 onClick={() => {
                   setShowResolveModal(false);
-                  setSelectedAlert(null);
                   setResolution("");
+                  setResolveAsFalseAlarm(false);
                 }}
-                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50"
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Resolution notes
+            </label>
+            <textarea
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value)}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-movezy-500 focus:outline-none text-sm"
+              placeholder="Describe how the situation was resolved…"
+            />
+            <label className="flex items-center gap-2 mt-3 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={resolveAsFalseAlarm}
+                onChange={(e) => setResolveAsFalseAlarm(e.target.checked)}
+              />
+              Mark as false alarm
+            </label>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => {
+                  setShowResolveModal(false);
+                  setResolution("");
+                  setResolveAsFalseAlarm(false);
+                }}
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 text-sm"
               >
                 Cancel
               </button>
               <button
-                onClick={handleResolve}
-                disabled={!resolution}
-                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50"
+                onClick={() => void handleResolve()}
+                disabled={!resolution.trim() || resolveSaving}
+                className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
               >
+                {resolveSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                 Resolve
               </button>
             </div>
@@ -525,6 +740,62 @@ const SOSDashboard: React.FC = () => {
         </div>
       )}
     </div>
+  );
+};
+
+const FilterStat: React.FC<{
+  label: string;
+  count: number;
+  tone: "neutral" | "danger" | "warning" | "success";
+  pulse?: boolean;
+  active?: boolean;
+  onClick: () => void;
+}> = ({ label, count, tone, pulse, active, onClick }) => {
+  const colors = {
+    neutral: { border: "border-gray-300", text: "text-gray-900", bg: "bg-gray-100" },
+    danger: { border: "border-red-500", text: "text-red-600", bg: "bg-red-100" },
+    warning: { border: "border-amber-500", text: "text-amber-600", bg: "bg-amber-100" },
+    success: { border: "border-green-500", text: "text-green-600", bg: "bg-green-100" },
+  }[tone];
+  return (
+    <button
+      onClick={onClick}
+      className={`bg-white rounded-xl shadow-sm p-4 border transition text-left ${
+        active
+          ? `${colors.border} ring-2 ring-offset-1 ring-${
+              tone === "danger"
+                ? "red"
+                : tone === "warning"
+                  ? "amber"
+                  : tone === "success"
+                    ? "green"
+                    : "gray"
+            }-200`
+          : "border-gray-200 hover:border-gray-300"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-gray-500">{label}</p>
+          <p className={`text-2xl font-bold mt-0.5 ${colors.text}`}>{count}</p>
+        </div>
+        <div
+          className={`w-9 h-9 rounded-lg flex items-center justify-center ${colors.bg} ${
+            pulse ? "animate-pulse" : ""
+          }`}
+        >
+          {tone === "danger" ? (
+            <AlertTriangle className="w-4 h-4 text-red-600" />
+          ) : tone === "warning" ? (
+            <MessageSquare className="w-4 h-4 text-amber-600" />
+          ) : tone === "success" ? (
+            <CheckCircle className="w-4 h-4 text-green-600" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 text-gray-600" />
+          )}
+        </div>
+      </div>
+    </button>
   );
 };
 

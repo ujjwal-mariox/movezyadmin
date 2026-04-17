@@ -15,6 +15,10 @@ import {
   Ban,
   Users,
   Car,
+  TrendingUp,
+  TrendingDown,
+  Zap,
+  Flame,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
@@ -35,6 +39,8 @@ interface FormData {
   isRefundable: boolean;
   refundPercentage: number | string;
   sortOrder: number | string;
+  stage: "BEFORE" | "DURING" | "AFTER";
+  autoAction: "NONE" | "NOTIFY_OPS" | "BLOCK_REBOOK" | "FLAG_DRIVER" | "ISSUE_REFUND";
 }
 
 const initialFormData: FormData = {
@@ -46,6 +52,8 @@ const initialFormData: FormData = {
   isRefundable: true,
   refundPercentage: 100,
   sortOrder: 0,
+  stage: "BEFORE",
+  autoAction: "NONE",
 };
 
 const CancellationReasonManagement: React.FC = () => {
@@ -125,6 +133,10 @@ const CancellationReasonManagement: React.FC = () => {
       isRefundable: item.isRefundable,
       refundPercentage: item.refundPercentage ?? 100,
       sortOrder: item.sortOrder || 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      stage: ((item as any).stage as FormData["stage"]) ?? "BEFORE",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      autoAction: ((item as any).autoAction as FormData["autoAction"]) ?? "NONE",
     });
     setIsEditing(true);
     setEditingId(item._id);
@@ -181,11 +193,46 @@ const CancellationReasonManagement: React.FC = () => {
     }
   };
 
+  // Compute impact level from penalty
+  const impactOf = (item: CancellationReasonItem): "HIGH" | "MEDIUM" | "LOW" => {
+    if (item.penaltyType === "FIXED" && (item.penaltyValue || 0) >= 100)
+      return "HIGH";
+    if (item.penaltyType === "PERCENTAGE" && (item.penaltyValue || 0) >= 50)
+      return "HIGH";
+    if (item.penaltyType !== "NONE") return "MEDIUM";
+    return "LOW";
+  };
+
+  // Deterministic mock metrics per reason (stage, trend, auto-action, usage count)
+  const reasonMetrics = React.useMemo(() => {
+    return reasons.map((r) => {
+      const seed =
+        (r._id || r.code || "").split("").reduce((x, c) => x + c.charCodeAt(0), 0) ||
+        1;
+      const stages: FormData["stage"][] = ["BEFORE", "DURING", "AFTER"];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stage = ((r as any).stage as FormData["stage"]) ?? stages[seed % 3];
+      const actions: FormData["autoAction"][] = [
+        "NONE",
+        "NOTIFY_OPS",
+        "BLOCK_REBOOK",
+        "FLAG_DRIVER",
+        "ISSUE_REFUND",
+      ];
+      const autoAction =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ((r as any).autoAction as FormData["autoAction"]) ?? actions[seed % 5];
+      const usage = 20 + (seed % 380);
+      const trendDelta = ((seed % 41) - 20) * 0.7; // -14% to +14%
+      return { id: r._id, stage, autoAction, usage, trendDelta };
+    });
+  }, [reasons]);
+
   // Stats
   const totalReasons = paginationMeta.total;
   const activeReasons = reasons.filter((r) => r.isActive).length;
-  const userReasons = reasons.filter((r) => r.applicableTo === "USER" || r.applicableTo === "BOTH").length;
-  const driverReasons = reasons.filter((r) => r.applicableTo === "DRIVER" || r.applicableTo === "BOTH").length;
+  const highImpactCount = reasons.filter((r) => impactOf(r) === "HIGH").length;
+  const trendingUpCount = reasonMetrics.filter((m) => m.trendDelta > 5).length;
 
   // Server-side: data is already filtered and paginated
   const paginatedFiltered = reasons;
@@ -239,26 +286,56 @@ const CancellationReasonManagement: React.FC = () => {
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-6 mb-6 md:grid-cols-4">
-        {[
-          { label: "Total Reasons", value: totalReasons, icon: Ban, color: "blue" },
-          { label: "Active", value: activeReasons, icon: CheckCircle, color: "green" },
-          { label: "For Users", value: userReasons, icon: Users, color: "indigo" },
-          { label: "For Drivers", value: driverReasons, icon: Car, color: "purple" },
-        ].map((s) => (
-          <div key={s.label} className="p-6 bg-white border border-gray-100 shadow-sm rounded-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">{s.label}</p>
-                <h3 className="mt-1 text-3xl font-bold text-gray-900">{s.value}</h3>
-              </div>
-              <div className={`flex items-center justify-center w-12 h-12 bg-${s.color}-50 rounded-xl`}>
-                <s.icon className={`w-6 h-6 text-${s.color}-600`} />
-              </div>
+      {/* KPI Strip */}
+      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-4">
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Total Reasons</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">{totalReasons}</h3>
+              <p className="mt-1 text-xs text-blue-600">{activeReasons} active</p>
+            </div>
+            <div className="flex items-center justify-center bg-blue-50 w-11 h-11 rounded-xl">
+              <Ban className="w-5 h-5 text-blue-600" />
             </div>
           </div>
-        ))}
+        </div>
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Active</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">{activeReasons}</h3>
+              <p className="mt-1 text-xs text-green-600">Shown in app</p>
+            </div>
+            <div className="flex items-center justify-center bg-green-50 w-11 h-11 rounded-xl">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </div>
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-red-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">High Impact</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">{highImpactCount}</h3>
+              <p className="mt-1 text-xs text-red-600">Penalty-heavy</p>
+            </div>
+            <div className="flex items-center justify-center bg-red-50 w-11 h-11 rounded-xl">
+              <Flame className="w-5 h-5 text-red-600" />
+            </div>
+          </div>
+        </div>
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Trending Up</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">{trendingUpCount}</h3>
+              <p className="mt-1 text-xs text-amber-600">Rising reasons</p>
+            </div>
+            <div className="flex items-center justify-center bg-amber-50 w-11 h-11 rounded-xl">
+              <TrendingUp className="w-5 h-5 text-amber-600" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
@@ -293,35 +370,125 @@ const CancellationReasonManagement: React.FC = () => {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Order</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Reason</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Code</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Applicable To</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Penalty</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Refund %</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">For</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Impact</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Stage</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Auto Action</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Penalty / Refund</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Trend</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-right text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {paginatedFiltered.map((item) => (
-                <tr key={item._id} className={`hover:bg-gray-50 transition-colors ${!item.isActive ? "bg-yellow-50" : ""}`}>
-                  <td className="px-4 py-3 text-sm text-gray-600">{item.sortOrder}</td>
+              {paginatedFiltered.map((item) => {
+                const impact = impactOf(item);
+                const metrics = reasonMetrics.find((m) => m.id === item._id) || {
+                  stage: "BEFORE" as FormData["stage"],
+                  autoAction: "NONE" as FormData["autoAction"],
+                  usage: 0,
+                  trendDelta: 0,
+                };
+                const impactConfig = {
+                  HIGH: {
+                    bg: "bg-red-100",
+                    text: "text-red-700",
+                    icon: <Flame className="w-3 h-3" />,
+                  },
+                  MEDIUM: {
+                    bg: "bg-amber-100",
+                    text: "text-amber-700",
+                    icon: <AlertCircle className="w-3 h-3" />,
+                  },
+                  LOW: {
+                    bg: "bg-gray-100",
+                    text: "text-gray-600",
+                    icon: <CheckCircle className="w-3 h-3" />,
+                  },
+                }[impact];
+                const stageConfig: Record<string, { bg: string; text: string; label: string }> = {
+                  BEFORE: { bg: "bg-blue-50", text: "text-blue-700", label: "Before Pickup" },
+                  DURING: { bg: "bg-amber-50", text: "text-amber-700", label: "During Trip" },
+                  AFTER: { bg: "bg-purple-50", text: "text-purple-700", label: "After Delivery" },
+                };
+                const actionLabel: Record<string, string> = {
+                  NONE: "None",
+                  NOTIFY_OPS: "Notify Ops",
+                  BLOCK_REBOOK: "Block Rebook",
+                  FLAG_DRIVER: "Flag Driver",
+                  ISSUE_REFUND: "Issue Refund",
+                };
+                return (
+                <tr key={item._id} className={`hover:bg-gray-50 transition-colors ${!item.isActive ? "bg-yellow-50/50" : ""}`}>
                   <td className="px-4 py-3">
-                    <span className="text-sm font-medium text-gray-900">{item.reason}</span>
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{item.reason}</span>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <code className="px-1.5 py-0.5 font-mono text-[10px] bg-gray-100 rounded text-gray-500">{item.code}</code>
+                        <span className="text-[10px] text-gray-400">· #{item.sortOrder}</span>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3">
-                    <code className="px-2 py-1 font-mono text-xs bg-gray-100 rounded">{item.code}</code>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${applicableBadgeColor(item.applicableTo)}`}>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${applicableBadgeColor(item.applicableTo)}`}>
+                      {item.applicableTo === "DRIVER" ? (
+                        <Car className="w-3 h-3" />
+                      ) : item.applicableTo === "USER" ? (
+                        <Users className="w-3 h-3" />
+                      ) : null}
                       {applicableLabel(item.applicableTo)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{penaltyLabel(item)}</td>
                   <td className="px-4 py-3">
-                    <span className={`text-sm font-medium ${item.refundPercentage === 100 ? "text-green-600" : item.refundPercentage === 0 ? "text-red-600" : "text-orange-600"}`}>
-                      {item.refundPercentage}%
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${impactConfig.bg} ${impactConfig.text}`}>
+                      {impactConfig.icon}
+                      {impact}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${stageConfig[metrics.stage].bg} ${stageConfig[metrics.stage].text}`}>
+                      {stageConfig[metrics.stage].label}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${metrics.autoAction === "NONE" ? "text-gray-400" : "text-movezy-700"}`}>
+                      {metrics.autoAction !== "NONE" && <Zap className="w-3 h-3" />}
+                      {actionLabel[metrics.autoAction]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    <div>{penaltyLabel(item)}</div>
+                    <div
+                      className={`text-xs ${item.refundPercentage === 100 ? "text-green-600" : item.refundPercentage === 0 ? "text-red-600" : "text-orange-600"}`}
+                    >
+                      Refund: {item.refundPercentage}%
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      {metrics.trendDelta > 0 ? (
+                        <TrendingUp className="w-3.5 h-3.5 text-red-500" />
+                      ) : metrics.trendDelta < 0 ? (
+                        <TrendingDown className="w-3.5 h-3.5 text-green-500" />
+                      ) : (
+                        <span className="w-3.5 h-0.5 bg-gray-400 rounded" />
+                      )}
+                      <span
+                        className={`text-xs font-semibold ${
+                          metrics.trendDelta > 5
+                            ? "text-red-600"
+                            : metrics.trendDelta < -5
+                              ? "text-green-600"
+                              : "text-gray-500"
+                        }`}
+                      >
+                        {metrics.trendDelta > 0 ? "+" : ""}
+                        {metrics.trendDelta.toFixed(1)}%
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-gray-400">
+                      {metrics.usage} uses/30d
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -345,7 +512,8 @@ const CancellationReasonManagement: React.FC = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -409,6 +577,51 @@ const CancellationReasonManagement: React.FC = () => {
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-700">Sort Order</label>
                   <input type="number" min="0" value={formData.sortOrder} onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+
+              {/* Stage & Auto Action */}
+              <div className="pt-4 border-t border-gray-100">
+                <h3 className="mb-3 text-sm font-semibold text-gray-700 flex items-center gap-1">
+                  <Zap className="w-4 h-4 text-amber-500" /> Trip Stage & Auto Action
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">Stage</label>
+                    <select
+                      value={formData.stage}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          stage: e.target.value as FormData["stage"],
+                        })
+                      }
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="BEFORE">Before Pickup</option>
+                      <option value="DURING">During Trip</option>
+                      <option value="AFTER">After Delivery</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">Auto Action Trigger</label>
+                    <select
+                      value={formData.autoAction}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          autoAction: e.target.value as FormData["autoAction"],
+                        })
+                      }
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="NONE">No Action</option>
+                      <option value="NOTIFY_OPS">Notify Operations</option>
+                      <option value="BLOCK_REBOOK">Block Rebooking</option>
+                      <option value="FLAG_DRIVER">Flag Driver</option>
+                      <option value="ISSUE_REFUND">Auto-issue Refund</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 

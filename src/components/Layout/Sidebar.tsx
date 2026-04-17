@@ -28,6 +28,7 @@ import {
   FileText,
   Award,
   GraduationCap,
+  BarChart3,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
@@ -59,59 +60,70 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const menuGroups: MenuGroup[] = [
     {
-      label: "Operations",
+      label: "Command",
       items: [
         { id: "dashboard", label: "Dashboard", icon: Gauge },
-        { id: "orders", label: "Orders", icon: ClipboardList },
-        { id: "tracking", label: "Driver Tracking", icon: MapPin },
-        { id: "sos", label: "SOS Dashboard", icon: AlertTriangle },
+        { id: "tracking", label: "Live Tracking", icon: MapPin },
+        { id: "sos", label: "SOS", icon: AlertTriangle },
       ],
     },
     {
-      label: "People",
+      label: "Operations",
       items: [
-        { id: "app-users", label: "User Management", icon: Users },
-        { id: "riders", label: "Driver Management", icon: Bike },
-        { id: "enterprises", label: "Enterprise", icon: Building2 },
+        { id: "orders", label: "Orders", icon: ClipboardList },
+        { id: "riders", label: "Drivers", icon: Bike },
+        { id: "vehicle-management", label: "Vehicles", icon: Truck },
+        { id: "categories", label: "Delivery Categories", icon: Package },
         { id: "compliance", label: "Document Compliance", icon: FileCheck },
       ],
     },
     {
-      label: "Business",
+      label: "Stakeholders",
+      items: [
+        { id: "app-users", label: "Users", icon: Users },
+        { id: "enterprises", label: "Enterprise", icon: Building2 },
+      ],
+    },
+    {
+      label: "Finance",
       items: [
         { id: "finance", label: "Finance & Insights", icon: DollarSign },
+        { id: "reports", label: "Reports & BI", icon: BarChart3 },
         { id: "payments", label: "Payments", icon: Wallet },
-        { id: "promos", label: "Coupons", icon: Tag },
         { id: "wallet", label: "Wallet", icon: Wallet },
+      ],
+    },
+    {
+      label: "Growth",
+      items: [
+        { id: "promos", label: "Coupons", icon: Tag },
+        { id: "notifications", label: "Notifications", icon: Bell },
       ],
     },
     {
       label: "Configuration",
       items: [
-        { id: "vehicle-management", label: "Vehicles", icon: Truck },
-        { id: "categories", label: "Delivery Categories", icon: Package },
         { id: "addon-services", label: "Add-on Services", icon: Wrench },
         { id: "cancellation-reasons", label: "Cancellation Reasons", icon: Ban },
         { id: "prohibited-items", label: "Prohibited Items", icon: Ban },
         { id: "master-data", label: "Master Data", icon: Database },
         { id: "driver-instructions", label: "Driver Instructions", icon: FileText },
-        { id: "badges", label: "Badges", icon: Award },
-        { id: "training", label: "Training & Learning", icon: GraduationCap },
       ],
     },
     {
-      label: "Communication",
+      label: "Driver Development",
       items: [
-        { id: "notifications", label: "Notifications", icon: Bell },
-        { id: "support", label: "Support Tickets", icon: TicketCheck },
+        { id: "badges", label: "Badges", icon: Award },
+        { id: "training", label: "Training", icon: GraduationCap },
       ],
     },
     {
-      label: "Admin",
+      label: "Admin Control",
       items: [
         { id: "staff", label: "Staff Management", icon: Shield },
         { id: "automation", label: "Automation Rules", icon: Zap },
         { id: "audit-logs", label: "Audit Logs", icon: ScrollText },
+        { id: "support", label: "Support Tickets", icon: TicketCheck },
         { id: "settings", label: "Settings", icon: SlidersHorizontal },
       ],
     },

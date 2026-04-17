@@ -1,344 +1,661 @@
-import React, { useState } from 'react';
-import { 
-  Search, Package, Truck, 
-  DollarSign, CheckCircle, Clock, 
-  Bike, Map as MapIcon, X
-} from 'lucide-react';
-import type { Order } from '../types';
-import { usePagination } from '../hooks/usePagination';
-import Pagination from '../components/Pagination';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Search,
+  Phone,
+  X,
+  Star,
+  UserPlus,
+  XCircle,
+  Filter,
+  ChevronDown,
+  Activity,
+  MessageSquare,
+  MapPin,
+  CircleDot,
+  CheckCircle2,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
+import {
+  fetchAdminBookings,
+  cancelAdminBooking,
+  assignAdminDriver,
+  fetchAvailableDrivers,
+  type BookingRow,
+  type BookingStatus,
+  type BookingPaymentStatus,
+  type DriverOption,
+} from "../services/api";
 
-const initialOrders: Order[] = [
-  {
-    id: 'ORD-7829',
-    customerName: 'Rahul Kumar',
-    pickup: 'Andheri East, Mumbai, MH',
-    dropoff: 'Bandra West, Mumbai, MH',
-    amount: 450,
-    status: 'In Transit',
-    vehicle: 'Tata Ace',
-    goodsType: 'Furniture',
-    date: '2024-03-15 10:30 AM',
-    rider: 'Vikram Singh',
-    distance: '12.5 km'
-  },
-  {
-    id: 'ORD-7830',
-    customerName: 'Priya Sharma',
-    pickup: 'Koramangala, Bangalore, KA',
-    dropoff: 'Indiranagar, Bangalore, KA',
-    amount: 120,
-    status: 'Pending',
-    vehicle: 'Bike',
-    goodsType: 'Documents',
-    date: '2024-03-15 11:15 AM',
-    distance: '5.2 km'
-  },
-  {
-    id: 'ORD-7831',
-    customerName: 'Amit Patel',
-    pickup: 'Connaught Place, Delhi',
-    dropoff: 'Noida Sector 62, UP',
-    amount: 1200,
-    status: 'Assigned',
-    vehicle: 'Pickup 8ft',
-    goodsType: 'Electronics',
-    date: '2024-03-15 09:45 AM',
-    rider: 'Rajesh Kumar',
-    distance: '28 km'
-  },
-  {
-    id: 'ORD-7825',
-    customerName: 'Sneha Gupta',
-    pickup: 'Hitech City, Hyderabad',
-    dropoff: 'Jubilee Hills, Hyderabad',
-    amount: 850,
-    status: 'Delivered',
-    vehicle: '3 Wheeler',
-    goodsType: 'Textiles',
-    date: '2024-03-14 04:20 PM',
-    rider: 'Mohd. Irfan',
-    distance: '8.5 km'
-  },
-  {
-    id: 'ORD-7820',
-    customerName: 'John Doe',
-    pickup: 'Whitefield, Bangalore',
-    dropoff: 'Electronic City, Bangalore',
-    amount: 2500,
-    status: 'Cancelled',
-    vehicle: 'Truck',
-    goodsType: 'Industrial Machinery',
-    date: '2024-03-14 02:00 PM',
-    distance: '35 km'
-  }
+const STATUS_LABEL: Record<BookingStatus, string> = {
+  DRAFT: "Draft",
+  SEARCHING: "Searching",
+  ASSIGNED: "Assigned",
+  DRIVER_ARRIVED: "Driver arrived",
+  PICKED: "Picked",
+  IN_PROGRESS: "In transit",
+  COMPLETED: "Delivered",
+  CANCELLED: "Cancelled",
+};
+
+const STATUS_COLORS: Record<BookingStatus, { dot: string; pill: string }> = {
+  DRAFT: { dot: "bg-gray-400", pill: "bg-gray-100 text-gray-700" },
+  SEARCHING: { dot: "bg-yellow-500", pill: "bg-yellow-50 text-yellow-700" },
+  ASSIGNED: { dot: "bg-blue-500", pill: "bg-blue-50 text-blue-700" },
+  DRIVER_ARRIVED: { dot: "bg-blue-500", pill: "bg-blue-50 text-blue-700" },
+  PICKED: { dot: "bg-indigo-500", pill: "bg-indigo-50 text-indigo-700" },
+  IN_PROGRESS: { dot: "bg-blue-600", pill: "bg-blue-50 text-blue-700" },
+  COMPLETED: { dot: "bg-green-500", pill: "bg-green-50 text-green-700" },
+  CANCELLED: { dot: "bg-gray-700", pill: "bg-gray-100 text-gray-700" },
+};
+
+const PAYMENT_COLORS: Record<BookingPaymentStatus, string> = {
+  PENDING: "bg-yellow-50 text-yellow-700",
+  PAID: "bg-green-50 text-green-700",
+  FAILED: "bg-red-50 text-red-700",
+  REFUNDED: "bg-gray-100 text-gray-700",
+  PARTIALLY_REFUNDED: "bg-gray-100 text-gray-700",
+};
+
+const ACTIVE_STATUSES: BookingStatus[] = [
+  "SEARCHING",
+  "ASSIGNED",
+  "DRIVER_ARRIVED",
+  "PICKED",
+  "IN_PROGRESS",
 ];
 
+const formatTimeAgo = (iso?: string) => {
+  if (!iso) return "—";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+};
+
+const personName = (
+  p: { fullName?: string } | string | undefined,
+): string | undefined => {
+  if (!p) return undefined;
+  if (typeof p === "string") return undefined;
+  return p.fullName;
+};
+
+const personPhone = (
+  p: { mobileNumber?: string } | string | undefined,
+): string | undefined => {
+  if (!p) return undefined;
+  if (typeof p === "string") return undefined;
+  return p.mobileNumber;
+};
+
+const personId = (
+  p: { _id: string } | string | undefined,
+): string | undefined => {
+  if (!p) return undefined;
+  if (typeof p === "string") return p;
+  return p._id;
+};
+
+const computeDelayMinutes = (o: BookingRow): number => {
+  if (!ACTIVE_STATUSES.includes(o.status)) return 0;
+  if (!o.estimatedDropTime) return 0;
+  const d = Math.floor(
+    (Date.now() - new Date(o.estimatedDropTime).getTime()) / 60000,
+  );
+  return d > 0 ? d : 0;
+};
+
+const computeWaitingMinutes = (o: BookingRow): number => {
+  if (o.status !== "SEARCHING") return 0;
+  return Math.max(Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000), 0);
+};
+
 const OrderManagement: React.FC = () => {
-  const [orders] = useState<Order[]>(initialOrders);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [orders, setOrders] = useState<BookingRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<BookingStatus | "">("");
+  const [paymentFilter, setPaymentFilter] = useState<BookingPaymentStatus | "">("");
+  const [serviceFilter, setServiceFilter] = useState<"" | "WITHIN_CITY" | "OUTSTATION">("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [showFilters, setShowFilters] = useState(true);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  // Stats
-  const stats = {
-    total: orders.length,
-    active: orders.filter(o => ['Pending', 'Assigned', 'In Transit'].includes(o.status)).length,
-    completed: orders.filter(o => o.status === 'Delivered').length,
-    revenue: orders.filter(o => o.status !== 'Cancelled').reduce((acc, curr) => acc + curr.amount, 0)
+  // Assign-driver modal
+  const [assignModal, setAssignModal] = useState<BookingRow | null>(null);
+  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [driverSearch, setDriverSearch] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [loadingDrivers, setLoadingDrivers] = useState(false);
+
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchAdminBookings({
+        status: statusFilter || undefined,
+        paymentStatus: paymentFilter || undefined,
+        serviceType: serviceFilter || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: search || undefined,
+        page,
+        limit: 20,
+      });
+      const payload = res?.data ?? res ?? {};
+      const list: BookingRow[] = Array.isArray(payload.bookings) ? payload.bookings : [];
+      setOrders(list);
+      setTotal(payload.total ?? 0);
+      setTotalPages(payload.totalPages ?? 1);
+      if (list.length && !list.some((b) => b._id === selectedId)) {
+        setSelectedId(list[0]._id);
+      }
+    } catch (err) {
+      console.error("Orders load failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, paymentFilter, serviceFilter, dateFrom, dateTo, search, page, selectedId]);
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      loadOrders();
+    }, 250);
+    return () => clearTimeout(id);
+  }, [loadOrders]);
+
+  const selected = useMemo(
+    () => orders.find((o) => o._id === selectedId) || orders[0] || null,
+    [orders, selectedId],
+  );
+
+  const insights = useMemo(() => {
+    const delayed = orders.filter((o) => computeDelayMinutes(o) > 0).length;
+    const active = orders.filter((o) => ACTIVE_STATUSES.includes(o.status)).length;
+    const delivered = orders.filter((o) => o.status === "COMPLETED");
+    const avgDeliveryMin = delivered.length
+      ? Math.round(
+          delivered.reduce((acc, o) => {
+            if (!o.completedAt) return acc;
+            return acc + (new Date(o.completedAt).getTime() - new Date(o.createdAt).getTime()) / 60000;
+          }, 0) / delivered.length,
+        )
+      : 0;
+    const cancelled = orders.filter((o) => o.status === "CANCELLED").length;
+    const failureRate = orders.length ? (cancelled / orders.length) * 100 : 0;
+    return { delayed, active, avgDeliveryMin, failureRate };
+  }, [orders]);
+
+  const clearFilters = () => {
+    setStatusFilter("");
+    setPaymentFilter("");
+    setServiceFilter("");
+    setDateFrom("");
+    setDateTo("");
+    setSearch("");
+    setPage(0);
   };
 
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
-      order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const {
-    paginatedData: paginatedOrders,
-    currentPage,
-    totalPages,
-    setCurrentPage,
-    totalItems,
-    startIndex,
-    endIndex,
-    pageSize,
-    setPageSize,
-  } = usePagination(filteredOrders, 10);
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Delivered': return 'bg-green-100 text-green-800';
-      case 'Cancelled': return 'bg-red-100 text-red-800';
-      case 'In Transit': return 'bg-blue-100 text-blue-800';
-      case 'Assigned': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const openAssignDialog = async (order: BookingRow) => {
+    setAssignModal(order);
+    setDriverSearch("");
+    setLoadingDrivers(true);
+    try {
+      const res = await fetchAvailableDrivers({ limit: 50 });
+      const list = (res?.data?.drivers ?? res?.data ?? []) as DriverOption[];
+      setDrivers(Array.isArray(list) ? list : []);
+    } finally {
+      setLoadingDrivers(false);
     }
   };
 
-  const getVehicleIcon = (type?: string) => {
-    switch (type) {
-      case 'Bike': return <Bike className="w-4 h-4" />;
-      case 'Truck': return <Truck className="w-4 h-4" />;
-      default: return <Truck className="w-4 h-4" />; // Fallback for others
+  const submitAssign = async (driverId: string) => {
+    if (!assignModal) return;
+    setAssigning(true);
+    try {
+      const res = await assignAdminDriver(assignModal._id, driverId);
+      if (res?.success === false) {
+        window.alert(res.message || "Assign failed");
+      } else {
+        setAssignModal(null);
+        loadOrders();
+      }
+    } catch (err: any) {
+      window.alert(err?.message || "Assign failed");
+    } finally {
+      setAssigning(false);
     }
   };
+
+  const handleCancel = async (order: BookingRow) => {
+    const reason = window.prompt(`Cancel booking ${order.bookingNumber || order._id}? Enter reason:`);
+    if (!reason) return;
+    const res = await cancelAdminBooking(order._id, { reason });
+    if (res?.success === false) {
+      window.alert(res.message || "Cancel failed");
+    } else {
+      loadOrders();
+    }
+  };
+
+  const filteredDrivers = drivers.filter((d) =>
+    !driverSearch
+      ? true
+      : `${d.fullName || ""} ${d.mobileNumber || ""} ${d.vehicleNumber || ""}`
+          .toLowerCase()
+          .includes(driverSearch.toLowerCase()),
+  );
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Orders</p>
-              <h3 className="text-2xl font-bold text-gray-900 mt-2">{stats.total}</h3>
-            </div>
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <Package className="w-5 h-5 text-blue-600" />
-            </div>
-          </div>
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Orders</h1>
+          <p className="text-xs text-gray-500">
+            Page {page + 1} of {totalPages} · {total} total
+          </p>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Active Orders</p>
-              <h3 className="text-2xl font-bold text-gray-900 mt-2">{stats.active}</h3>
-            </div>
-            <div className="p-2 bg-yellow-50 rounded-lg">
-              <Clock className="w-5 h-5 text-yellow-600" />
-            </div>
-          </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => loadOrders()}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            <ChevronDown className={`w-3 h-3 transition ${showFilters ? "rotate-180" : ""}`} />
+          </button>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Completed</p>
-              <h3 className="text-2xl font-bold text-gray-900 mt-2">{stats.completed}</h3>
-            </div>
-            <div className="p-2 bg-green-50 rounded-lg">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
+      </div>
+
+      {/* Insights */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <p className="text-xs text-gray-500 mb-1">Active orders</p>
+          <p className="text-2xl font-bold text-gray-900">{insights.active}</p>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Revenue</p>
-              <h3 className="text-2xl font-bold text-gray-900 mt-2">₹{stats.revenue.toLocaleString()}</h3>
-            </div>
-            <div className="p-2 bg-purple-50 rounded-lg">
-              <DollarSign className="w-5 h-5 text-purple-600" />
-            </div>
-          </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 border-l-4 !border-l-red-500 p-4">
+          <p className="text-xs text-gray-500 mb-1">Delayed orders</p>
+          <p className="text-2xl font-bold text-red-600">{insights.delayed}</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <p className="text-xs text-gray-500 mb-1">Avg delivery time</p>
+          <p className="text-2xl font-bold text-gray-900">{insights.avgDeliveryMin}m</p>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <p className="text-xs text-gray-500 mb-1">Failure rate</p>
+          <p className={`text-2xl font-bold ${insights.failureRate > 10 ? "text-red-600" : "text-gray-900"}`}>
+            {insights.failureRate.toFixed(1)}%
+          </p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 justify-between items-center">
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <input
-            type="text"
-            placeholder="Search Order ID or Customer..."
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-movezy-500"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="flex gap-3 w-full md:w-auto">
-          <select
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-movezy-500 bg-white"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="All">All Status</option>
-            <option value="Pending">Pending</option>
-            <option value="Assigned">Assigned</option>
-            <option value="In Transit">In Transit</option>
-            <option value="Delivered">Delivered</option>
-            <option value="Cancelled">Cancelled</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Orders Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Order ID</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Route</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Vehicle</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Amount</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {paginatedOrders.map((order) => (
-                <tr key={order.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{order.id}</div>
-                    <div className="text-xs text-gray-500">{order.date}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm">
-                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                        <span className="truncate max-w-[150px]" title={order.pickup}>{order.pickup}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                        <span className="truncate max-w-[150px]" title={order.dropoff}>{order.dropoff}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-gray-100 rounded-lg">
-                        {getVehicleIcon(order.vehicle)}
-                      </div>
-                      <span className="text-sm text-gray-700">{order.vehicle}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-medium text-gray-900">₹{order.amount}</td>
-                  <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => setSelectedOrder(order)}
-                      className="text-movezy-600 hover:text-movezy-700 font-medium text-sm"
-                    >
-                      View Details
-                    </button>
-                  </td>
-                </tr>
+      {showFilters && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="relative flex-1 min-w-[220px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(0);
+                }}
+                placeholder="Search booking number or address…"
+                className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-movezy-500 focus:outline-none"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as BookingStatus | "");
+                setPage(0);
+              }}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+            >
+              <option value="">All status</option>
+              {(Object.keys(STATUS_LABEL) as BookingStatus[]).map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABEL[s]}
+                </option>
               ))}
-            </tbody>
-          </table>
+            </select>
+            <select
+              value={paymentFilter}
+              onChange={(e) => {
+                setPaymentFilter(e.target.value as BookingPaymentStatus | "");
+                setPage(0);
+              }}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+            >
+              <option value="">All payments</option>
+              <option value="PENDING">Pending</option>
+              <option value="PAID">Paid</option>
+              <option value="FAILED">Failed</option>
+              <option value="REFUNDED">Refunded</option>
+              <option value="PARTIALLY_REFUNDED">Partially refunded</option>
+            </select>
+            <select
+              value={serviceFilter}
+              onChange={(e) => {
+                setServiceFilter(e.target.value as "" | "WITHIN_CITY" | "OUTSTATION");
+                setPage(0);
+              }}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+            >
+              <option value="">All services</option>
+              <option value="WITHIN_CITY">Within city</option>
+              <option value="OUTSTATION">Outstation</option>
+            </select>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setPage(0);
+              }}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setPage(0);
+              }}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+            />
+            {(search || statusFilter || paymentFilter || serviceFilter || dateFrom || dateTo) && (
+              <button
+                onClick={clearFilters}
+                className="text-xs text-gray-500 hover:text-gray-700 underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={setCurrentPage}
-          totalItems={totalItems}
-          startIndex={startIndex}
-          endIndex={endIndex}
-          itemLabel="orders"
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-        />
-      </div>
+      )}
 
-      {/* Order Details Modal */}
-      {selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Order Details</h2>
-                <p className="text-sm text-gray-500">{selectedOrder.id}</p>
-              </div>
-              <button onClick={() => setSelectedOrder(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-6 h-6" />
+      {/* Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-10 gap-4">
+        {/* Table */}
+        <div className="lg:col-span-7 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Order</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Customer</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Pickup → Drop</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Driver</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading && (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-sm text-gray-400">
+                      <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                      Loading orders…
+                    </td>
+                  </tr>
+                )}
+                {!loading && orders.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-sm text-gray-400">
+                      No orders match your filters.
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  orders.map((o) => {
+                    const isSelected = o._id === selected?._id;
+                    const waiting = computeWaitingMinutes(o);
+                    const delay = computeDelayMinutes(o);
+                    return (
+                      <tr
+                        key={o._id}
+                        onClick={() => setSelectedId(o._id)}
+                        className={`cursor-pointer transition ${
+                          isSelected ? "bg-movezy-50/60" : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <td className="px-4 py-3 align-top">
+                          <div className="font-semibold text-gray-900">
+                            {o.bookingNumber || o._id.slice(-6).toUpperCase()}
+                          </div>
+                          <div className="text-[10px] text-gray-400 mt-1">
+                            {formatTimeAgo(o.createdAt)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <div className="text-sm font-medium text-gray-800 truncate max-w-[140px]">
+                            {personName(o.userId) || "—"}
+                          </div>
+                          <div className="text-[11px] text-gray-400">{personPhone(o.userId) || ""}</div>
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <div className="flex items-center gap-1.5 text-xs text-gray-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                            <span className="truncate max-w-[160px]">{o.pickup?.address || "—"}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-700 mt-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                            <span className="truncate max-w-[160px]">{o.drop?.address || "—"}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[o.status].pill}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${STATUS_COLORS[o.status].dot}`} />
+                            {STATUS_LABEL[o.status]}
+                          </span>
+                          {(waiting > 10 || delay > 10) && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {waiting > 10 && (
+                                <span className="text-[10px] font-semibold bg-red-50 text-red-700 px-1.5 py-0.5 rounded">
+                                  Waiting {waiting}m
+                                </span>
+                              )}
+                              {delay > 10 && (
+                                <span className="text-[10px] font-semibold bg-red-50 text-red-700 px-1.5 py-0.5 rounded">
+                                  Delay {delay}m
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          {personName(o.driverId) ? (
+                            <div>
+                              <div className="text-sm text-gray-800 truncate max-w-[140px]">
+                                {personName(o.driverId)}
+                              </div>
+                              <div className="text-[11px] text-gray-400">{personPhone(o.driverId)}</div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_COLORS[o.paymentStatus]}`}
+                          >
+                            {o.paymentStatus}
+                          </span>
+                          <div className="text-[11px] text-gray-400 mt-0.5">
+                            ₹{(o.finalFare ?? 0).toLocaleString()} · {o.paymentMethod || "—"}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 align-top text-right">
+                          <div
+                            className="flex items-center gap-1 justify-end flex-wrap"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {o.status === "SEARCHING" && (
+                              <button
+                                onClick={() => openAssignDialog(o)}
+                                className="p-1.5 rounded-md bg-movezy-600 hover:bg-movezy-700 text-white"
+                                title="Assign driver"
+                              >
+                                <UserPlus className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {personPhone(o.driverId) && (
+                              <a
+                                href={`tel:${personPhone(o.driverId)}`}
+                                className="p-1.5 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700"
+                                title="Call driver"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                            {!["COMPLETED", "CANCELLED"].includes(o.status) && (
+                              <button
+                                onClick={() => handleCancel(o)}
+                                className="p-1.5 rounded-md border border-gray-200 hover:bg-red-50 text-red-600"
+                                title="Cancel"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between p-3 border-t border-gray-100 text-sm">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="px-3 py-1.5 bg-white border border-gray-200 rounded-md disabled:opacity-50 hover:bg-gray-50"
+              >
+                Prev
+              </button>
+              <span className="text-gray-500">
+                Page {page + 1} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={page + 1 >= totalPages}
+                className="px-3 py-1.5 bg-white border border-gray-200 rounded-md disabled:opacity-50 hover:bg-gray-50"
+              >
+                Next
               </button>
             </div>
-            
-            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Customer</label>
-                  <p className="font-medium text-gray-900">{selectedOrder.customerName}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Goods Type</label>
-                  <p className="font-medium text-gray-900">{selectedOrder.goodsType}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Distance</label>
-                  <p className="font-medium text-gray-900">{selectedOrder.distance}</p>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase">Rider</label>
-                  <p className="font-medium text-gray-900">{selectedOrder.rider || 'Not Assigned'}</p>
-                </div>
-              </div>
+          )}
+        </div>
 
-              <div className="bg-gray-100 rounded-xl h-48 flex items-center justify-center relative overflow-hidden">
-                <div className="absolute inset-0 opacity-20 bg-[url('https://upload.wikimedia.org/wikipedia/commons/e/ec/World_map_blank_without_borders.svg')] bg-cover bg-center" />
-                <div className="text-center relative z-10">
-                  <MapIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Live Tracking Map</p>
-                  <p className="text-xs text-gray-400">(Mock View)</p>
-                </div>
-              </div>
+        {/* Detail panel */}
+        <aside className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          {selected ? (
+            <OrderDetailPanel
+              order={selected}
+              onAssign={() => openAssignDialog(selected)}
+              onCancel={() => handleCancel(selected)}
+              onClose={() => setSelectedId("")}
+            />
+          ) : (
+            <div className="p-10 text-center text-gray-400 text-sm">
+              Select an order to see details.
+            </div>
+          )}
+        </aside>
+      </div>
 
-              <div className="col-span-1 md:col-span-2 space-y-4 pt-4 border-t border-gray-100">
-                <div className="flex items-start gap-3">
-                  <div className="mt-1">
-                    <div className="w-3 h-3 rounded-full bg-green-500 ring-4 ring-green-100"></div>
-                    <div className="w-0.5 h-10 bg-gray-200 mx-auto my-1"></div>
-                    <div className="w-3 h-3 rounded-full bg-red-500 ring-4 ring-red-100"></div>
-                  </div>
-                  <div className="flex-1 space-y-6">
-                    <div>
-                      <p className="text-xs text-gray-500">Pickup Location</p>
-                      <p className="text-sm font-medium text-gray-900">{selectedOrder.pickup}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Dropoff Location</p>
-                      <p className="text-sm font-medium text-gray-900">{selectedOrder.dropoff}</p>
-                    </div>
-                  </div>
-                </div>
+      {/* Assign driver modal */}
+      {assignModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setAssignModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-100 flex items-start justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900">Assign driver</h3>
+                <p className="text-xs text-gray-500">
+                  Booking {assignModal.bookingNumber || assignModal._id.slice(-6)}
+                </p>
               </div>
+              <button
+                onClick={() => setAssignModal(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 border-b border-gray-100">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={driverSearch}
+                  onChange={(e) => setDriverSearch(e.target.value)}
+                  placeholder="Search driver by name, phone, vehicle…"
+                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-movezy-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {loadingDrivers ? (
+                <div className="p-6 text-center text-sm text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin inline mr-1" /> Loading drivers…
+                </div>
+              ) : filteredDrivers.length === 0 ? (
+                <div className="p-6 text-center text-sm text-gray-400">No drivers found.</div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {filteredDrivers.map((d) => (
+                    <div
+                      key={d._id}
+                      className="p-3 flex items-center justify-between gap-3 hover:bg-gray-50"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-gray-900">{d.fullName || "—"}</div>
+                        <div className="text-xs text-gray-500">
+                          {d.mobileNumber || "—"}
+                          {d.vehicleNumber ? ` · ${d.vehicleNumber}` : ""}
+                        </div>
+                      </div>
+                      <button
+                        disabled={assigning}
+                        onClick={() => submitAssign(d._id)}
+                        className="px-3 py-1.5 bg-movezy-600 hover:bg-movezy-700 text-white text-xs font-semibold rounded-lg disabled:opacity-60"
+                      >
+                        Assign
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -346,5 +663,223 @@ const OrderManagement: React.FC = () => {
     </div>
   );
 };
+
+// ───────────────── Detail panel ─────────────────
+const OrderDetailPanel: React.FC<{
+  order: BookingRow;
+  onAssign: () => void;
+  onCancel: () => void;
+  onClose: () => void;
+}> = ({ order, onAssign, onCancel, onClose }) => {
+  const status = order.status;
+  const customerName = personName(order.userId) || "—";
+  const customerPhone = personPhone(order.userId);
+  const driverName = personName(order.driverId);
+  const driverPhone = personPhone(order.driverId);
+
+  const timeline = [
+    { label: "Created", at: order.createdAt, done: true },
+    { label: "Assigned", at: order.assignedAt, done: !!order.assignedAt },
+    { label: "Driver arrived", at: order.driverArrivedAt, done: !!order.driverArrivedAt },
+    { label: "Picked", at: order.pickedAt, done: !!order.pickedAt },
+    { label: "Delivered", at: order.completedAt, done: !!order.completedAt },
+    order.cancelledAt ? { label: "Cancelled", at: order.cancelledAt, done: true } : null,
+  ].filter(Boolean) as { label: string; at?: string; done: boolean }[];
+
+  return (
+    <div className="h-full flex flex-col max-h-[calc(100vh-140px)]">
+      <div className="p-4 border-b border-gray-100 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-base font-bold text-gray-900 mb-1">
+            {order.bookingNumber || order._id.slice(-6).toUpperCase()}
+          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[status].pill}`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${STATUS_COLORS[status].dot}`} />
+              {STATUS_LABEL[status]}
+            </span>
+            <span className="text-xs text-gray-400">{formatTimeAgo(order.createdAt)}</span>
+          </div>
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <section className="p-4 border-b border-gray-100">
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            Customer
+          </h4>
+          <p className="font-semibold text-gray-900">{customerName}</p>
+          {customerPhone && <p className="text-xs text-gray-500">{customerPhone}</p>}
+          {customerPhone && (
+            <div className="mt-2 flex gap-2">
+              <a
+                href={`tel:${customerPhone}`}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 border border-gray-200 rounded-md text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <Phone className="w-3 h-3" /> Call
+              </a>
+              <a
+                href={`sms:${customerPhone}`}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 border border-gray-200 rounded-md text-xs text-gray-700 hover:bg-gray-50"
+              >
+                <MessageSquare className="w-3 h-3" /> Message
+              </a>
+            </div>
+          )}
+        </section>
+
+        <section className="p-4 border-b border-gray-100">
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            Driver
+          </h4>
+          {driverName ? (
+            <>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold text-gray-900">{driverName}</p>
+                  {order.rating != null && (
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {order.rating}
+                    </div>
+                  )}
+                </div>
+                {driverPhone && (
+                  <a
+                    href={`tel:${driverPhone}`}
+                    className="p-2 rounded-md border border-gray-200 hover:bg-gray-50 text-gray-700"
+                  >
+                    <Phone className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+              {order.liveLocation?.lat != null && (
+                <p className="mt-3 text-xs text-gray-500 flex items-center gap-1">
+                  <Activity className="w-3 h-3" /> Last seen{" "}
+                  {formatTimeAgo(order.liveLocation.updatedAt)}
+                </p>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={onAssign}
+              className="w-full flex items-center justify-center gap-1 px-3 py-2 bg-movezy-600 hover:bg-movezy-700 text-white rounded-md text-sm font-semibold"
+            >
+              <UserPlus className="w-4 h-4" /> Assign driver
+            </button>
+          )}
+        </section>
+
+        <section className="p-4 border-b border-gray-100">
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            Route
+          </h4>
+          <div className="relative pl-5 space-y-3">
+            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gray-200" />
+            <div className="relative">
+              <span className="absolute -left-5 top-0.5 w-3 h-3 rounded-full bg-green-500 ring-4 ring-green-100" />
+              <p className="text-[10px] uppercase text-gray-400 tracking-wider">Pickup</p>
+              <p className="text-sm text-gray-800">{order.pickup?.address || "—"}</p>
+            </div>
+            <div className="relative">
+              <span className="absolute -left-5 top-0.5 w-3 h-3 rounded-full bg-red-500 ring-4 ring-red-100" />
+              <p className="text-[10px] uppercase text-gray-400 tracking-wider">Dropoff</p>
+              <p className="text-sm text-gray-800">{order.drop?.address || "—"}</p>
+            </div>
+          </div>
+          {order.distanceKm != null && (
+            <p className="mt-3 text-xs text-gray-500 flex items-center gap-1">
+              <MapPin className="w-3 h-3" /> {order.distanceKm} km
+              {order.durationMin != null ? ` · ~${order.durationMin}m` : ""}
+            </p>
+          )}
+        </section>
+
+        <section className="p-4 border-b border-gray-100">
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            Timeline
+          </h4>
+          <ol className="relative space-y-3">
+            {timeline.map((t) => (
+              <li key={t.label} className="flex items-start gap-2.5">
+                <span
+                  className={`mt-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center ${
+                    t.done ? "bg-green-500" : "bg-gray-200"
+                  }`}
+                >
+                  {t.done ? (
+                    <CheckCircle2 className="w-3 h-3 text-white" />
+                  ) : (
+                    <CircleDot className="w-2 h-2 text-gray-400" />
+                  )}
+                </span>
+                <div className="flex-1">
+                  <p className={`text-sm ${t.done ? "text-gray-800 font-medium" : "text-gray-400"}`}>
+                    {t.label}
+                  </p>
+                  <p className="text-[11px] text-gray-400">
+                    {t.at ? formatTimeAgo(t.at) : "Pending"}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="p-4 border-b border-gray-100">
+          <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+            Payment
+          </h4>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-lg font-bold text-gray-900">
+                ₹{(order.finalFare ?? 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-gray-500">{order.paymentMethod || "—"}</p>
+            </div>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_COLORS[order.paymentStatus]}`}>
+              {order.paymentStatus}
+            </span>
+          </div>
+        </section>
+
+        {order.cancellationReason && (
+          <section className="p-4">
+            <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              Cancellation
+            </h4>
+            <p className="text-sm text-gray-700">{order.cancellationReason}</p>
+          </section>
+        )}
+      </div>
+
+      <div className="p-3 border-t border-gray-100 bg-gray-50 flex items-center gap-2">
+        {order.status === "SEARCHING" && (
+          <button
+            onClick={onAssign}
+            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-movezy-600 hover:bg-movezy-700 text-white rounded-md text-sm font-semibold"
+          >
+            <UserPlus className="w-4 h-4" /> Assign
+          </button>
+        )}
+        {!["COMPLETED", "CANCELLED"].includes(order.status) && (
+          <button
+            onClick={onCancel}
+            className="flex items-center justify-center gap-1 px-3 py-2 border border-red-200 bg-red-50 rounded-md text-sm text-red-700 hover:bg-red-100"
+          >
+            <XCircle className="w-4 h-4" /> Cancel
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Suppress unused-imports lint by referencing the helper (future extension).
+void personId;
 
 export default OrderManagement;

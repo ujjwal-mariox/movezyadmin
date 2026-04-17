@@ -769,7 +769,7 @@ const StaffManagement: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 max-w-7xl mx-auto">
       {/* Success/Error Notifications */}
       {success && (
         <div className="fixed z-50 flex items-center gap-3 px-4 py-3 text-green-800 border border-green-200 shadow-lg top-4 right-4 bg-green-50 rounded-xl animate-in slide-in-from-top-2">
@@ -800,12 +800,12 @@ const StaffManagement: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-xl font-bold text-gray-800">
-            <Shield className="w-6 h-6 text-movezy-500" />
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
+            <Shield className="w-7 h-7 text-movezy-500" />
             Staff Management
-          </h2>
-          <p className="text-sm text-gray-500">
-            Manage staff members and access roles
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Manage staff members, role assignments and access permissions
           </p>
         </div>
       </div>
@@ -838,58 +838,58 @@ const StaffManagement: React.FC = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Total Staff</p>
-              <p className="mt-1 text-2xl font-bold text-gray-800">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Staff</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900">
                 {stats.total}
               </p>
             </div>
-            <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-xl">
-              <Users className="w-6 h-6 text-blue-600" />
+            <div className="flex items-center justify-center w-10 h-10 bg-blue-50 rounded-lg">
+              <Users className="w-5 h-5 text-blue-600" />
             </div>
           </div>
         </div>
 
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Active</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active</p>
               <p className="mt-1 text-2xl font-bold text-green-600">
                 {stats.active}
               </p>
             </div>
-            <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl">
-              <ShieldCheck className="w-6 h-6 text-green-600" />
+            <div className="flex items-center justify-center w-10 h-10 bg-green-50 rounded-lg">
+              <ShieldCheck className="w-5 h-5 text-green-600" />
             </div>
           </div>
         </div>
 
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-gray-400 shadow-sm rounded-xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Inactive</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Inactive</p>
               <p className="mt-1 text-2xl font-bold text-gray-600">
                 {stats.inactive}
               </p>
             </div>
-            <div className="flex items-center justify-center w-12 h-12 bg-gray-100 rounded-xl">
-              <ShieldAlert className="w-6 h-6 text-gray-600" />
+            <div className="flex items-center justify-center w-10 h-10 bg-gray-100 rounded-lg">
+              <ShieldAlert className="w-5 h-5 text-gray-600" />
             </div>
           </div>
         </div>
 
-        <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-2xl">
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-purple-500 shadow-sm rounded-xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Roles</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Roles</p>
               <p className="mt-1 text-2xl font-bold text-purple-600">
                 {stats.roles}
               </p>
             </div>
-            <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-xl">
-              <Key className="w-6 h-6 text-purple-600" />
+            <div className="flex items-center justify-center w-10 h-10 bg-purple-50 rounded-lg">
+              <Key className="w-5 h-5 text-purple-600" />
             </div>
           </div>
         </div>

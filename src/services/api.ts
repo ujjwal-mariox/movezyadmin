@@ -685,3 +685,1029 @@ export const deleteBadge = async (id: string) => {
   return res.json();
 };
 
+// ─── SUPPORT ADMIN APIs ───
+
+export type SupportTicketType = "CUSTOMER" | "DRIVER" | "PAYMENT" | "TECHNICAL";
+export type SupportChannel = "CUSTOMER" | "DRIVER" | "INTERNAL";
+export type SupportResolutionType = "RESOLVED" | "REJECTED" | "DUPLICATE" | "ESCALATED";
+
+export interface SupportTicketListParams {
+  status?: string;
+  priority?: string;
+  category?: string;
+  type?: SupportTicketType;
+  escalated?: boolean;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export const fetchSupportTickets = async (params: SupportTicketListParams = {}) => {
+  const q = new URLSearchParams();
+  if (params.status) q.set("status", params.status);
+  if (params.priority) q.set("priority", params.priority);
+  if (params.category) q.set("category", params.category);
+  if (params.type) q.set("type", params.type);
+  if (typeof params.escalated === "boolean") q.set("escalated", String(params.escalated));
+  if (params.search) q.set("search", params.search);
+  q.set("page", String(params.page ?? 0));
+  q.set("limit", String(params.limit ?? 50));
+  const res = await fetch(`${API_URL}/admin/support/tickets?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchSupportTicket = async (ticketId: string, channel?: SupportChannel) => {
+  const q = channel ? `?channel=${channel}` : "";
+  const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchSupportStats = async () => {
+  const res = await fetch(`${API_URL}/admin/support/stats`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const assignSupportTicket = async (
+  ticketId: string,
+  data: { adminId?: string; staffName?: string; staffRole?: string },
+) => {
+  const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/assign`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateSupportTicketStatus = async (
+  ticketId: string,
+  data: { status: string; resolution?: string; resolutionType?: SupportResolutionType },
+) => {
+  const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/status`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const replySupportTicket = async (
+  ticketId: string,
+  data: { message: string; channel?: SupportChannel; attachments?: string[] },
+) => {
+  const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/reply`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const escalateSupportTicket = async (ticketId: string, reason: string) => {
+  const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/escalate`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify({ reason }),
+  });
+  return res.json();
+};
+
+// Quick replies
+export interface QuickReplyItem {
+  _id: string;
+  title: string;
+  body: string;
+  type?: SupportTicketType;
+  category?: string;
+  tags: string[];
+  isActive: boolean;
+  useCount: number;
+  createdAt: string;
+}
+
+export const fetchQuickReplies = async (filters?: {
+  type?: SupportTicketType;
+  category?: string;
+  search?: string;
+  isActive?: boolean;
+}) => {
+  const q = new URLSearchParams();
+  if (filters?.type) q.set("type", filters.type);
+  if (filters?.category) q.set("category", filters.category);
+  if (filters?.search) q.set("search", filters.search);
+  if (typeof filters?.isActive === "boolean") q.set("isActive", String(filters.isActive));
+  const res = await fetch(`${API_URL}/admin/support/quick-replies?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const createQuickReply = async (data: Partial<QuickReplyItem>) => {
+  const res = await fetch(`${API_URL}/admin/support/quick-replies`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateQuickReply = async (id: string, data: Partial<QuickReplyItem>) => {
+  const res = await fetch(`${API_URL}/admin/support/quick-replies/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteQuickReply = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/support/quick-replies/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const markQuickReplyUsed = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/support/quick-replies/${id}/use`, {
+    method: "POST", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+// ─── NOTIFICATIONS ADMIN APIs ───
+
+export type NotificationAudience = "ALL" | "USERS" | "DRIVERS" | "ENTERPRISES";
+export type NotificationType =
+  | "BOOKING"
+  | "PAYMENT"
+  | "PROMO"
+  | "SYSTEM"
+  | "CHAT"
+  | "REWARD";
+
+export interface NotificationTemplate {
+  _id: string;
+  name: string;
+  code: string;
+  title: string;
+  body: string;
+  type: NotificationType;
+  audience: NotificationAudience;
+  variables: string[];
+  priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT";
+  tags: string[];
+  isActive: boolean;
+  useCount: number;
+  createdAt: string;
+}
+
+export interface NotificationCampaign {
+  _id: string;
+  title: string;
+  body: string;
+  type: NotificationType;
+  audience: NotificationAudience;
+  templateId?: string;
+  targetedCount: number;
+  sentCount: number;
+  readCount: number;
+  failedCount: number;
+  status: "DRAFT" | "SCHEDULED" | "SENDING" | "SENT" | "FAILED";
+  scheduledAt?: string;
+  sentAt?: string;
+  createdAt: string;
+}
+
+export const fetchNotificationTemplates = async (filters?: {
+  type?: NotificationType;
+  audience?: NotificationAudience;
+  isActive?: boolean;
+  search?: string;
+}) => {
+  const q = new URLSearchParams();
+  if (filters?.type) q.set("type", filters.type);
+  if (filters?.audience) q.set("audience", filters.audience);
+  if (typeof filters?.isActive === "boolean") q.set("isActive", String(filters.isActive));
+  if (filters?.search) q.set("search", filters.search);
+  const res = await fetch(`${API_URL}/admin/notifications/templates?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const createNotificationTemplate = async (data: Partial<NotificationTemplate>) => {
+  const res = await fetch(`${API_URL}/admin/notifications/templates`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateNotificationTemplate = async (id: string, data: Partial<NotificationTemplate>) => {
+  const res = await fetch(`${API_URL}/admin/notifications/templates/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteNotificationTemplate = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/notifications/templates/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const sendNotificationBroadcast = async (data: {
+  title: string;
+  body: string;
+  type: NotificationType;
+  audience: NotificationAudience;
+  templateId?: string;
+  data?: Record<string, unknown>;
+}) => {
+  const res = await fetch(`${API_URL}/admin/notifications/broadcast`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const fetchNotificationHistory = async (filters?: {
+  audience?: NotificationAudience;
+  type?: NotificationType;
+  status?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  limit?: number;
+}) => {
+  const q = new URLSearchParams();
+  if (filters?.audience) q.set("audience", filters.audience);
+  if (filters?.type) q.set("type", filters.type);
+  if (filters?.status) q.set("status", filters.status);
+  if (filters?.search) q.set("search", filters.search);
+  if (filters?.dateFrom) q.set("dateFrom", filters.dateFrom);
+  if (filters?.dateTo) q.set("dateTo", filters.dateTo);
+  q.set("page", String(filters?.page ?? 0));
+  q.set("limit", String(filters?.limit ?? 50));
+  const res = await fetch(`${API_URL}/admin/notifications/history?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchNotificationAnalytics = async () => {
+  const res = await fetch(`${API_URL}/admin/notifications/analytics`, { headers: getHeaders() });
+  return res.json();
+};
+
+// ─── AUDIT LOG ADMIN APIs ───
+
+export type AuditImpactLevel = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+
+export interface AuditLogEntry {
+  _id: string;
+  adminId: string;
+  adminName: string;
+  adminEmail: string;
+  adminRole?: string;
+  action: string;
+  module: string;
+  targetId?: string;
+  targetType?: string;
+  description: string;
+  changes?: Array<{ field: string; oldValue: unknown; newValue: unknown }>;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  impactLevel?: AuditImpactLevel;
+  device?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata?: Record<string, unknown>;
+  revertedFromId?: string;
+  revertedAt?: string;
+  revertedBy?: string;
+  createdAt: string;
+}
+
+export interface AuditStats {
+  totalToday: number;
+  criticalToday: number;
+  byModule: Array<{ _id: string; count: number }>;
+  byAction: Array<{ _id: string; count: number }>;
+  byImpact: Array<{ _id: string; count: number }>;
+  recentExports: AuditLogEntry[];
+}
+
+export const fetchAuditLogs = async (filters?: {
+  page?: number;
+  limit?: number;
+  module?: string;
+  action?: string;
+  adminId?: string;
+  impactLevel?: AuditImpactLevel;
+  startDate?: string;
+  endDate?: string;
+  search?: string;
+}) => {
+  const q = new URLSearchParams();
+  q.set("page", String(filters?.page ?? 1));
+  q.set("limit", String(filters?.limit ?? 50));
+  if (filters?.module) q.set("module", filters.module);
+  if (filters?.action) q.set("action", filters.action);
+  if (filters?.adminId) q.set("adminId", filters.adminId);
+  if (filters?.impactLevel) q.set("impactLevel", filters.impactLevel);
+  if (filters?.startDate) q.set("startDate", filters.startDate);
+  if (filters?.endDate) q.set("endDate", filters.endDate);
+  if (filters?.search) q.set("search", filters.search);
+  const res = await fetch(`${API_URL}/admin/audit-logs?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchAuditStats = async () => {
+  const res = await fetch(`${API_URL}/admin/audit-logs/stats`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const revertAuditLog = async (id: string, reason?: string) => {
+  const res = await fetch(`${API_URL}/admin/audit-logs/${id}/revert`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ reason }),
+  });
+  return res.json();
+};
+
+// ─── REPORTS ADMIN APIs ───
+
+export type ReportRange = "7D" | "30D" | "90D" | "YTD";
+
+export interface ReportCityRow {
+  city: string;
+  orders: number;
+  revenue: number;
+  completed: number;
+  sharePct: number;
+}
+
+export interface ReportCategoryRow {
+  name: string;
+  orders: number;
+  revenue: number;
+  sharePct: number;
+}
+
+export interface ReportEnterpriseRow {
+  _id: string;
+  name?: string;
+  city?: string;
+  status?: string;
+  orders: number;
+  revenue: number;
+  completed: number;
+}
+
+export interface ReportOpsMetrics {
+  range: ReportRange;
+  totalOrders: number;
+  completedOrders: number;
+  cancelledOrders: number;
+  revenue: number;
+  avgOrderValue: number;
+  cancellationRatePct: number;
+  onTimeRatePct: number;
+  avgDeliveryMinutes: number;
+  driverUtilizationPct: number;
+  approvedDrivers: number;
+  onlineDrivers: number;
+}
+
+export interface ReportSnapshot {
+  range: ReportRange;
+  labels: string[];
+  series: {
+    revenue: number[];
+    orders: number[];
+    customers: number[];
+    drivers: number[];
+    avgRating: number[];
+    cancelRate: number[];
+  };
+}
+
+const buildRangeQuery = (range?: ReportRange) => {
+  const q = new URLSearchParams();
+  if (range) q.set("range", range);
+  return q.toString();
+};
+
+export const fetchCitiesReport = async (range?: ReportRange) => {
+  const res = await fetch(
+    `${API_URL}/admin/reports/cities?${buildRangeQuery(range)}`,
+    { headers: getHeaders() },
+  );
+  return res.json();
+};
+
+export const fetchCategoriesReport = async (range?: ReportRange) => {
+  const res = await fetch(
+    `${API_URL}/admin/reports/categories?${buildRangeQuery(range)}`,
+    { headers: getHeaders() },
+  );
+  return res.json();
+};
+
+export const fetchEnterprisesReport = async (range?: ReportRange) => {
+  const res = await fetch(
+    `${API_URL}/admin/reports/enterprises?${buildRangeQuery(range)}`,
+    { headers: getHeaders() },
+  );
+  return res.json();
+};
+
+export const fetchOpsMetrics = async (range?: ReportRange) => {
+  const res = await fetch(
+    `${API_URL}/admin/reports/ops-metrics?${buildRangeQuery(range)}`,
+    { headers: getHeaders() },
+  );
+  return res.json();
+};
+
+export const fetchSnapshot = async (range?: ReportRange) => {
+  const res = await fetch(
+    `${API_URL}/admin/reports/snapshot?${buildRangeQuery(range)}`,
+    { headers: getHeaders() },
+  );
+  return res.json();
+};
+
+export const fetchDriverReports = async (range?: ReportRange) => {
+  const now = new Date();
+  const days = range === "7D" ? 7 : range === "90D" ? 90 : range === "YTD" ? undefined : 30;
+  const dateFrom =
+    range === "YTD"
+      ? new Date(now.getFullYear(), 0, 1).toISOString()
+      : days
+        ? new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString()
+        : undefined;
+  const q = new URLSearchParams();
+  if (dateFrom) q.set("dateFrom", dateFrom);
+  q.set("dateTo", now.toISOString());
+  const res = await fetch(`${API_URL}/admin/reports/drivers?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+// ─── USERS ADMIN APIs ───
+
+export interface AdminUserAddress {
+  id: string;
+  address?: string;
+  area?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  pinCode?: string;
+  latitude?: number;
+  longitude?: number;
+  addressType?: string;
+  houseNo?: string;
+  isSelected?: boolean;
+}
+
+export interface AdminUserRow {
+  _id: string;
+  fullName?: string;
+  email?: string;
+  mobileNumber?: string;
+  profilePicture?: string;
+  referralCode?: string;
+  isActive?: boolean;
+  isBlocked?: boolean;
+  isDeleted?: boolean;
+  isVerified?: boolean;
+  createdAt?: string;
+  lastLoginAt?: string;
+  bookingCount: number;
+  completedBookings: number;
+  totalSpent: number;
+  coinBalance: number;
+  walletBalance: number;
+  addressCount: number;
+  primaryAddress: AdminUserAddress | null;
+  allAddresses: AdminUserAddress[];
+}
+
+export interface AdminUsersResponse {
+  users: AdminUserRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface AdminUserStats {
+  totalUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
+  blockedUsers: number;
+  deletedUsers: number;
+  newToday: number;
+  newThisMonth: number;
+  totalBookings: number;
+  totalRevenue: number;
+}
+
+export interface AdminUserBookingRow {
+  _id: string;
+  orderId?: string;
+  status?: string;
+  createdAt?: string;
+  pickupLocation?: { address?: string };
+  dropLocation?: { address?: string };
+  finalFare?: number;
+  totalFare?: number;
+  driverId?: { fullName?: string; mobileNumber?: string } | string | null;
+  vehicleTypeId?: { name?: string } | string | null;
+}
+
+export interface AdminUserTransactionRow {
+  _id: string;
+  type?: string;
+  amount?: number;
+  balanceAfter?: number;
+  description?: string;
+  method?: string;
+  status?: string;
+  bookingId?: string;
+  createdAt?: string;
+}
+
+export interface AdminUserDetailResponse {
+  user: AdminUserRow & Record<string, unknown>;
+  wallet: { balance: number; lockedBalance?: number };
+  coinWallet: { balance: number; totalEarned?: number; totalRedeemed?: number };
+  addresses: AdminUserAddress[];
+  bookingStats: Array<{ _id: string; count: number; totalSpent: number }>;
+}
+
+export const fetchAdminUsers = async (params?: {
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+  dateFrom?: string;
+  dateTo?: string;
+}) => {
+  const q = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    });
+  }
+  const res = await fetch(`${API_URL}/admin/users?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchAdminUserStats = async () => {
+  const res = await fetch(`${API_URL}/admin/users/stats`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchAdminUserById = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/users/${id}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchAdminUserBookings = async (id: string, params?: { status?: string; page?: number; limit?: number }) => {
+  const q = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    });
+  }
+  const res = await fetch(`${API_URL}/admin/users/${id}/bookings?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchAdminUserTransactions = async (id: string, params?: { type?: string; page?: number; limit?: number }) => {
+  const q = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    });
+  }
+  const res = await fetch(`${API_URL}/admin/users/${id}/transactions?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const updateAdminUser = async (id: string, data: Record<string, unknown>) => {
+  const res = await fetch(`${API_URL}/admin/users/${id}`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateAdminUserStatus = async (id: string, isActive: boolean, reason?: string) => {
+  const res = await fetch(`${API_URL}/admin/users/${id}/status`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify({ isActive, reason }),
+  });
+  return res.json();
+};
+
+export const blockAdminUser = async (id: string, reason?: string) => {
+  const res = await fetch(`${API_URL}/admin/users/${id}/block`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify({ reason }),
+  });
+  return res.json();
+};
+
+export const unblockAdminUser = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/users/${id}/unblock`, {
+    method: "PUT",
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const deleteAdminUser = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/users/${id}`, {
+    method: "DELETE",
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const restoreAdminUser = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/users/${id}/restore`, {
+    method: "PUT",
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const adjustAdminUserCoins = async (id: string, data: { type: "CREDIT" | "DEBIT"; amount: number; reason: string }) => {
+  const res = await fetch(`${API_URL}/admin/users/${id}/coins/adjust`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+// ─── SOS ADMIN APIs ───
+
+export type SOSStatus = "ACTIVE" | "RESPONDED" | "RESOLVED" | "FALSE_ALARM";
+
+export interface SOSAlertRow {
+  _id: string;
+  userId?: { _id: string; name?: string; fullName?: string; mobileNumber?: string } | string | null;
+  driverId?: { _id: string; name?: string; fullName?: string; mobileNumber?: string } | string | null;
+  bookingId?: { _id: string; bookingNumber?: string; orderId?: string } | string | null;
+  triggeredBy: "USER" | "DRIVER";
+  status: SOSStatus;
+  location: { type?: "Point"; coordinates: [number, number] };
+  address?: string;
+  respondedBy?: { _id: string; name?: string; email?: string } | string | null;
+  respondedAt?: string;
+  resolvedAt?: string;
+  resolutionNotes?: string;
+  contactsNotified?: Array<{ contactId?: string; notifiedAt?: string; method?: string }>;
+  policeNotified?: boolean;
+  policeNotifiedAt?: string;
+  audioRecordingUrl?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface SOSAlertsResponse {
+  alerts: SOSAlertRow[];
+  pagination: { page: number; limit: number; total: number; pages: number };
+}
+
+export interface SOSStatsResponse {
+  activeCount: number;
+  todayCount: number;
+  thisMonthCount: number;
+  lastMonthCount: number;
+  resolvedCount: number;
+  falseAlarmCount: number;
+  totalCount: number;
+}
+
+export const fetchSOSAlerts = async (params?: { status?: string; page?: number; limit?: number; startDate?: string; endDate?: string }) => {
+  const q = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    });
+  }
+  const res = await fetch(`${API_URL}/admin/sos?${q}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchActiveSOSAlerts = async () => {
+  const res = await fetch(`${API_URL}/admin/sos/active`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const fetchSOSStats = async () => {
+  const res = await fetch(`${API_URL}/admin/sos/stats`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const respondToSOSAlert = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/sos/${id}/respond`, {
+    method: "PUT",
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const resolveSOSAlert = async (id: string, data: { resolutionNotes?: string; isFalseAlarm?: boolean }) => {
+  const res = await fetch(`${API_URL}/admin/sos/${id}/resolve`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const notifyPoliceForSOS = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/sos/${id}/notify-police`, {
+    method: "PUT",
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+// ============ ACTION CENTER ============
+
+export interface ActionCenterPending {
+  _id: string;
+  bookingNumber?: string;
+  pickupAddress?: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  waitingSince: string;
+  customerName?: string;
+}
+
+export interface ActionCenterDelayed {
+  _id: string;
+  bookingNumber?: string;
+  delayMinutes: number;
+  driverName?: string;
+  driverPhone?: string;
+  lat?: number;
+  lng?: number;
+}
+
+export interface ActionCenterAtRisk {
+  _id: string;
+  bookingNumber?: string;
+  risk: string;
+  severity: "high" | "medium" | "low";
+}
+
+export interface ActionCenterResponse {
+  pendingAssignments: ActionCenterPending[];
+  delayedOrders: ActionCenterDelayed[];
+  atRisk: ActionCenterAtRisk[];
+}
+
+export const fetchActionCenter = async (signal?: AbortSignal) => {
+  const res = await fetch(`${API_URL}/admin/dashboard/action-center`, {
+    headers: getHeaders(),
+    signal,
+  });
+  return res.json();
+};
+
+// ============ BOOKINGS ADMIN APIs ============
+
+export type BookingStatus =
+  | "DRAFT"
+  | "SEARCHING"
+  | "ASSIGNED"
+  | "DRIVER_ARRIVED"
+  | "PICKED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "CANCELLED";
+
+export type BookingPaymentStatus =
+  | "PENDING"
+  | "PAID"
+  | "FAILED"
+  | "REFUNDED"
+  | "PARTIALLY_REFUNDED";
+
+export interface BookingLocation {
+  address: string;
+  lat: number;
+  lng: number;
+  contactName?: string;
+  contactPhone?: string;
+}
+
+export interface BookingRow {
+  _id: string;
+  bookingNumber?: string;
+  userId?: { _id: string; fullName?: string; mobileNumber?: string } | string;
+  driverId?: { _id: string; fullName?: string; mobileNumber?: string; vehicleNumber?: string } | string;
+  vehicleTypeId?: { _id: string; name?: string } | string;
+  serviceType?: "WITHIN_CITY" | "OUTSTATION";
+  pickup?: BookingLocation;
+  drop?: BookingLocation;
+  distanceKm?: number;
+  durationMin?: number;
+  finalFare: number;
+  status: BookingStatus;
+  paymentMethod?: string;
+  paymentStatus: BookingPaymentStatus;
+  isScheduled?: boolean;
+  scheduledAt?: string;
+  createdAt: string;
+  assignedAt?: string;
+  driverArrivedAt?: string;
+  pickedAt?: string;
+  completedAt?: string;
+  cancelledAt?: string;
+  estimatedArrivalTime?: number;
+  estimatedDropTime?: string;
+  liveLocation?: { lat?: number; lng?: number; updatedAt?: string };
+  rating?: number;
+  cancellationReason?: string;
+}
+
+export interface BookingsListResponse {
+  bookings: BookingRow[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const fetchAdminBookings = async (
+  params?: {
+    status?: BookingStatus | "";
+    paymentStatus?: BookingPaymentStatus | "";
+    serviceType?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  },
+  signal?: AbortSignal,
+) => {
+  const q = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    });
+  }
+  const res = await fetch(`${API_URL}/admin/bookings?${q.toString()}`, {
+    headers: getHeaders(),
+    signal,
+  });
+  return res.json();
+};
+
+export const fetchAdminBookingById = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/bookings/${id}`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const cancelAdminBooking = async (id: string, body: { reason?: string; refundAmount?: number }) => {
+  const res = await fetch(`${API_URL}/admin/bookings/${id}/cancel`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+  return res.json();
+};
+
+export const refundAdminBooking = async (id: string, body: { amount: number; reason?: string }) => {
+  const res = await fetch(`${API_URL}/admin/bookings/${id}/refund`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+  return res.json();
+};
+
+export const assignAdminDriver = async (id: string, driverId: string) => {
+  const res = await fetch(`${API_URL}/admin/bookings/${id}/assign-driver`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify({ driverId }),
+  });
+  return res.json();
+};
+
+// Driver list helper (for assign-driver picker)
+export interface DriverOption {
+  _id: string;
+  fullName?: string;
+  mobileNumber?: string;
+  vehicleNumber?: string;
+  rating?: number;
+  isOnline?: boolean;
+  status?: string;
+}
+
+export const fetchAvailableDrivers = async (params?: { search?: string; limit?: number }) => {
+  const q = new URLSearchParams();
+  if (params?.search) q.set("search", params.search);
+  if (params?.limit) q.set("limit", String(params.limit));
+  q.set("status", "approved");
+  const res = await fetch(`${API_URL}/admin/drivers?${q.toString()}`, { headers: getHeaders() });
+  return res.json();
+};
+
+// ─── APP CONFIG / SETTINGS ADMIN APIs ───
+
+export type AppConfigValueType = "STRING" | "NUMBER" | "BOOLEAN" | "JSON" | "ARRAY";
+
+export interface AppConfigItem {
+  _id: string;
+  key: string;
+  value: unknown;
+  type: AppConfigValueType;
+  category: string;
+  description?: string;
+  isEditable?: boolean;
+}
+
+export interface FareConfigItem {
+  _id: string;
+  name: string;
+  gstPercentage: number;
+  platformFeePercentage: number;
+  insuranceFee: number;
+  minimumFare: number;
+  waitingChargePerMin: number;
+  freeWaitingMinutes: number;
+  nightSurgeMultiplier: number;
+  nightSurgeStartHour: number;
+  nightSurgeEndHour: number;
+  rainSurgeMultiplier: number;
+  peakHourSurgeMultiplier: number;
+  peakHourStart: number;
+  peakHourEnd: number;
+  isActive: boolean;
+}
+
+export const fetchAppSettings = async (category?: string) => {
+  const q = new URLSearchParams();
+  if (category) q.set("category", category);
+  const qs = q.toString();
+  const res = await fetch(`${API_URL}/admin/config/app-settings${qs ? `?${qs}` : ""}`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const updateAppSetting = async (key: string, value: unknown) => {
+  const res = await fetch(`${API_URL}/admin/config/app-settings/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify({ value }),
+  });
+  return res.json();
+};
+
+export const createAppSetting = async (data: {
+  key: string;
+  value: unknown;
+  type?: AppConfigValueType;
+  category: string;
+  description?: string;
+}) => {
+  const res = await fetch(`${API_URL}/admin/config/app-settings`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const upsertAppSetting = async (data: {
+  key: string;
+  value: unknown;
+  type?: AppConfigValueType;
+  category: string;
+  description?: string;
+}) => {
+  const updateRes = await updateAppSetting(data.key, data.value);
+  if (updateRes?.success === false || updateRes?.data?.setting == null) {
+    // Setting doesn't exist yet — create it.
+    return createAppSetting(data);
+  }
+  return updateRes;
+};
+
+export const fetchFareConfig = async () => {
+  const res = await fetch(`${API_URL}/admin/config/fare`, { headers: getHeaders() });
+  return res.json();
+};
+
+export const updateFareConfig = async (data: Partial<FareConfigItem>) => {
+  const res = await fetch(`${API_URL}/admin/config/fare`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+

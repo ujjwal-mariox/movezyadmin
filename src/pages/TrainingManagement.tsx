@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus,
   Edit2,
@@ -10,6 +10,16 @@ import {
   Image,
   FileText,
   ExternalLink,
+  GraduationCap,
+  BookOpen,
+  Award,
+  Users,
+  Layers,
+  Clock,
+  Zap,
+  CheckCircle2,
+  TrendingUp,
+  AlertCircle,
 } from "lucide-react";
 import Pagination from "../components/Pagination";
 import {
@@ -38,6 +48,215 @@ const TYPE_COLORS: Record<string, string> = {
   document: "bg-amber-100 text-amber-700",
 };
 
+type ProgramType = "ONBOARDING" | "SAFETY" | "COMPLIANCE" | "SKILL_UP" | "REFRESHER";
+type ProgramTrigger = "MANUAL" | "ON_SIGNUP" | "INCIDENT" | "LOW_RATING" | "POLICY_UPDATE" | "EXPIRY_DUE";
+type AssignmentControl = "ALL_DRIVERS" | "BY_CITY" | "BY_COHORT" | "INCIDENT_TRIGGER" | "MANUAL";
+
+interface ProgramSeed {
+  id: string;
+  title: string;
+  description: string;
+  type: ProgramType;
+  trigger: ProgramTrigger;
+  assignment: AssignmentControl;
+  modules: number;
+  durationMin: number;
+  assessment: boolean;
+  passScore: number;
+  avgAssessmentScore: number;
+  certification: boolean;
+  expiryDays: number;
+  completionRate: number;
+  impactScore: number;
+  enrolled: number;
+  certified: number;
+  reTrainingDue: number;
+  mandatory: boolean;
+  status: "ACTIVE" | "DRAFT" | "ARCHIVED";
+}
+
+const PROGRAM_SEEDS: ProgramSeed[] = [
+  {
+    id: "p1",
+    title: "Driver Onboarding Essentials",
+    description: "App walkthrough, platform rules, and the first-week checklist for new drivers.",
+    type: "ONBOARDING",
+    trigger: "ON_SIGNUP",
+    assignment: "ALL_DRIVERS",
+    modules: 6,
+    durationMin: 45,
+    assessment: true,
+    passScore: 70,
+    avgAssessmentScore: 82,
+    certification: true,
+    expiryDays: 365,
+    completionRate: 92,
+    impactScore: 84,
+    enrolled: 1240,
+    certified: 1142,
+    reTrainingDue: 32,
+    mandatory: true,
+    status: "ACTIVE",
+  },
+  {
+    id: "p2",
+    title: "Road Safety & Defensive Driving",
+    description: "Core safety module — traffic rules, hazards, and defensive techniques.",
+    type: "SAFETY",
+    trigger: "ON_SIGNUP",
+    assignment: "ALL_DRIVERS",
+    modules: 8,
+    durationMin: 75,
+    assessment: true,
+    passScore: 80,
+    avgAssessmentScore: 86,
+    certification: true,
+    expiryDays: 180,
+    completionRate: 78,
+    impactScore: 91,
+    enrolled: 1180,
+    certified: 920,
+    reTrainingDue: 214,
+    mandatory: true,
+    status: "ACTIVE",
+  },
+  {
+    id: "p3",
+    title: "Handling Fragile & Sensitive Items",
+    description: "Packaging standards, loading sequence, and liability for fragile deliveries.",
+    type: "SKILL_UP",
+    trigger: "MANUAL",
+    assignment: "BY_COHORT",
+    modules: 4,
+    durationMin: 30,
+    assessment: true,
+    passScore: 70,
+    avgAssessmentScore: 74,
+    certification: false,
+    expiryDays: 0,
+    completionRate: 64,
+    impactScore: 58,
+    enrolled: 420,
+    certified: 268,
+    reTrainingDue: 0,
+    mandatory: false,
+    status: "ACTIVE",
+  },
+  {
+    id: "p4",
+    title: "Customer Service Excellence",
+    description: "Communication, de-escalation, and handling complaints with professionalism.",
+    type: "SKILL_UP",
+    trigger: "LOW_RATING",
+    assignment: "INCIDENT_TRIGGER",
+    modules: 5,
+    durationMin: 40,
+    assessment: true,
+    passScore: 75,
+    avgAssessmentScore: 79,
+    certification: false,
+    expiryDays: 0,
+    completionRate: 71,
+    impactScore: 77,
+    enrolled: 186,
+    certified: 132,
+    reTrainingDue: 0,
+    mandatory: false,
+    status: "ACTIVE",
+  },
+  {
+    id: "p5",
+    title: "Prohibited Items & Compliance",
+    description: "What you must refuse to carry — legal, safety, and platform policy.",
+    type: "COMPLIANCE",
+    trigger: "POLICY_UPDATE",
+    assignment: "ALL_DRIVERS",
+    modules: 3,
+    durationMin: 20,
+    assessment: true,
+    passScore: 90,
+    avgAssessmentScore: 93,
+    certification: true,
+    expiryDays: 365,
+    completionRate: 88,
+    impactScore: 95,
+    enrolled: 1240,
+    certified: 1090,
+    reTrainingDue: 68,
+    mandatory: true,
+    status: "ACTIVE",
+  },
+  {
+    id: "p6",
+    title: "Accident & Incident Response",
+    description: "What to do during and after an accident — triggered automatically after any incident.",
+    type: "SAFETY",
+    trigger: "INCIDENT",
+    assignment: "INCIDENT_TRIGGER",
+    modules: 4,
+    durationMin: 25,
+    assessment: true,
+    passScore: 85,
+    avgAssessmentScore: 88,
+    certification: false,
+    expiryDays: 0,
+    completionRate: 81,
+    impactScore: 89,
+    enrolled: 94,
+    certified: 76,
+    reTrainingDue: 0,
+    mandatory: true,
+    status: "ACTIVE",
+  },
+  {
+    id: "p7",
+    title: "Annual Safety Refresher",
+    description: "Mandatory yearly refresher on updated safety protocols and platform changes.",
+    type: "REFRESHER",
+    trigger: "EXPIRY_DUE",
+    assignment: "ALL_DRIVERS",
+    modules: 5,
+    durationMin: 35,
+    assessment: true,
+    passScore: 75,
+    avgAssessmentScore: 81,
+    certification: true,
+    expiryDays: 365,
+    completionRate: 69,
+    impactScore: 72,
+    enrolled: 860,
+    certified: 594,
+    reTrainingDue: 124,
+    mandatory: true,
+    status: "DRAFT",
+  },
+];
+
+const PROGRAM_TYPE_TONE: Record<ProgramType, { badge: string; label: string }> = {
+  ONBOARDING: { badge: "bg-blue-100 text-blue-700", label: "Onboarding" },
+  SAFETY: { badge: "bg-red-100 text-red-700", label: "Safety" },
+  COMPLIANCE: { badge: "bg-purple-100 text-purple-700", label: "Compliance" },
+  SKILL_UP: { badge: "bg-amber-100 text-amber-700", label: "Skill Up" },
+  REFRESHER: { badge: "bg-teal-100 text-teal-700", label: "Refresher" },
+};
+
+const TRIGGER_LABEL: Record<ProgramTrigger, string> = {
+  MANUAL: "Manual",
+  ON_SIGNUP: "On signup",
+  INCIDENT: "After incident",
+  LOW_RATING: "Low rating",
+  POLICY_UPDATE: "Policy update",
+  EXPIRY_DUE: "Expiry due",
+};
+
+const ASSIGNMENT_LABEL: Record<AssignmentControl, string> = {
+  ALL_DRIVERS: "All drivers",
+  BY_CITY: "By city",
+  BY_COHORT: "By cohort",
+  INCIDENT_TRIGGER: "Incident-based",
+  MANUAL: "Manual assign",
+};
+
 interface FormState {
   title: string;
   description: string;
@@ -55,6 +274,7 @@ const initialForm: FormState = {
 };
 
 export default function TrainingManagement() {
+  const [viewMode, setViewMode] = useState<"programs" | "content">("programs");
   const [items, setItems] = useState<TrainingMaterialItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -180,25 +400,46 @@ export default function TrainingManagement() {
 
   const needsFile = form.type !== "youtube";
 
+  const programStats = useMemo(() => {
+    const totalPrograms = PROGRAM_SEEDS.length;
+    const totalEnrolled = PROGRAM_SEEDS.reduce((a, p) => a + p.enrolled, 0);
+    const totalCertified = PROGRAM_SEEDS.reduce((a, p) => a + p.certified, 0);
+    const reTrainingDue = PROGRAM_SEEDS.reduce((a, p) => a + p.reTrainingDue, 0);
+    const avgCompletion = Math.round(
+      PROGRAM_SEEDS.reduce((a, p) => a + p.completionRate, 0) / totalPrograms,
+    );
+    return { totalPrograms, totalEnrolled, totalCertified, reTrainingDue, avgCompletion };
+  }, []);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Training & Learning
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <GraduationCap className="w-6 h-6" />
+            Training &amp; Learning
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Manage training materials for drivers — YouTube links, videos,
-            images, and documents.
+            Structured training programs for driver readiness, plus a flexible learning content library.
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus size={18} /> Add Material
-        </button>
+        {viewMode === "content" && (
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={18} /> Add Material
+          </button>
+        )}
+        {viewMode === "programs" && (
+          <button
+            onClick={() => showNotification("success", "Program builder coming soon — backend in progress")}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={18} /> New Program
+          </button>
+        )}
       </div>
 
       {/* Notification */}
@@ -210,7 +451,239 @@ export default function TrainingManagement() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* KPI strip (programs view) */}
+      {viewMode === "programs" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Active Programs</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{programStats.totalPrograms}</p>
+                <p className="text-xs text-gray-400 mt-1">Across 5 categories</p>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-blue-600" />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-green-500 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Certified Drivers</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {programStats.totalCertified.toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  of {programStats.totalEnrolled.toLocaleString()} enrolled
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                <Award className="w-5 h-5 text-green-600" />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-purple-500 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Avg Completion</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{programStats.avgCompletion}%</p>
+                <p className="text-xs text-gray-400 mt-1">Across all programs</p>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-purple-600" />
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Re-training Due</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{programStats.reTrainingDue}</p>
+                <p className="text-xs text-gray-400 mt-1">Certificates expiring</p>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View switcher */}
+      <div className="flex items-center border-b border-gray-200">
+        <button
+          onClick={() => setViewMode("programs")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            viewMode === "programs"
+              ? "border-blue-600 text-blue-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <GraduationCap className="w-4 h-4" />
+          Training Programs
+          <span className="ml-1 text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
+            {programStats.totalPrograms}
+          </span>
+        </button>
+        <button
+          onClick={() => setViewMode("content")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            viewMode === "content"
+              ? "border-blue-600 text-blue-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          Learning Content
+          <span className="ml-1 text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
+            {totalItems}
+          </span>
+        </button>
+      </div>
+
+      {/* Training Programs view */}
+      {viewMode === "programs" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {PROGRAM_SEEDS.map((p) => {
+            const tone = PROGRAM_TYPE_TONE[p.type];
+            const completionTone =
+              p.completionRate >= 85
+                ? "bg-green-500"
+                : p.completionRate >= 65
+                ? "bg-blue-500"
+                : "bg-amber-500";
+            const impactTone =
+              p.impactScore >= 85
+                ? "text-green-700"
+                : p.impactScore >= 70
+                ? "text-blue-700"
+                : "text-amber-700";
+            return (
+              <div
+                key={p.id}
+                className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <h3 className="font-semibold text-gray-900 text-base">{p.title}</h3>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tone.badge}`}>
+                        {tone.label}
+                      </span>
+                      {p.mandatory && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                          <AlertCircle className="w-3 h-3" /> Mandatory
+                        </span>
+                      )}
+                      {p.certification && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                          <Award className="w-3 h-3" /> Certified
+                        </span>
+                      )}
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        p.status === "ACTIVE" ? "bg-green-100 text-green-700" :
+                        p.status === "DRAFT" ? "bg-amber-100 text-amber-700" :
+                        "bg-gray-100 text-gray-600"
+                      }`}>
+                        {p.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 leading-snug">{p.description}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-5 gap-2 mb-3 text-xs">
+                  <div className="bg-gray-50 rounded-lg p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
+                      <Layers className="w-3 h-3" /> Modules
+                    </div>
+                    <div className="font-semibold text-gray-900">{p.modules}</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
+                      <Clock className="w-3 h-3" /> Duration
+                    </div>
+                    <div className="font-semibold text-gray-900">{p.durationMin}m</div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
+                      <CheckCircle2 className="w-3 h-3" /> Pass
+                    </div>
+                    <div className="font-semibold text-gray-900">
+                      {p.assessment ? `${p.passScore}%` : "—"}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
+                      <TrendingUp className="w-3 h-3" /> Avg Score
+                    </div>
+                    <div className={`font-semibold ${
+                      p.avgAssessmentScore >= p.passScore ? "text-green-700" : "text-amber-700"
+                    }`}>
+                      {p.assessment ? `${p.avgAssessmentScore}%` : "—"}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2 text-center">
+                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
+                      <Clock className="w-3 h-3" /> Expiry
+                    </div>
+                    <div className="font-semibold text-gray-900">
+                      {p.expiryDays > 0 ? `${p.expiryDays}d` : "Never"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 text-xs border border-indigo-100">
+                    <Zap className="w-3 h-3" /> Trigger: {TRIGGER_LABEL[p.trigger]}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-50 text-gray-700 text-xs border border-gray-200">
+                    <Users className="w-3 h-3" /> {ASSIGNMENT_LABEL[p.assignment]}
+                  </span>
+                </div>
+
+                <div className="border-t pt-3 space-y-2">
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-gray-500">Completion Rate</span>
+                      <span className="font-semibold text-gray-900">{p.completionRate}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className={`${completionTone} h-1.5 rounded-full`}
+                        style={{ width: `${p.completionRate}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="text-gray-500">
+                      <span className="font-semibold text-gray-900">{p.certified.toLocaleString()}</span>
+                      <span className="text-gray-400"> / {p.enrolled.toLocaleString()}</span> certified
+                    </div>
+                    <div className={`flex items-center gap-1 font-semibold ${impactTone}`}>
+                      <TrendingUp className="w-3 h-3" />
+                      Impact {p.impactScore}
+                    </div>
+                  </div>
+                  {p.reTrainingDue > 0 && (
+                    <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 rounded-md px-2 py-1 border border-amber-200">
+                      <AlertCircle className="w-3 h-3" />
+                      {p.reTrainingDue} drivers due for re-training
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <div className="lg:col-span-2 text-xs text-gray-400 italic px-2">
+            Programs view shows structured, module-based training with assessments and certification. The content library tab manages supporting media.
+          </div>
+        </div>
+      )}
+
+      {/* Filters (content view) */}
+      {viewMode === "content" && (
+      <>
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[220px]">
           <Search
@@ -369,6 +842,8 @@ export default function TrainingManagement() {
           endIndex={Math.min(page * 10, totalItems) - 1}
           itemLabel="materials"
         />
+      )}
+      </>
       )}
 
       {/* Modal */}

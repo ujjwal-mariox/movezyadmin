@@ -9,7 +9,6 @@ import {
   Eye,
   Ban,
   IndianRupee,
-  Clock,
   MessageSquare,
   FileText,
   Plus,
@@ -17,6 +16,13 @@ import {
   Save,
   GripVertical,
   Edit2,
+  AlertTriangle,
+  TrendingUp,
+  Phone,
+  Mail,
+  CreditCard,
+  Sliders,
+  Activity,
 } from "lucide-react";
 import type { Enterprise } from "../types/admin";
 import { type PageSize } from "../hooks/usePagination";
@@ -187,6 +193,21 @@ const AccountsTab: React.FC = () => {
     suspended: enterprises.filter((e) => e.status === "SUSPENDED").length,
   };
 
+  // Credit-risk & revenue derived metrics from loaded page
+  const creditRiskEnterprises = enterprises.filter((e) => {
+    if (e.status !== "APPROVED" || !e.creditLimit || e.creditLimit <= 0) return false;
+    const used = e.usedCredit || 0;
+    return used / e.creditLimit > 0.85;
+  });
+  const revenueContribution = enterprises.reduce(
+    (sum, e) => sum + (e.usedCredit || 0),
+    0,
+  );
+  const outstandingTotal = enterprises.reduce((sum, e) => {
+    if (e.status !== "APPROVED") return sum;
+    return sum + (e.usedCredit || 0);
+  }, 0);
+
   // ── Handlers ──
   const openCreate = () => {
     setFormData({ ...EMPTY_FORM });
@@ -276,24 +297,84 @@ const AccountsTab: React.FC = () => {
 
   return (
     <>
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {[
-          { label: "Total Enterprises", val: stats.total, color: "blue", icon: <Building2 className="w-6 h-6 text-blue-600" /> },
-          { label: "Pending", val: stats.pending, color: "yellow", icon: <Clock className="w-6 h-6 text-yellow-600" /> },
-          { label: "Active", val: stats.approved, color: "green", icon: <Check className="w-6 h-6 text-green-600" /> },
-          { label: "Suspended", val: stats.suspended, color: "red", icon: <Ban className="w-6 h-6 text-red-600" /> },
-        ].map((s) => (
-          <div key={s.label} className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">{s.label}</p>
-                <p className={`text-2xl font-bold text-${s.color}-600 mt-1`}>{s.val}</p>
-              </div>
-              <div className={`w-12 h-12 bg-${s.color}-100 rounded-xl flex items-center justify-center`}>{s.icon}</div>
+      {/* Top Strip — Enterprise KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Total Enterprises
+              </p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">
+                {stats.total}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">All registered accounts</p>
+            </div>
+            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+              <Building2 className="w-6 h-6 text-blue-600" />
             </div>
           </div>
-        ))}
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 !border-l-green-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                Active
+              </p>
+              <p className="text-3xl font-bold text-green-600 mt-1">
+                {stats.approved}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                {stats.pending} pending approval
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+              <Check className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 !border-l-red-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                Credit Risk
+              </p>
+              <p className="text-3xl font-bold text-red-600 mt-1">
+                {creditRiskEnterprises.length}
+              </p>
+              <p className="text-xs text-red-400 mt-1">
+                Above 85% credit usage
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 !border-l-orange-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                <TrendingUp className="w-3.5 h-3.5 text-orange-600" />
+                Revenue Contribution
+              </p>
+              <p className="text-3xl font-bold text-orange-600 mt-1">
+                {fmt(revenueContribution)}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Outstanding {fmt(outstandingTotal)}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+              <IndianRupee className="w-6 h-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filters + Add button */}
@@ -340,10 +421,23 @@ const AccountsTab: React.FC = () => {
               ) : enterprises.length === 0 ? (
                 <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">No enterprises found</td></tr>
               ) : (
-                paginatedEnterprises.map((ent) => (
-                  <tr key={ent._id} className="hover:bg-gray-50 transition-colors">
+                paginatedEnterprises.map((ent) => {
+                  const usagePct = ent.creditLimit
+                    ? ((ent.usedCredit || 0) / ent.creditLimit) * 100
+                    : 0;
+                  const isAtRisk = usagePct > 85 && ent.status === "APPROVED";
+                  return (
+                  <tr key={ent._id} className={`hover:bg-gray-50 transition-colors ${isAtRisk ? "bg-red-50/30" : ""}`}>
                     <td className="px-6 py-4">
-                      <p className="font-medium text-gray-800">{ent.companyName}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-800">{ent.companyName}</p>
+                        {isAtRisk && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold" title="Credit usage above 85%">
+                            <AlertTriangle className="w-3 h-3" />
+                            AT RISK
+                          </span>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-500">{ent.city}, {ent.state}</p>
                     </td>
                     <td className="px-6 py-4">
@@ -389,7 +483,8 @@ const AccountsTab: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -604,43 +699,351 @@ const AccountsTab: React.FC = () => {
         </div>
       )}
 
-      {/* ── Detail Modal ── */}
+      {/* ── Profile Panel (Right-side drawer) ── */}
       {showDetailModal && selectedEnterprise && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-800">Enterprise Details</h3>
-              <button onClick={() => setShowDetailModal(false)} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg"><X className="w-5 h-5" /></button>
+        <EnterpriseProfilePanel
+          enterprise={selectedEnterprise}
+          onClose={() => setShowDetailModal(false)}
+          onEdit={() => { setShowDetailModal(false); openEdit(selectedEnterprise); }}
+          onBlock={() => {
+            setSuspendReason("");
+            setShowDetailModal(false);
+            setShowSuspendModal(true);
+          }}
+          fmt={fmt}
+          getStatusBadge={getStatusBadge}
+        />
+      )}
+    </>
+  );
+};
+
+// ────────────────────────────────────────────────────────────
+// Enterprise Profile Panel (right-side drawer with payment history + credit graph)
+// ────────────────────────────────────────────────────────────
+interface EnterpriseProfilePanelProps {
+  enterprise: Enterprise;
+  onClose: () => void;
+  onEdit: () => void;
+  onBlock: () => void;
+  fmt: (n: number) => string;
+  getStatusBadge: (status: string) => string;
+}
+
+const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
+  enterprise,
+  onClose,
+  onEdit,
+  onBlock,
+  fmt,
+  getStatusBadge,
+}) => {
+  const creditLimit = enterprise.creditLimit || 0;
+  const usedCredit = enterprise.usedCredit || 0;
+  const usagePct = creditLimit > 0 ? (usedCredit / creditLimit) * 100 : 0;
+  const usageTone =
+    usagePct > 90
+      ? { bar: "bg-red-500", text: "text-red-700", bg: "bg-red-50" }
+      : usagePct > 70
+        ? { bar: "bg-yellow-500", text: "text-yellow-700", bg: "bg-yellow-50" }
+        : { bar: "bg-green-500", text: "text-green-700", bg: "bg-green-50" };
+
+  // Mock payment history — swap with /admin/enterprises/:id/payments when wired
+  const paymentHistory = [
+    { date: "2026-04-12", amount: Math.round(usedCredit * 0.4), status: "paid" as const, invoice: "INV-4218" },
+    { date: "2026-03-28", amount: Math.round(usedCredit * 0.25), status: "paid" as const, invoice: "INV-4079" },
+    { date: "2026-03-15", amount: Math.round(usedCredit * 0.2), status: "pending" as const, invoice: "INV-3912" },
+    { date: "2026-02-28", amount: Math.round(usedCredit * 0.15), status: "paid" as const, invoice: "INV-3780" },
+  ].filter((p) => p.amount > 0);
+
+  // Monthly credit usage (mock trend for graph) — deterministic so renders are stable
+  const months = ["Nov", "Dec", "Jan", "Feb", "Mar", "Apr"];
+  const monthWeights = [0.45, 0.55, 0.62, 0.78, 0.85, 1.0];
+  const usageSeries = months.map((m, i) => ({
+    month: m,
+    value: Math.round(usedCredit * monthWeights[i]),
+  }));
+  const maxSeries = Math.max(1, ...usageSeries.map((s) => s.value));
+
+  const handleAdjustCredit = () => {
+    const newLimit = window.prompt(
+      "New credit limit (INR)",
+      String(creditLimit),
+    );
+    if (!newLimit) return;
+    alert(`Credit limit will be updated to ${fmt(Number(newLimit))} once the API is wired.`);
+  };
+
+  const handleContact = () => {
+    if (enterprise.email) window.location.href = `mailto:${enterprise.email}`;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+      <div className="bg-white w-full max-w-2xl h-full overflow-y-auto shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center">
+              <Building2 className="w-6 h-6 text-orange-600" />
             </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div><p className="text-sm text-gray-500">Company</p><p className="font-medium">{selectedEnterprise.companyName}</p></div>
-              <div><p className="text-sm text-gray-500">GSTIN</p><p className="font-mono">{selectedEnterprise.gstin || "-"}</p></div>
-              <div><p className="text-sm text-gray-500">Contact</p><p>{selectedEnterprise.contactPerson}</p></div>
-              <div><p className="text-sm text-gray-500">Phone</p><p>{selectedEnterprise.phone}</p></div>
-              <div><p className="text-sm text-gray-500">Email</p><p>{selectedEnterprise.email}</p></div>
-              <div><p className="text-sm text-gray-500">Status</p>
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedEnterprise.status)}`}>{selectedEnterprise.status}</span>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">
+                {enterprise.companyName}
+              </h3>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${getStatusBadge(enterprise.status)}`}
+                >
+                  {enterprise.status}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {enterprise.city}, {enterprise.state}
+                </span>
               </div>
-              <div className="col-span-2"><p className="text-sm text-gray-500">Address</p><p>{selectedEnterprise.address}, {selectedEnterprise.city}, {selectedEnterprise.state} - {selectedEnterprise.pincode}</p></div>
-              <div><p className="text-sm text-gray-500">Credit Limit</p><p className="font-medium">{fmt(selectedEnterprise.creditLimit)}</p></div>
-              <div><p className="text-sm text-gray-500">Used Credit</p><p className="font-medium">{fmt(selectedEnterprise.usedCredit || 0)}</p></div>
-              <div><p className="text-sm text-gray-500">Discount</p><p>{selectedEnterprise.discountPercentage || 0}%</p></div>
-              <div><p className="text-sm text-gray-500">Payment Terms</p><p>{selectedEnterprise.paymentTerms || 30} days</p></div>
-              {selectedEnterprise.rejectionReason && (
-                <div className="col-span-2"><p className="text-sm text-gray-500">Rejection Reason</p><p className="text-red-600">{selectedEnterprise.rejectionReason}</p></div>
-              )}
-              <div><p className="text-sm text-gray-500">Created</p><p>{new Date(selectedEnterprise.createdAt).toLocaleDateString("en-IN")}</p></div>
-              <div><p className="text-sm text-gray-500">Updated</p><p>{new Date(selectedEnterprise.updatedAt).toLocaleDateString("en-IN")}</p></div>
             </div>
-            <div className="mt-6 pt-6 border-t flex justify-end gap-3">
-              <button onClick={() => { setShowDetailModal(false); openEdit(selectedEnterprise); }}
-                className="px-6 py-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 flex items-center gap-2"><Edit2 className="w-4 h-4" /> Edit</button>
-              <button onClick={() => setShowDetailModal(false)} className="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200">Close</button>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 p-6 space-y-6">
+          {/* Contact strip */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[11px] uppercase text-gray-500 font-semibold">
+                Contact Person
+              </p>
+              <p className="text-sm font-medium text-gray-800 mt-0.5">
+                {enterprise.contactPerson}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[11px] uppercase text-gray-500 font-semibold">
+                GSTIN
+              </p>
+              <p className="text-sm font-mono text-gray-800 mt-0.5">
+                {enterprise.gstin || "—"}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[11px] uppercase text-gray-500 font-semibold flex items-center gap-1">
+                <Phone className="w-3 h-3" /> Phone
+              </p>
+              <p className="text-sm font-medium text-gray-800 mt-0.5">
+                {enterprise.phone}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-[11px] uppercase text-gray-500 font-semibold flex items-center gap-1">
+                <Mail className="w-3 h-3" /> Email
+              </p>
+              <p className="text-sm font-medium text-gray-800 mt-0.5 truncate">
+                {enterprise.email}
+              </p>
+            </div>
+          </div>
+
+          {/* Credit usage */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-orange-500" />
+                Credit Usage
+              </p>
+              {usagePct > 85 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[11px] font-bold">
+                  <AlertTriangle className="w-3 h-3" />
+                  HIGH RISK
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-gray-500 font-semibold">
+                  Limit
+                </p>
+                <p className="text-base font-bold text-gray-800 mt-0.5">
+                  {fmt(creditLimit)}
+                </p>
+              </div>
+              <div className={`${usageTone.bg} rounded-xl p-3`}>
+                <p
+                  className={`text-[10px] uppercase ${usageTone.text} font-semibold`}
+                >
+                  Outstanding
+                </p>
+                <p className={`text-base font-bold ${usageTone.text} mt-0.5`}>
+                  {fmt(usedCredit)}
+                </p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] uppercase text-gray-500 font-semibold">
+                  Available
+                </p>
+                <p className="text-base font-bold text-gray-800 mt-0.5">
+                  {fmt(Math.max(0, creditLimit - usedCredit))}
+                </p>
+              </div>
+            </div>
+            <div className="mb-2">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-gray-500">Usage</span>
+                <span className={`font-semibold ${usageTone.text}`}>
+                  {usagePct.toFixed(1)}%
+                </span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full">
+                <div
+                  className={`h-full rounded-full ${usageTone.bar}`}
+                  style={{ width: `${Math.min(usagePct, 100)}%` }}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-3">
+              Payment terms: {enterprise.paymentTerms || 30} days •{" "}
+              {enterprise.discountPercentage || 0}% discount
+            </p>
+          </div>
+
+          {/* Credit usage graph (last 6 months) */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-orange-500" />
+                Credit Usage Trend
+              </p>
+              <span className="text-xs text-gray-500">Last 6 months</span>
+            </div>
+            <div className="flex items-end gap-2 h-28">
+              {usageSeries.map((s) => {
+                const h = (s.value / maxSeries) * 100;
+                return (
+                  <div
+                    key={s.month}
+                    className="flex-1 flex flex-col items-center gap-1"
+                  >
+                    <div className="w-full bg-gray-100 rounded-md relative h-full flex items-end">
+                      <div
+                        className="w-full rounded-md bg-gradient-to-t from-orange-500 to-orange-300"
+                        style={{ height: `${h}%` }}
+                        title={fmt(s.value)}
+                      />
+                    </div>
+                    <span className="text-[10px] text-gray-500">
+                      {s.month}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Payment history */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2 mb-3">
+              <IndianRupee className="w-4 h-4 text-green-600" />
+              Payment History
+            </p>
+            <div className="space-y-2">
+              {paymentHistory.length === 0 && (
+                <p className="text-xs text-gray-400 italic">
+                  No payment history yet.
+                </p>
+              )}
+              {paymentHistory.map((p) => (
+                <div
+                  key={p.invoice}
+                  className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-xl"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">
+                      {p.invoice}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(p.date).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-gray-800">
+                      {fmt(p.amount)}
+                    </span>
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        p.status === "paid"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
+                      {p.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Meta */}
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <p className="text-gray-500">Created</p>
+              <p className="text-gray-800 font-medium">
+                {new Date(enterprise.createdAt).toLocaleDateString("en-IN")}
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500">Last updated</p>
+              <p className="text-gray-800 font-medium">
+                {new Date(enterprise.updatedAt).toLocaleDateString("en-IN")}
+              </p>
             </div>
           </div>
         </div>
-      )}
-    </>
+
+        {/* Footer actions */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex items-center gap-2">
+          <button
+            onClick={handleAdjustCredit}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-colors"
+          >
+            <Sliders className="w-4 h-4" />
+            Adjust Credit
+          </button>
+          <button
+            onClick={handleContact}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100 transition-colors"
+          >
+            <Mail className="w-4 h-4" />
+            Contact
+          </button>
+          <button
+            onClick={onEdit}
+            className="p-2.5 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200"
+            title="Edit"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          {enterprise.status === "APPROVED" && (
+            <button
+              onClick={onBlock}
+              className="p-2.5 rounded-xl bg-red-50 text-red-700 hover:bg-red-100"
+              title="Block / Suspend"
+            >
+              <Ban className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 

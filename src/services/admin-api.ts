@@ -205,6 +205,29 @@ export const trackingApi = {
 
   // Get active bookings with locations
   getActiveBookings: () => fetchWithAuth("/admin/tracking/bookings/active"),
+
+  // Get demand zones heatmap data
+  getDemandZones: (params?: { hours?: number }) => {
+    const query = new URLSearchParams(
+      params as Record<string, string>,
+    ).toString();
+    return fetchWithAuth(`/admin/tracking/demand-zones?${query}`);
+  },
+};
+
+// ==================== DRIVER METRICS API ====================
+export const driverMetricsApi = {
+  // Get late delivery metrics
+  getLateDeliveryMetrics: (params?: { days?: number }) => {
+    const query = new URLSearchParams(
+      params as Record<string, string>,
+    ).toString();
+    return fetchWithAuth(`/admin/drivers/late-delivery-metrics?${query}`);
+  },
+
+  // Get device info summary (battery, app version)
+  getDeviceInfoSummary: () =>
+    fetchWithAuth("/admin/drivers/device-info"),
 };
 
 // ==================== NOTIFICATION API ====================
@@ -1043,6 +1066,291 @@ export const masterDataApi = {
     fetchWithAuth(`/admin/config/fuel-types/${id}`, { method: "DELETE" }),
 };
 
+// ==================== REFUND API (DUAL APPROVAL) ====================
+export const refundApi = {
+  // Get refund configuration
+  getConfig: () => fetchWithAuth("/admin/refunds/config"),
+
+  // Update refund configuration
+  updateConfig: (data: {
+    autoApproveThreshold?: number;
+    requireL2Above?: number;
+    maxRefundPercentage?: number;
+  }) => fetchWithAuth("/admin/refunds/config", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  }),
+
+  // Get all refund requests
+  getAll: (params?: {
+    status?: string;
+    page?: number;
+    limit?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          query.append(key, String(value));
+        }
+      });
+    }
+    return fetchWithAuth(`/admin/refunds?${query.toString()}`);
+  },
+
+  // Get refund request by ID
+  getById: (id: string) => fetchWithAuth(`/admin/refunds/${id}`),
+
+  // Get refund stats
+  getStats: (period?: string) => {
+    const query = period ? `?period=${period}` : "";
+    return fetchWithAuth(`/admin/refunds/stats${query}`);
+  },
+
+  // Request a new refund
+  request: (data: {
+    bookingId: string;
+    amount: number;
+    reason: string;
+    comment: string;
+  }) => fetchWithAuth("/admin/refunds/request", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+
+  // Approve refund Level 1
+  approveL1: (id: string, comment: string) => fetchWithAuth(`/admin/refunds/${id}/approve-l1`, {
+    method: "PUT",
+    body: JSON.stringify({ comment }),
+  }),
+
+  // Approve refund Level 2
+  approveL2: (id: string, comment: string) => fetchWithAuth(`/admin/refunds/${id}/approve-l2`, {
+    method: "PUT",
+    body: JSON.stringify({ comment }),
+  }),
+
+  // Reject refund
+  reject: (id: string, comment: string) => fetchWithAuth(`/admin/refunds/${id}/reject`, {
+    method: "PUT",
+    body: JSON.stringify({ comment }),
+  }),
+
+  // Process approved refund (trigger actual payment)
+  process: (id: string) => fetchWithAuth(`/admin/refunds/${id}/process`, {
+    method: "PUT",
+  }),
+};
+
+// ==================== ENHANCED FINANCE API ====================
+export const enhancedFinanceApi = {
+  // Get enhanced overview with all metrics
+  getEnhancedOverview: (params?: {
+    period?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          query.append(key, String(value));
+        }
+      });
+    }
+    return fetchWithAuth(`/admin/finance/enhanced-overview?${query.toString()}`);
+  },
+
+  // Get expenses
+  getExpenses: (params?: {
+    status?: string;
+    category?: string;
+    page?: number;
+    limit?: number;
+    dateFrom?: string;
+    dateTo?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          query.append(key, String(value));
+        }
+      });
+    }
+    return fetchWithAuth(`/admin/finance/expenses?${query.toString()}`);
+  },
+
+  // Create expense
+  createExpense: (data: {
+    description: string;
+    amount: number;
+    category: string;
+    reference?: string;
+    notes?: string;
+  }) => fetchWithAuth("/admin/finance/expenses", {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+
+  // Approve expense
+  approveExpense: (id: string) => fetchWithAuth(`/admin/finance/expenses/${id}/approve`, {
+    method: "PUT",
+  }),
+
+  // Mark expense as paid
+  markExpensePaid: (id: string, paymentRef?: string) => fetchWithAuth(`/admin/finance/expenses/${id}/pay`, {
+    method: "PUT",
+    body: JSON.stringify({ paymentRef }),
+  }),
+
+  // Get DSO (Days Sales Outstanding) metrics
+  getDSOMetrics: () => fetchWithAuth("/admin/finance/dso"),
+
+  // Export finance data with custom date range
+  exportData: (params?: {
+    dateFrom?: string;
+    dateTo?: string;
+    format?: "csv" | "xlsx";
+  }) => {
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          query.append(key, String(value));
+        }
+      });
+    }
+    return fetchWithAuth(`/admin/finance/export-enhanced?${query.toString()}`);
+  },
+};
+
+// ==================== ENHANCED DRIVER API ====================
+export const enhancedDriverApi = {
+  // Get enhanced driver details (all metrics combined)
+  getEnhancedDetails: (id: string) => fetchWithAuth(`/admin/drivers/${id}/enhanced`),
+
+  // Get driver COD balance
+  getCODBalance: (id: string) => fetchWithAuth(`/admin/drivers/${id}/cod-balance`),
+
+  // Get driver weekly earnings
+  getWeeklyEarnings: (id: string) => fetchWithAuth(`/admin/drivers/${id}/weekly-earnings`),
+
+  // Get driver document status (traffic light)
+  getDocumentStatus: (id: string) => fetchWithAuth(`/admin/drivers/${id}/documents/status`),
+
+  // Get driver reassignment history
+  getReassignments: (id: string, params?: { page?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    return fetchWithAuth(`/admin/drivers/${id}/reassignments?${query.toString()}`);
+  },
+
+  // Get all drivers COD summary
+  getAllCODSummary: () => fetchWithAuth("/admin/drivers/cod-summary"),
+
+  // Settle COD for driver
+  settleCOD: (id: string, data: { amount: number; comment: string; paymentRef?: string }) =>
+    fetchWithAuth(`/admin/drivers/${id}/cod/settle`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  // Get drivers with expiring documents
+  getExpiringDocuments: (days?: number) => {
+    const query = days ? `?days=${days}` : "";
+    return fetchWithAuth(`/admin/drivers/expiring-documents${query}`);
+  },
+};
+
+// ==================== ENTERPRISE CREDIT API ====================
+export const enterpriseCreditApi = {
+  // Get credit history for an enterprise
+  getCreditHistory: (id: string, params?: { page?: number; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.limit) query.set("limit", String(params.limit));
+    return fetchWithAuth(`/admin/enterprises/${id}/credit-history?${query.toString()}`);
+  },
+
+  // Adjust enterprise credit
+  adjustCredit: (id: string, data: {
+    type: "CREDIT_REPAID" | "ADJUSTMENT";
+    amount: number;
+    comment: string;
+    reference?: string;
+  }) => fetchWithAuth(`/admin/enterprises/${id}/credit/adjust`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  }),
+
+  // Update credit limit
+  updateCreditLimit: (id: string, data: {
+    creditLimit: number;
+    comment: string;
+  }) => fetchWithAuth(`/admin/enterprises/${id}/credit-limit-enhanced`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  }),
+
+  // Get all enterprises credit summary
+  getCreditSummary: () => fetchWithAuth("/admin/enterprises/credit-summary"),
+
+  // Get overdue enterprises
+  getOverdueEnterprises: () => fetchWithAuth("/admin/enterprises/overdue"),
+};
+
+// ==================== SESSION MANAGEMENT API ====================
+export const sessionApi = {
+  // Get session configuration
+  getConfig: () => fetchWithAuth("/admin/config/session"),
+
+  // Update session configuration
+  updateConfig: (data: {
+    sessionTimeout?: number;
+    maxConcurrentSessions?: number;
+    enforceIpWhitelist?: boolean;
+    enforceTimeRestrictions?: boolean;
+  }) => fetchWithAuth("/admin/config/session", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  }),
+
+  // Get all active sessions
+  getActiveSessions: () => fetchWithAuth("/admin/sessions/active"),
+
+  // Terminate a specific session
+  terminateSession: (sessionId: string) => fetchWithAuth(`/admin/sessions/${sessionId}`, {
+    method: "DELETE",
+  }),
+
+  // Terminate all sessions for an admin
+  terminateAllAdminSessions: (adminId: string) => fetchWithAuth(`/admin/sessions/admin/${adminId}`, {
+    method: "DELETE",
+  }),
+
+  // Update session restrictions for a staff member
+  updateSessionRestrictions: (staffId: string, data: {
+    ipWhitelist?: string[];
+    allowedLoginHours?: { start: string; end: string };
+    allowedDays?: string[];
+  }) => fetchWithAuth(`/admin/staff/${staffId}/session-restrictions`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  }),
+
+  // Get login attempts
+  getLoginAttempts: (params?: { page?: number; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set("page", String(params.page));
+    if (params?.status) query.set("status", params.status);
+    return fetchWithAuth(`/admin/security/login-attempts?${query.toString()}`);
+  },
+};
+
 export default {
   enterprise: enterpriseApi,
   sos: sosApi,
@@ -1062,4 +1370,10 @@ export default {
   finance: financeApi,
   dashboardLive: dashboardLiveApi,
   masterData: masterDataApi,
+  refund: refundApi,
+  enhancedFinance: enhancedFinanceApi,
+  enhancedDriver: enhancedDriverApi,
+  enterpriseCredit: enterpriseCreditApi,
+  session: sessionApi,
+  driverMetrics: driverMetricsApi,
 };

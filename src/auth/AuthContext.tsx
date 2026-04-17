@@ -90,6 +90,7 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   settings: [PERMISSIONS.CONFIG_VIEW],
   // New modules
   finance: [PERMISSIONS.FINANCE_VIEW],
+  reports: [PERMISSIONS.FINANCE_VIEW],
   "audit-logs": [PERMISSIONS.AUDIT_VIEW],
   automation: [PERMISSIONS.AUTOMATION_VIEW],
   compliance: [PERMISSIONS.DRIVERS_VIEW],

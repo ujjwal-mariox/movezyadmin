@@ -140,6 +140,12 @@ export interface DriverLocation {
   vehicleType: string;
   vehicleNumber: string;
   lastUpdated: string;
+  deviceInfo?: {
+    batteryLevel?: number;
+    isCharging?: boolean;
+    appVersion?: string;
+    platform?: "android" | "ios";
+  };
 }
 
 export interface ActiveBookingLocation {
@@ -212,26 +218,50 @@ export interface PromoCode {
 }
 
 // Support Types
+export type SupportTicketType = "CUSTOMER" | "DRIVER" | "PAYMENT" | "TECHNICAL";
+export type SupportResolutionType = "RESOLVED" | "REJECTED" | "DUPLICATE" | "ESCALATED";
+export type SupportChannel = "CUSTOMER" | "DRIVER" | "INTERNAL";
+
 export interface SupportTicket {
   _id: string;
   ticketId: string;
-  userId?: string;
-  driverId?: string;
-  bookingId?: string;
+  userId?: string | { _id: string; fullName?: string; mobileNumber?: string; email?: string };
+  driverId?: string | { _id: string; fullName?: string; mobileNumber?: string; email?: string };
+  bookingId?: string | { _id: string; bookingNumber?: string; status?: string };
+  type?: SupportTicketType;
   category: string;
   subcategory?: string;
   subject: string;
   description: string;
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   status: "OPEN" | "IN_PROGRESS" | "WAITING_FOR_USER" | "RESOLVED" | "CLOSED";
-  assignedTo?: string;
+  slaMinutes?: number;
+  slaDueAt?: string;
+  assignedTo?: string | { _id: string; fullName?: string; email?: string };
+  assignedStaffName?: string;
+  assignedStaffRole?: string;
+  assignedAt?: string;
+  respondedAt?: string;
+  linked?: {
+    orderId?: string;
+    paymentId?: string;
+    customerId?: string;
+    driverId?: string;
+  };
+  escalated?: boolean;
+  escalatedAt?: string;
+  escalationReason?: string;
+  resolutionType?: SupportResolutionType;
+  repeatCount?: number;
   attachments: string[];
   resolution?: string;
   resolvedAt?: string;
+  closedAt?: string;
   lastMessageAt?: string;
   rating?: number;
   feedback?: string;
   createdAt: string;
+  updatedAt?: string;
   user?: {
     name: string;
     phone: string;
@@ -247,7 +277,8 @@ export interface SupportMessage {
   ticketId: string;
   senderId: string;
   senderType: "USER" | "DRIVER" | "ADMIN" | "SYSTEM";
-  senderName: string;
+  senderName?: string;
+  channel?: SupportChannel;
   message: string;
   attachments: string[];
   isRead: boolean;

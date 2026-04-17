@@ -38,6 +38,10 @@ const DriverInstructionManagement = lazy(() => import("../pages/DriverInstructio
 const BadgeManagement = lazy(() => import("../pages/BadgeManagement"));
 const TrainingManagement = lazy(() => import("../pages/TrainingManagement"));
 
+// Phase 3 pages
+const RefundApproval = lazy(() => import("../pages/RefundApproval"));
+const ReportsPage = lazy(() => import("../pages/ReportsPage"));
+
 export const authRoutes = [
   {
     path: "/login",
@@ -169,5 +173,13 @@ export const adminRoutes = [
   {
     path: "training",
     element: TrainingManagement,
+  },
+  {
+    path: "refunds",
+    element: RefundApproval,
+  },
+  {
+    path: "reports",
+    element: ReportsPage,
   },
 ];

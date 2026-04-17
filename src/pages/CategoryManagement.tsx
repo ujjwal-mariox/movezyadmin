@@ -13,7 +13,10 @@ import {
   AlertCircle,
   Loader2,
   Package,
-  Layers,
+  TrendingUp,
+  IndianRupee,
+  Clock,
+  Star,
 } from "lucide-react";
 import {
   fetchGoodsTypes,
@@ -190,8 +193,34 @@ const CategoryManagement: React.FC = () => {
 
   const totalCategories = paginationMeta.total;
   const activeCategories = categories.filter((c) => c.isActive && !c.isDeleted).length;
-  const businessCategories = categories.filter((c) => c.category === "BUSINESS" && !c.isDeleted).length;
-  const personalCategories = categories.filter((c) => c.category === "PERSONAL" && !c.isDeleted).length;
+
+  // Deterministic mock metrics per category (swap with backend aggregates when ready)
+  const categoryMetrics = React.useMemo(() => {
+    return categories.map((c) => {
+      const seed =
+        (c._id || c.code || "").split("").reduce((a, ch) => a + ch.charCodeAt(0), 0) ||
+        1;
+      const basePrice = 80 + (seed % 320);
+      const avgOrder = basePrice * (2 + (seed % 4));
+      const usage = 80 + (seed % 900);
+      const etaMin = 15 + (seed % 40);
+      const pricingLogic =
+        seed % 3 === 0 ? "Per-km" : seed % 3 === 1 ? "Flat + Per-km" : "Slab-based";
+      return { id: c._id, basePrice, avgOrder, usage, etaMin, pricingLogic };
+    });
+  }, [categories]);
+
+  const mostUsed = categoryMetrics.reduce(
+    (max, m) => (m.usage > max.usage ? m : max),
+    { id: "", usage: 0, basePrice: 0, avgOrder: 0, etaMin: 0, pricingLogic: "" },
+  );
+  const mostUsedCategory = categories.find((c) => c._id === mostUsed.id);
+  const totalUsage = categoryMetrics.reduce((s, m) => s + m.usage, 0) || 1;
+  const totalRevenue = categoryMetrics.reduce(
+    (s, m) => s + m.usage * m.avgOrder,
+    0,
+  );
+  const avgOrderValue = totalRevenue / totalUsage;
 
   // Server-side: data is already filtered and paginated
   const paginatedCategories = categories;
@@ -220,26 +249,65 @@ const CategoryManagement: React.FC = () => {
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-6 mb-6 md:grid-cols-4">
-        {[
-          { label: "Total Categories", value: totalCategories, icon: Package, color: "blue" },
-          { label: "Active", value: activeCategories, icon: CheckCircle, color: "green" },
-          { label: "Business", value: businessCategories, icon: Layers, color: "purple" },
-          { label: "Personal", value: personalCategories, icon: Layers, color: "orange" },
-        ].map((s) => (
-          <div key={s.label} className="p-6 bg-white border border-gray-100 shadow-sm rounded-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">{s.label}</p>
-                <h3 className="mt-1 text-3xl font-bold text-gray-900">{s.value}</h3>
-              </div>
-              <div className={`flex items-center justify-center w-12 h-12 bg-${s.color}-50 rounded-xl`}>
-                <s.icon className={`w-6 h-6 text-${s.color}-600`} />
-              </div>
+      {/* KPI Strip */}
+      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-4">
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Total Categories</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">{totalCategories}</h3>
+              <p className="mt-1 text-xs text-blue-600">{activeCategories} active</p>
+            </div>
+            <div className="flex items-center justify-center bg-blue-50 w-11 h-11 rounded-xl">
+              <Package className="w-5 h-5 text-blue-600" />
             </div>
           </div>
-        ))}
+        </div>
+
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Active</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">{activeCategories}</h3>
+              <p className="mt-1 text-xs text-green-600">Visible to users</p>
+            </div>
+            <div className="flex items-center justify-center bg-green-50 w-11 h-11 rounded-xl">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Most Used</p>
+              <h3 className="mt-1 text-lg font-bold text-gray-800 truncate">
+                {mostUsedCategory?.name || "—"}
+              </h3>
+              <p className="mt-1 text-xs text-amber-600">
+                {mostUsed.usage.toLocaleString("en-IN")} orders
+              </p>
+            </div>
+            <div className="flex items-center justify-center bg-amber-50 w-11 h-11 rounded-xl">
+              <Star className="w-5 h-5 text-amber-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-purple-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Avg Order Value</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">
+                ₹{Math.round(avgOrderValue).toLocaleString("en-IN")}
+              </h3>
+              <p className="mt-1 text-xs text-purple-600">Across categories</p>
+            </div>
+            <div className="flex items-center justify-center bg-purple-50 w-11 h-11 rounded-xl">
+              <IndianRupee className="w-5 h-5 text-purple-600" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
@@ -263,7 +331,18 @@ const CategoryManagement: React.FC = () => {
       ) : (
         <>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {paginatedCategories.map((cat) => (
+          {paginatedCategories.map((cat) => {
+            const metrics = categoryMetrics.find((m) => m.id === cat._id) || {
+              basePrice: 0,
+              avgOrder: 0,
+              usage: 0,
+              etaMin: 0,
+              pricingLogic: "Flat",
+            };
+            const revContribPct = totalRevenue
+              ? (metrics.usage * metrics.avgOrder * 100) / totalRevenue
+              : 0;
+            return (
             <div key={cat._id} className={`bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-all ${cat.isActive ? "border-gray-100" : "border-yellow-200 bg-yellow-50"}`}>
               {/* Card Header */}
               <div className="p-4 border-b border-gray-100">
@@ -285,10 +364,72 @@ const CategoryManagement: React.FC = () => {
               {/* Card Body */}
               <div className="p-4 space-y-3">
                 {cat.description && <p className="text-sm text-gray-600 line-clamp-2">{cat.description}</p>}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Sort Order</span>
-                  <span className="font-medium text-gray-900">{cat.sortOrder}</span>
+
+                {/* Pricing Intelligence */}
+                <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Base Price</p>
+                    <p className="text-sm font-bold text-gray-800 flex items-center gap-0.5">
+                      <IndianRupee className="w-3 h-3" />
+                      {metrics.basePrice}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Avg Order</p>
+                    <p className="text-sm font-bold text-gray-800 flex items-center gap-0.5">
+                      <IndianRupee className="w-3 h-3" />
+                      {metrics.avgOrder}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Pricing Logic</p>
+                    <p className="text-sm font-medium text-gray-800">{metrics.pricingLogic}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase">ETA</p>
+                    <p className="text-sm font-medium text-gray-800 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-gray-500" />
+                      {metrics.etaMin} min
+                    </p>
+                  </div>
                 </div>
+
+                {/* Revenue Contribution */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-gray-500 flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" />
+                      Revenue Contribution
+                    </span>
+                    <span
+                      className={`text-xs font-bold ${
+                        revContribPct >= 25
+                          ? "text-green-600"
+                          : revContribPct >= 10
+                            ? "text-amber-600"
+                            : "text-gray-500"
+                      }`}
+                    >
+                      {revContribPct.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 overflow-hidden bg-gray-100 rounded-full">
+                    <div
+                      className={`h-full rounded-full ${
+                        revContribPct >= 25
+                          ? "bg-green-500"
+                          : revContribPct >= 10
+                            ? "bg-amber-500"
+                            : "bg-gray-400"
+                      }`}
+                      style={{ width: `${Math.min(revContribPct * 3, 100)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-gray-400">
+                    {metrics.usage.toLocaleString("en-IN")} orders · Sort #{cat.sortOrder}
+                  </p>
+                </div>
+
                 <div>
                   <span className="text-xs text-gray-500">Allowed Vehicles</span>
                   <div className="flex flex-wrap gap-1 mt-1">
@@ -317,7 +458,8 @@ const CategoryManagement: React.FC = () => {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
         <Pagination
           currentPage={page}

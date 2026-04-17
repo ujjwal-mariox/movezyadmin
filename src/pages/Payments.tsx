@@ -1,170 +1,353 @@
-import React, { useState } from 'react';
-import { 
-  Download, Search, CheckCircle, Clock, DollarSign 
-} from 'lucide-react';
-import { usePagination } from '../hooks/usePagination';
-import Pagination from '../components/Pagination';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Download,
+  Search,
+  CheckCircle,
+  Clock,
+  DollarSign,
+  AlertTriangle,
+  RotateCcw,
+  XCircle,
+  Calendar,
+  Filter,
+  Bell,
+  Loader2,
+} from "lucide-react";
+import {
+  fetchAdminBookings,
+  refundAdminBooking,
+  type BookingRow,
+  type BookingPaymentStatus,
+} from "../services/api";
 
-interface Payment {
+type PaymentRow = {
   id: string;
   bookingId: string;
   user: string;
   amount: number;
   method: string;
-  status: 'Completed' | 'Pending' | 'Failed';
+  status: BookingPaymentStatus;
   date: string;
-  type: 'customer' | 'rider';
-}
+  createdAt: string;
+};
 
-const initialPayments: Payment[] = [
-  { id: 'PAY-001', bookingId: 'ORD-7829', user: 'Rahul Kumar', amount: 450, method: 'UPI', status: 'Completed', date: '2024-03-15', type: 'customer' },
-  { id: 'PAY-002', bookingId: 'ORD-7830', user: 'Priya Sharma', amount: 120, method: 'Cash', status: 'Pending', date: '2024-03-15', type: 'customer' },
-  { id: 'PAY-003', bookingId: 'ORD-7831', user: 'Vikram Singh', amount: 850, method: 'Bank Transfer', status: 'Completed', date: '2024-03-14', type: 'rider' },
-  { id: 'PAY-004', bookingId: 'ORD-7825', user: 'Sneha Gupta', amount: 250, method: 'Wallet', status: 'Failed', date: '2024-03-13', type: 'customer' },
-  { id: 'PAY-005', bookingId: 'ORD-7820', user: 'Rajesh Kumar', amount: 1200, method: 'Bank Transfer', status: 'Pending', date: '2024-03-12', type: 'rider' },
-  { id: 'PAY-006', bookingId: 'ORD-7818', user: 'Amit Patel', amount: 550, method: 'Credit Card', status: 'Completed', date: '2024-03-11', type: 'customer' },
-];
+const STATUS_LABEL: Record<BookingPaymentStatus, string> = {
+  PENDING: "Pending",
+  PAID: "Completed",
+  FAILED: "Failed",
+  REFUNDED: "Refunded",
+  PARTIALLY_REFUNDED: "Refunded",
+};
+
+const personName = (p: BookingRow["userId"]): string => {
+  if (!p) return "—";
+  if (typeof p === "string") return "—";
+  return p.fullName || "—";
+};
+
+const bookingToPayment = (b: BookingRow): PaymentRow => ({
+  id: b._id,
+  bookingId: b.bookingNumber || b._id.slice(-6).toUpperCase(),
+  user: personName(b.userId),
+  amount: b.finalFare ?? 0,
+  method: b.paymentMethod || "—",
+  status: b.paymentStatus,
+  date: b.createdAt ? new Date(b.createdAt).toISOString().split("T")[0] : "",
+  createdAt: b.createdAt,
+});
 
 const Payments: React.FC = () => {
-  const [paymentType, setPaymentType] = useState<'customer' | 'rider'>('customer');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [bookings, setBookings] = useState<BookingRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<BookingPaymentStatus | "">("");
+  const [methodFilter, setMethodFilter] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [refundFor, setRefundFor] = useState<PaymentRow | null>(null);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundAmount, setRefundAmount] = useState<string>("");
+  const [submittingRefund, setSubmittingRefund] = useState(false);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  const filteredPayments = initialPayments.filter(payment => {
-    const matchesType = payment.type === paymentType;
-    const matchesStatus = statusFilter === 'All' || payment.status === statusFilter;
-    const matchesSearch = payment.user.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          payment.id.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesType && matchesStatus && matchesSearch;
-  });
+  const loadPayments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchAdminBookings({
+        paymentStatus: statusFilter || undefined,
+        search: searchTerm || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        page,
+        limit: 20,
+      });
+      const payload = res?.data ?? res ?? {};
+      setBookings(Array.isArray(payload.bookings) ? payload.bookings : []);
+      setTotal(payload.total ?? 0);
+      setTotalPages(payload.totalPages ?? 1);
+    } catch (err) {
+      console.error("Payments load failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, searchTerm, dateFrom, dateTo, page]);
 
-  const {
-    paginatedData: paginatedPayments,
-    currentPage,
-    totalPages,
-    setCurrentPage,
-    totalItems,
-    startIndex,
-    endIndex,
-    pageSize,
-    setPageSize,
-  } = usePagination(filteredPayments, 10);
+  useEffect(() => {
+    const id = setTimeout(() => loadPayments(), 250);
+    return () => clearTimeout(id);
+  }, [loadPayments]);
 
-  const totalAmount = filteredPayments.reduce((sum, p) => sum + p.amount, 0);
-  const completedCount = filteredPayments.filter(p => p.status === 'Completed').length;
-  const pendingCount = filteredPayments.filter(p => p.status === 'Pending').length;
+  const payments = useMemo<PaymentRow[]>(
+    () => bookings.map(bookingToPayment),
+    [bookings],
+  );
+
+  const filtered = useMemo(() => {
+    return payments.filter((p) => {
+      if (methodFilter && p.method !== methodFilter) return false;
+      return true;
+    });
+  }, [payments, methodFilter]);
+
+  const methods = useMemo(() => {
+    const set = new Set(payments.map((p) => p.method).filter(Boolean));
+    return ["", ...Array.from(set)];
+  }, [payments]);
+
+  const totalAmount = filtered.reduce((s, p) => s + p.amount, 0);
+  const completedCount = filtered.filter((p) => p.status === "PAID").length;
+  const pendingCount = filtered.filter((p) => p.status === "PENDING").length;
+  const failedCount = filtered.filter((p) => p.status === "FAILED").length;
+  const refundedRows = filtered.filter(
+    (p) => p.status === "REFUNDED" || p.status === "PARTIALLY_REFUNDED",
+  );
+  const refundedCount = refundedRows.length;
+  const refundedAmount = refundedRows.reduce((s, p) => s + p.amount, 0);
+
+  const failedPayments = filtered.filter((p) => p.status === "FAILED").slice(0, 3);
 
   const handleExport = () => {
-    const rows = [["Payment ID", "Booking ID", "Name", "Amount", "Method", "Status", "Date", "Type"].join(",")];
-    filteredPayments.forEach((p) => {
-      rows.push([p.id, p.bookingId, p.user, p.amount, p.method, p.status, p.date, p.type].join(","));
+    const rows = [
+      ["Txn ID", "Booking ID", "User", "Amount", "Method", "Status", "Date"].join(","),
+    ];
+    filtered.forEach((p) => {
+      rows.push(
+        [
+          p.id,
+          p.bookingId,
+          (p.user || "").replace(/,/g, ""),
+          p.amount,
+          p.method,
+          STATUS_LABEL[p.status],
+          p.date,
+        ].join(","),
+      );
     });
     const blob = new Blob([rows.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `payments-${paymentType}-${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `payments-${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const initiateRefund = (p: PaymentRow) => {
+    setRefundFor(p);
+    setRefundReason("");
+    setRefundAmount(String(p.amount));
+  };
+
+  const confirmRefund = async () => {
+    if (!refundFor) return;
+    const amt = Number(refundAmount);
+    if (!amt || amt <= 0) {
+      window.alert("Enter a valid refund amount");
+      return;
+    }
+    setSubmittingRefund(true);
+    try {
+      const res = await refundAdminBooking(refundFor.id, {
+        amount: amt,
+        reason: refundReason || undefined,
+      });
+      if (res?.success === false) {
+        window.alert(res.message || "Refund failed");
+      } else {
+        setRefundFor(null);
+        loadPayments();
+      }
+    } catch (err: any) {
+      window.alert(err?.message || "Refund failed");
+    } finally {
+      setSubmittingRefund(false);
+    }
+  };
+
+  const visiblePayments = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return filtered;
+    return filtered.filter((p) =>
+      `${p.id} ${p.bookingId} ${p.user}`.toLowerCase().includes(q),
+    );
+  }, [filtered, searchTerm]);
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-4">
-        <div className="flex items-center space-x-3">
-          <button onClick={handleExport} className="flex items-center space-x-2 px-4 py-2 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors bg-white shadow-sm">
-            <Download className="w-4 h-4" />
-            <span className="text-sm font-medium">Export Report</span>
-          </button>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Page {page + 1} of {totalPages} · {total} transactions
+          </p>
         </div>
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 bg-white shadow-sm"
+        >
+          <Download className="w-4 h-4" />
+          <span className="text-sm font-medium">Export CSV</span>
+        </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Total Amount</p>
-              <h3 className="text-3xl font-bold text-gray-900 mt-1">₹{totalAmount.toLocaleString()}</h3>
-            </div>
-            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-blue-600" />
+      {/* Failed payment alert strip */}
+      {failedPayments.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-red-800">
+              {failedCount} failed payment{failedCount > 1 ? "s" : ""} in current view
+            </p>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              {failedPayments.map((p) => (
+                <span
+                  key={p.id}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-red-200 text-xs text-red-700"
+                >
+                  {p.bookingId} · ₹{p.amount.toLocaleString()}
+                </span>
+              ))}
             </div>
           </div>
+          <button
+            onClick={() => window.alert("Notify affected users — TODO backend trigger")}
+            className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700"
+          >
+            <Bell className="w-3 h-3" /> Notify
+          </button>
         </div>
+      )}
 
-        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Completed</p>
-              <h3 className="text-3xl font-bold text-gray-900 mt-1">{completedCount}</h3>
-            </div>
-            <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Pending</p>
-              <h3 className="text-3xl font-bold text-gray-900 mt-1">{pendingCount}</h3>
-            </div>
-            <div className="w-12 h-12 bg-yellow-50 rounded-xl flex items-center justify-center">
-              <Clock className="w-6 h-6 text-yellow-600" />
-            </div>
-          </div>
-        </div>
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <StatCard
+          label="Total Amount"
+          value={`₹${totalAmount.toLocaleString()}`}
+          sub={`${filtered.length} transactions`}
+          Icon={DollarSign}
+          tone="blue"
+        />
+        <StatCard
+          label="Completed"
+          value={`${completedCount}`}
+          sub={`${filtered.length > 0 ? Math.round((completedCount / filtered.length) * 100) : 0}% success`}
+          Icon={CheckCircle}
+          tone="green"
+        />
+        <StatCard
+          label="Pending"
+          value={`${pendingCount}`}
+          sub="Awaiting confirmation"
+          Icon={Clock}
+          tone="amber"
+        />
+        <StatCard
+          label="Failed"
+          value={`${failedCount}`}
+          sub="Needs retry / review"
+          Icon={XCircle}
+          tone="red"
+          pulse={failedCount > 0}
+        />
+        <StatCard
+          label="Refunded"
+          value={`₹${refundedAmount.toLocaleString()}`}
+          sub={`${refundedCount} refund${refundedCount === 1 ? "" : "s"}`}
+          Icon={RotateCcw}
+          tone="purple"
+        />
       </div>
 
-      {/* Filters and Tabs */}
-      <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 justify-between items-center">
-        <div className="flex p-1 bg-gray-100 rounded-xl">
-          <button
-            onClick={() => setPaymentType('customer')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              paymentType === 'customer'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Customer Payments
-          </button>
-          <button
-            onClick={() => setPaymentType('rider')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              paymentType === 'rider'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Rider Payouts
-          </button>
-        </div>
-
-        <div className="flex gap-3 w-full md:w-auto">
-          <div className="relative w-full md:w-64">
+      {/* Filters */}
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Search by ID or Name..."
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-movezy-500"
+              placeholder="Search by txn id, booking or user..."
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 text-sm"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(0);
+              }}
             />
           </div>
-          <select
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-movezy-500 bg-white"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="All">All Status</option>
-            <option value="Completed">Completed</option>
-            <option value="Pending">Pending</option>
-            <option value="Failed">Failed</option>
-          </select>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as BookingPaymentStatus | "");
+                setPage(0);
+              }}
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white"
+            >
+              <option value="">All Status</option>
+              <option value="PAID">Completed</option>
+              <option value="PENDING">Pending</option>
+              <option value="FAILED">Failed</option>
+              <option value="REFUNDED">Refunded</option>
+              <option value="PARTIALLY_REFUNDED">Partially refunded</option>
+            </select>
+            <select
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white"
+            >
+              {methods.map((m) => (
+                <option key={m || "all"} value={m}>
+                  {m ? m : "All Methods"}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1 px-3 py-2 border border-gray-200 rounded-xl bg-white">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  setPage(0);
+                }}
+                className="text-xs outline-none bg-transparent"
+              />
+              <span className="text-gray-400 text-xs">—</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  setPage(0);
+                }}
+                className="text-xs outline-none bg-transparent"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -174,49 +357,201 @@ const Payments: React.FC = () => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Payment ID</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Booking ID</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Name</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Txn ID</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Booking</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">User</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Amount</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Method</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Date</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase text-right">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {paginatedPayments.map((payment) => (
-                <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{payment.id}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{payment.bookingId}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{payment.user}</td>
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">₹{payment.amount}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{payment.method}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      payment.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                      payment.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {payment.status}
-                    </span>
+              {loading && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
+                    <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                    Loading payments…
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{payment.date}</td>
                 </tr>
-              ))}
+              )}
+              {!loading && visiblePayments.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center text-gray-400">
+                    No payments match your filters
+                  </td>
+                </tr>
+              )}
+              {!loading &&
+                visiblePayments.map((p) => {
+                  const rowTone =
+                    p.status === "FAILED"
+                      ? "bg-red-50/30"
+                      : p.status === "REFUNDED" || p.status === "PARTIALLY_REFUNDED"
+                        ? "bg-purple-50/30"
+                        : "";
+                  return (
+                    <tr key={p.id} className={`hover:bg-gray-50 transition-colors ${rowTone}`}>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                        {p.id.slice(-10).toUpperCase()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{p.bookingId}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{p.user}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                        ₹{p.amount.toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{p.method}</td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            p.status === "PAID"
+                              ? "bg-green-100 text-green-700"
+                              : p.status === "PENDING"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : p.status === "REFUNDED" || p.status === "PARTIALLY_REFUNDED"
+                                  ? "bg-purple-100 text-purple-700"
+                                  : "bg-red-100 text-red-700"
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              p.status === "PAID"
+                                ? "bg-green-500"
+                                : p.status === "PENDING"
+                                  ? "bg-yellow-500"
+                                  : p.status === "REFUNDED" || p.status === "PARTIALLY_REFUNDED"
+                                    ? "bg-purple-500"
+                                    : "bg-red-500"
+                            }`}
+                          />
+                          {STATUS_LABEL[p.status]}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{p.date}</td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {p.status === "PAID" && (
+                            <button
+                              onClick={() => initiateRefund(p)}
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100"
+                              title="Refund"
+                            >
+                              <RotateCcw className="w-3 h-3" /> Refund
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={setCurrentPage}
-          totalItems={totalItems}
-          startIndex={startIndex}
-          endIndex={endIndex}
-          itemLabel="payments"
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-        />
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between p-3 border-t border-gray-100 text-sm">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="px-3 py-1.5 bg-white border border-gray-200 rounded-md disabled:opacity-50 hover:bg-gray-50"
+            >
+              Prev
+            </button>
+            <span className="text-gray-500">
+              Page {page + 1} of {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page + 1 >= totalPages}
+              className="px-3 py-1.5 bg-white border border-gray-200 rounded-md disabled:opacity-50 hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Refund modal */}
+      {refundFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+            <p className="text-lg font-bold text-gray-900">Initiate Refund</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Refund for booking {refundFor.bookingId} — paid ₹{refundFor.amount.toLocaleString()}
+            </p>
+            <label className="block text-xs font-medium text-gray-500 mt-4 mb-1">
+              Refund amount (INR)
+            </label>
+            <input
+              type="number"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              className="w-full p-3 border border-gray-200 rounded-xl text-sm"
+            />
+            <label className="block text-xs font-medium text-gray-500 mt-3 mb-1">
+              Reason (optional)
+            </label>
+            <textarea
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+              placeholder="Reason for refund…"
+              className="w-full p-3 border border-gray-200 rounded-xl text-sm"
+              rows={3}
+            />
+            <div className="flex items-center gap-2 mt-4">
+              <button
+                onClick={() => setRefundFor(null)}
+                disabled={submittingRefund}
+                className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRefund}
+                disabled={submittingRefund}
+                className="flex-1 py-2.5 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 disabled:opacity-60"
+              >
+                {submittingRefund ? "Refunding…" : "Confirm Refund"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const StatCard: React.FC<{
+  label: string;
+  value: string;
+  sub: string;
+  Icon: React.ElementType;
+  tone: "blue" | "green" | "amber" | "red" | "purple";
+  pulse?: boolean;
+}> = ({ label, value, sub, Icon, tone, pulse }) => {
+  const toneMap = {
+    blue: { bar: "!border-l-blue-500", iconBg: "bg-blue-100", iconColor: "text-blue-600", text: "text-blue-600" },
+    green: { bar: "!border-l-green-500", iconBg: "bg-green-100", iconColor: "text-green-600", text: "text-green-600" },
+    amber: { bar: "!border-l-amber-500", iconBg: "bg-amber-100", iconColor: "text-amber-600", text: "text-amber-600" },
+    red: { bar: "!border-l-red-500", iconBg: "bg-red-100", iconColor: "text-red-600", text: "text-red-600" },
+    purple: { bar: "!border-l-purple-500", iconBg: "bg-purple-100", iconColor: "text-purple-600", text: "text-purple-600" },
+  }[tone];
+  return (
+    <div className={`bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 ${toneMap.bar}`}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+            {pulse && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+            {label}
+          </p>
+          <p className={`text-2xl font-bold mt-1 ${toneMap.text}`}>{value}</p>
+          <p className="text-xs text-gray-400 mt-1">{sub}</p>
+        </div>
+        <div className={`w-12 h-12 ${toneMap.iconBg} rounded-xl flex items-center justify-center`}>
+          <Icon className={`w-6 h-6 ${toneMap.iconColor}`} />
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Wallet,
   Search,
@@ -10,6 +10,9 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Clock,
+  CircleDollarSign,
+  Users as UsersIcon,
 } from "lucide-react";
 import {
   fetchAllWallets,
@@ -148,6 +151,21 @@ export default function WalletManagement() {
     setAdjusting(false);
   };
 
+  // Wallet aggregates computed from loaded data (swap to backend aggregate when available)
+  const walletStats = useMemo(() => {
+    const totalBalance = wallets.reduce((sum, w) => sum + (w.balance || 0), 0);
+    const pending = transactions
+      .filter((t) => t.status === "PENDING")
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+    const available = totalBalance - pending;
+    return {
+      totalBalance,
+      pending,
+      available,
+      activeWallets: walletPagination.total || wallets.length,
+    };
+  }, [wallets, transactions, walletPagination.total]);
+
   const formatDate = (d: string) => {
     const date = new Date(d);
     return date.toLocaleDateString("en-IN", {
@@ -171,6 +189,69 @@ export default function WalletManagement() {
           <p className="text-gray-500 text-sm mt-1">
             View customer wallets, transactions and manage balances
           </p>
+        </div>
+      </div>
+
+      {/* Top Strip — Wallet aggregates */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Total Balance</p>
+              <p className="mt-1 text-2xl font-bold text-gray-800">
+                ₹{walletStats.totalBalance.toLocaleString("en-IN")}
+              </p>
+              <p className="mt-1 text-xs text-green-600">Across loaded wallets</p>
+            </div>
+            <div className="flex items-center justify-center bg-green-50 w-11 h-11 rounded-xl">
+              <Wallet className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Pending</p>
+              <p className="mt-1 text-2xl font-bold text-gray-800">
+                ₹{walletStats.pending.toLocaleString("en-IN")}
+              </p>
+              <p className="mt-1 text-xs text-amber-600">Awaiting settlement</p>
+            </div>
+            <div className="flex items-center justify-center bg-amber-50 w-11 h-11 rounded-xl">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Available</p>
+              <p className="mt-1 text-2xl font-bold text-gray-800">
+                ₹{walletStats.available.toLocaleString("en-IN")}
+              </p>
+              <p className="mt-1 text-xs text-blue-600">Ready to use</p>
+            </div>
+            <div className="flex items-center justify-center bg-blue-50 w-11 h-11 rounded-xl">
+              <CircleDollarSign className="w-5 h-5 text-blue-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-purple-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Active Wallets</p>
+              <p className="mt-1 text-2xl font-bold text-gray-800">
+                {walletStats.activeWallets.toLocaleString("en-IN")}
+              </p>
+              <p className="mt-1 text-xs text-purple-600">Total customers</p>
+            </div>
+            <div className="flex items-center justify-center bg-purple-50 w-11 h-11 rounded-xl">
+              <UsersIcon className="w-5 h-5 text-purple-600" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -365,6 +446,22 @@ export default function WalletManagement() {
   );
 }
 
+// Derive source tag from description (swap to real `source` field when backend sends it)
+function deriveSource(description?: string): { label: string; tone: string } {
+  const d = (description || "").toLowerCase();
+  if (d.includes("refund"))
+    return { label: "Refund", tone: "bg-purple-50 text-purple-700" };
+  if (d.includes("order") || d.includes("trip") || d.includes("delivery"))
+    return { label: "Order", tone: "bg-blue-50 text-blue-700" };
+  if (d.includes("top") || d.includes("recharge") || d.includes("add"))
+    return { label: "Top-up", tone: "bg-green-50 text-green-700" };
+  if (d.includes("admin") || d.includes("manual"))
+    return { label: "Admin", tone: "bg-amber-50 text-amber-700" };
+  if (d.includes("promo") || d.includes("cashback"))
+    return { label: "Promo", tone: "bg-pink-50 text-pink-700" };
+  return { label: "System", tone: "bg-gray-100 text-gray-600" };
+}
+
 // ─── Sub-Components ───
 
 function WalletsTable({
@@ -493,56 +590,56 @@ function TransactionsTable({
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-gray-600">
             <tr>
-              <th className="text-left px-4 py-3 font-medium">Type</th>
               <th className="text-left px-4 py-3 font-medium">Customer</th>
-              <th className="text-right px-4 py-3 font-medium">Amount</th>
               <th className="text-left px-4 py-3 font-medium">Description</th>
-              <th className="text-right px-4 py-3 font-medium">
-                Before → After
-              </th>
+              <th className="text-right px-4 py-3 font-medium">Credit</th>
+              <th className="text-right px-4 py-3 font-medium">Debit</th>
+              <th className="text-left px-4 py-3 font-medium">Source</th>
               <th className="text-left px-4 py-3 font-medium">Status</th>
               <th className="text-left px-4 py-3 font-medium">Date</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {transactions.map((txn) => (
+            {transactions.map((txn) => {
+              const source = deriveSource(txn.description);
+              return (
               <tr key={txn._id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
-                      txn.type === "CREDIT"
-                        ? "bg-green-50 text-green-700"
-                        : "bg-red-50 text-red-700"
-                    }`}
-                  >
-                    {txn.type === "CREDIT" ? (
-                      <ArrowDownCircle className="w-3 h-3" />
-                    ) : (
-                      <ArrowUpCircle className="w-3 h-3" />
-                    )}
-                    {txn.type}
-                  </span>
-                </td>
                 <td className="px-4 py-3 text-gray-900">
-                  {txn.user?.fullName || "-"}
-                  <br />
-                  <span className="text-xs text-gray-400">
-                    {txn.user?.mobileNumber}
-                  </span>
+                  <div className="font-medium">{txn.user?.fullName || "-"}</div>
+                  <div className="text-xs text-gray-400">
+                    {txn.user?.mobileNumber || ""}
+                  </div>
                 </td>
-                <td
-                  className={`px-4 py-3 text-right font-semibold ${
-                    txn.type === "CREDIT" ? "text-green-600" : "text-red-600"
-                  }`}
-                >
-                  {txn.type === "CREDIT" ? "+" : "-"}₹
-                  {txn.amount.toLocaleString("en-IN")}
-                </td>
-                <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate">
+                <td className="px-4 py-3 text-gray-600 max-w-[240px] truncate">
                   {txn.description || "-"}
+                  <div className="text-[10px] text-gray-400 mt-0.5">
+                    Bal: ₹{txn.balanceBefore} → ₹{txn.balanceAfter}
+                  </div>
                 </td>
-                <td className="px-4 py-3 text-right text-xs text-gray-400">
-                  ₹{txn.balanceBefore} → ₹{txn.balanceAfter}
+                <td className="px-4 py-3 text-right">
+                  {txn.type === "CREDIT" ? (
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-green-600">
+                      <ArrowDownCircle className="w-3.5 h-3.5" />
+                      +₹{txn.amount.toLocaleString("en-IN")}
+                    </span>
+                  ) : (
+                    <span className="text-gray-300">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {txn.type === "DEBIT" ? (
+                    <span className="inline-flex items-center gap-1 text-sm font-semibold text-red-600">
+                      <ArrowUpCircle className="w-3.5 h-3.5" />
+                      −₹{txn.amount.toLocaleString("en-IN")}
+                    </span>
+                  ) : (
+                    <span className="text-gray-300">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${source.tone}`}>
+                    {source.label}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <span
@@ -561,7 +658,8 @@ function TransactionsTable({
                   {formatDate(txn.createdAt)}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

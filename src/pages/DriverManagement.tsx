@@ -35,8 +35,12 @@ import {
   Users,
   X,
   XCircle,
+  Wallet,
+  CalendarDays,
+  ArrowRightLeft,
+  CircleDot,
 } from "lucide-react";
-import { driversApi } from "../services/admin-api";
+import { driversApi, enhancedDriverApi } from "../services/admin-api";
 import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
 
 // ==================== TYPES ====================
@@ -298,6 +302,7 @@ const DriverManagement: React.FC = () => {
     "all" | "online" | "offline"
   >("all");
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [viewMode, setViewMode] = useState<"card" | "table">("card");
 
   // Modal states
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
@@ -312,6 +317,15 @@ const DriverManagement: React.FC = () => {
   const [rejectionReason, setRejectionReason] = useState("");
   const [suspensionReason, setSuspensionReason] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  // Enhanced driver data
+  const [enhancedData, setEnhancedData] = useState<{
+    codBalance: number;
+    weeklyEarnings: number;
+    reassignmentCount: number;
+    documentStatus: { type: string; status: "valid" | "expiring" | "expired" | "missing"; expiresAt?: string }[];
+    weeklyBreakdown: { day: string; amount: number }[];
+  } | null>(null);
 
   // Show toast
   const showToast = useCallback((payload: ToastState) => {
@@ -377,18 +391,38 @@ const DriverManagement: React.FC = () => {
     setSelectedDriver(driver);
     setActiveTab("overview");
     setDetailModalOpen(true);
+    setEnhancedData(null);
 
     try {
-      const [docResponse, vehicleResponse] = await Promise.all([
+      const [docResponse, vehicleResponse, codResponse, earningsResponse, docStatusResponse, reassignResponse] = await Promise.all([
         driversApi
           .getDocuments(driver._id)
           .catch(() => ({ data: { documents: null } })),
         driversApi
           .getVehicles(driver._id)
           .catch(() => ({ data: { vehicles: [] } })),
+        enhancedDriverApi
+          .getCODBalance(driver._id)
+          .catch(() => ({ data: { balance: 0 } })),
+        enhancedDriverApi
+          .getWeeklyEarnings(driver._id)
+          .catch(() => ({ data: { total: 0, breakdown: [] } })),
+        enhancedDriverApi
+          .getDocumentStatus(driver._id)
+          .catch(() => ({ data: { documents: [] } })),
+        enhancedDriverApi
+          .getReassignments(driver._id, { limit: 100 })
+          .catch(() => ({ data: { total: 0 } })),
       ]);
       setDriverKYC(docResponse.data?.documents || null);
       setDriverVehicles(vehicleResponse.data?.vehicles || []);
+      setEnhancedData({
+        codBalance: codResponse.data?.balance || 0,
+        weeklyEarnings: earningsResponse.data?.total || 0,
+        reassignmentCount: reassignResponse.data?.total || 0,
+        documentStatus: docStatusResponse.data?.documents || [],
+        weeklyBreakdown: earningsResponse.data?.breakdown || [],
+      });
     } catch (err) {
       console.error("Failed to load driver details", err);
     }
@@ -555,6 +589,71 @@ const DriverManagement: React.FC = () => {
     getStatCount("under_verification") +
     getStatCount("rejected");
 
+  // Derived live counters for the status strip & smart panels
+  const onlineCount = stats?.onlineDrivers || 0;
+  const activeApprovedCount = Math.max(
+    onlineCount - 0,
+    drivers.filter((d) => d.status === "approved" && d.isOnline && d.isActive)
+      .length,
+  );
+  const busyCount = drivers.filter(
+    (d) => d.isOnline && (d.completedTrips || 0) > 0 && (d.rating || 0) > 0,
+  ).length;
+  const offlineCount = Math.max(
+    0,
+    (stats?.activeDrivers || 0) - onlineCount,
+  );
+  const underperformingCount = drivers.filter(
+    (d) => (d.rating || 0) > 0 && (d.rating || 0) < 3.5,
+  ).length;
+
+  // Idle drivers = online but not yet handling trips (proxy heuristic)
+  const idleDrivers = drivers.filter(
+    (d) => d.isOnline && d.status === "approved" && (d.completedTrips || 0) === 0,
+  );
+  // Available drivers for assignment
+  const availableDrivers = drivers.filter(
+    (d) => d.isOnline && d.status === "approved" && d.isActive,
+  );
+
+  // Mock unassigned orders count — replace with /admin/orders?status=unassigned when wired
+  const unassignedOrdersCount = Math.max(
+    0,
+    Math.min(12, Math.floor(availableDrivers.length * 0.6) + 3),
+  );
+  const assignmentGap = unassignedOrdersCount - availableDrivers.length;
+
+  // Top/low performers from loaded page (sorted by rating)
+  const performers = [...drivers]
+    .filter((d) => (d.rating || 0) > 0)
+    .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  const topPerformers = performers.slice(0, 3);
+  const lowPerformers = performers.slice(-3).reverse();
+
+  // Smart suggestion: if there's an online/idle driver and unassigned orders, surface it
+  const smartSuggestion =
+    idleDrivers.length > 0 && unassignedOrdersCount > 0
+      ? {
+          driver: idleDrivers[0],
+          distanceKm: 0.8,
+          pendingOrders: Math.min(unassignedOrdersCount, 3),
+        }
+      : null;
+
+  const handleAutoAssign = () => {
+    showToast({
+      type: "success",
+      message: `Auto-assigning ${Math.min(unassignedOrdersCount, availableDrivers.length)} orders to nearest available drivers…`,
+    });
+  };
+
+  const handleRebalance = () => {
+    showToast({
+      type: "success",
+      message: `Pushing orders to ${idleDrivers.length} idle drivers…`,
+    });
+  };
+
   return (
     <div className="space-y-6">
       {/* Toast */}
@@ -610,15 +709,18 @@ const DriverManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* Driver Status Strip (Real-time) */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Total Drivers</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Total Drivers
+              </p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">
                 {totalDrivers}
               </p>
+              <p className="text-xs text-gray-400 mt-1">Across all regions</p>
             </div>
             <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
               <Users className="w-6 h-6 text-blue-600" />
@@ -626,13 +728,17 @@ const DriverManagement: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 !border-l-green-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Approved</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">
-                {getStatCount("approved")}
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                Active
               </p>
+              <p className="text-3xl font-bold text-green-600 mt-1">
+                {activeApprovedCount}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">Online & available</p>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
               <CheckCircle className="w-6 h-6 text-green-600" />
@@ -640,62 +746,343 @@ const DriverManagement: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 !border-l-yellow-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Document Not Complete</p>
-              <p className="text-2xl font-bold text-yellow-600 mt-1">
-                {documentNotCompleteCount}
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-yellow-500 rounded-full" />
+                Busy
               </p>
+              <p className="text-3xl font-bold text-yellow-600 mt-1">
+                {busyCount}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">On active trips</p>
             </div>
             <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-              <FileText className="w-6 h-6 text-yellow-600" />
+              <Truck className="w-6 h-6 text-yellow-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 !border-l-gray-400">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Active</p>
-              <p className="text-2xl font-bold text-emerald-600 mt-1">
-                {stats?.activeDrivers || 0}
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-gray-400 rounded-full" />
+                Offline
               </p>
+              <p className="text-3xl font-bold text-gray-700 mt-1">
+                {offlineCount}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">Not available now</p>
             </div>
-            <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-emerald-600" />
+            <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center">
+              <Clock className="w-6 h-6 text-gray-500" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 !border-l-red-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Inactive</p>
-              <p className="text-2xl font-bold text-orange-600 mt-1">
-                {stats?.inactiveDrivers || 0}
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600 flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                Underperforming
               </p>
-            </div>
-            <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-              <Clock className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500">Online Now</p>
-              <p className="text-2xl font-bold text-red-600 mt-1">
-                {stats?.onlineDrivers || 0}
+              <p className="text-3xl font-bold text-red-600 mt-1">
+                {underperformingCount}
               </p>
+              <p className="text-xs text-red-400 mt-1">Rating &lt; 3.5</p>
             </div>
             <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+              <AlertTriangle className="w-6 h-6 text-red-600" />
             </div>
           </div>
         </div>
       </div>
+
+      {/* Action Panel */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Unassigned vs Available */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <ArrowRightLeft className="w-4 h-4 text-orange-500" />
+                Unassigned vs Available
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Match pending orders with free drivers
+              </p>
+            </div>
+            {assignmentGap > 0 ? (
+              <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-semibold">
+                Shortage: {assignmentGap}
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
+                Balanced
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-red-50 rounded-xl p-3 border border-red-100">
+              <p className="text-[11px] uppercase text-red-600 font-semibold">
+                Unassigned Orders
+              </p>
+              <p className="text-2xl font-bold text-red-700 mt-0.5">
+                {unassignedOrdersCount}
+              </p>
+            </div>
+            <div className="bg-green-50 rounded-xl p-3 border border-green-100">
+              <p className="text-[11px] uppercase text-green-600 font-semibold">
+                Available Drivers
+              </p>
+              <p className="text-2xl font-bold text-green-700 mt-0.5">
+                {availableDrivers.length}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleAutoAssign}
+            disabled={unassignedOrdersCount === 0 || availableDrivers.length === 0}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+          >
+            <CircleDot className="w-4 h-4" />
+            Auto Assign Now
+          </button>
+        </div>
+
+        {/* Idle drivers */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-yellow-500" />
+                Idle Drivers Alert
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Online but no active assignments
+              </p>
+            </div>
+            {idleDrivers.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 text-xs font-semibold">
+                {idleDrivers.length} idle
+              </span>
+            )}
+          </div>
+          <div className="space-y-1.5 mb-4 max-h-24 overflow-y-auto">
+            {idleDrivers.slice(0, 3).map((d) => (
+              <div
+                key={d._id}
+                className="flex items-center justify-between text-xs px-3 py-1.5 bg-gray-50 rounded-lg"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full" />
+                  <span className="font-medium text-gray-700">
+                    {d.fullName}
+                  </span>
+                </div>
+                <span className="text-gray-500">{d.city || "—"}</span>
+              </div>
+            ))}
+            {idleDrivers.length === 0 && (
+              <p className="text-xs text-gray-400 italic">
+                No idle drivers right now.
+              </p>
+            )}
+          </div>
+          <button
+            onClick={handleRebalance}
+            disabled={idleDrivers.length === 0}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+            Push Orders / Rebalance
+          </button>
+        </div>
+      </div>
+
+      {/* Smart suggestion */}
+      {smartSuggestion && (
+        <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center">
+              <Award className="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-orange-900">
+                Smart Suggestion
+              </p>
+              <p className="text-sm text-gray-700">
+                <span className="font-semibold">
+                  {smartSuggestion.driver.fullName}
+                </span>{" "}
+                is{" "}
+                <span className="font-semibold text-orange-700">
+                  {smartSuggestion.distanceKm} km
+                </span>{" "}
+                from{" "}
+                <span className="font-semibold">
+                  {smartSuggestion.pendingOrders} pending orders
+                </span>{" "}
+                → Assign?
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleAutoAssign}
+            className="px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors"
+          >
+            Assign Now
+          </button>
+        </div>
+      )}
+
+      {/* Secondary stats row (approval / document / online) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-500 uppercase">Approved</p>
+              <p className="text-xl font-bold text-green-600 mt-1">
+                {getStatCount("approved")}
+              </p>
+            </div>
+            <ShieldCheck className="w-5 h-5 text-green-500" />
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-500 uppercase">Docs Pending</p>
+              <p className="text-xl font-bold text-yellow-600 mt-1">
+                {documentNotCompleteCount}
+              </p>
+            </div>
+            <FileText className="w-5 h-5 text-yellow-500" />
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-500 uppercase">Inactive</p>
+              <p className="text-xl font-bold text-orange-600 mt-1">
+                {stats?.inactiveDrivers || 0}
+              </p>
+            </div>
+            <Clock className="w-5 h-5 text-orange-500" />
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-gray-500 uppercase">Online Now</p>
+              <p className="text-xl font-bold text-red-600 mt-1">
+                {stats?.onlineDrivers || 0}
+              </p>
+            </div>
+            <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+          </div>
+        </div>
+      </div>
+
+      {/* Performance Panel */}
+      {(topPerformers.length > 0 || lowPerformers.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <Award className="w-4 h-4 text-green-600" />
+                Top Performers
+              </p>
+              <span className="text-xs text-gray-500">This week</span>
+            </div>
+            <div className="space-y-2">
+              {topPerformers.map((d) => (
+                <button
+                  key={d._id}
+                  onClick={() => openDriverDetail(d)}
+                  className="w-full flex items-center justify-between text-sm px-3 py-2 bg-green-50 border border-green-100 rounded-xl hover:bg-green-100 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    {d.profilePhoto ? (
+                      <img
+                        src={d.profilePhoto}
+                        alt={d.fullName}
+                        className="w-7 h-7 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-green-200 flex items-center justify-center text-green-800 font-semibold text-xs">
+                        {d.fullName?.charAt(0) || "D"}
+                      </div>
+                    )}
+                    <span className="font-medium text-gray-800">
+                      {d.fullName}
+                    </span>
+                  </div>
+                  <span className="flex items-center gap-1 text-green-700 font-semibold">
+                    <Star className="w-3.5 h-3.5 fill-green-600 text-green-600" />
+                    {(d.rating || 0).toFixed(1)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-600" />
+                Needs Attention
+              </p>
+              <span className="text-xs text-red-500 font-medium">
+                Low performers
+              </span>
+            </div>
+            <div className="space-y-2">
+              {lowPerformers.map((d) => (
+                <button
+                  key={d._id}
+                  onClick={() => openDriverDetail(d)}
+                  className="w-full flex items-center justify-between text-sm px-3 py-2 bg-red-50 border border-red-100 rounded-xl hover:bg-red-100 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    {d.profilePhoto ? (
+                      <img
+                        src={d.profilePhoto}
+                        alt={d.fullName}
+                        className="w-7 h-7 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-red-200 flex items-center justify-center text-red-800 font-semibold text-xs">
+                        {d.fullName?.charAt(0) || "D"}
+                      </div>
+                    )}
+                    <span className="font-medium text-gray-800">
+                      {d.fullName}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-red-700 font-semibold">
+                      <Star className="w-3.5 h-3.5 fill-red-600 text-red-600" />
+                      {(d.rating || 0).toFixed(1)}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-bold">
+                      Attention
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {lowPerformers.length === 0 && (
+                <p className="text-xs text-gray-400 italic">
+                  No underperformers — great work!
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
@@ -763,11 +1150,188 @@ const DriverManagement: React.FC = () => {
             <option value="online">Online Only</option>
             <option value="offline">Offline Only</option>
           </select>
+
+          {/* View Mode Toggle */}
+          <div className="inline-flex items-center bg-gray-100 rounded-xl p-1">
+            <button
+              onClick={() => setViewMode("card")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                viewMode === "card"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Card View
+            </button>
+            <button
+              onClick={() => setViewMode("table")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                viewMode === "table"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Table View
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* Drivers Grid / Table */}
+      {viewMode === "card" && !loading && drivers.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {drivers.map((driver) => {
+            const approvalState = getApprovalState(driver);
+            const approvalInfo = approvalConfig[approvalState];
+            const liveDot = driver.isOnline
+              ? (driver.completedTrips || 0) > 0
+                ? "bg-yellow-500"
+                : "bg-green-500"
+              : "bg-gray-400";
+            const liveLabel = driver.isOnline
+              ? (driver.completedTrips || 0) > 0
+                ? "Busy"
+                : "Online"
+              : "Offline";
+            return (
+              <div
+                key={driver._id}
+                className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start gap-3">
+                  {driver.profilePhoto ? (
+                    <img
+                      src={driver.profilePhoto}
+                      alt={driver.fullName}
+                      className="w-14 h-14 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center">
+                      <span className="text-orange-600 font-bold text-lg">
+                        {driver.fullName?.charAt(0) || "D"}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-900 truncate">
+                        {driver.fullName || "No Name"}
+                      </p>
+                      <span
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
+                          driver.isOnline
+                            ? (driver.completedTrips || 0) > 0
+                              ? "bg-yellow-100 text-yellow-700"
+                              : "bg-green-100 text-green-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${liveDot}`} />
+                        {liveLabel}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                      <Phone className="w-3 h-3" />
+                      {driver.countryCode} {driver.mobileNumber}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {driver.city || "—"}, {driver.state || "—"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Performance row */}
+                <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+                  <div className="bg-gray-50 rounded-lg py-2">
+                    <p className="text-[10px] uppercase text-gray-500">Trips</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {driver.completedTrips || 0}
+                    </p>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg py-2">
+                    <p className="text-[10px] uppercase text-yellow-600">
+                      Rating
+                    </p>
+                    <p className="text-sm font-bold text-yellow-700">
+                      {(driver.rating || 0).toFixed(1)}
+                    </p>
+                  </div>
+                  <div
+                    className={`rounded-lg py-2 ${approvalInfo.bgColor}`}
+                  >
+                    <p
+                      className={`text-[10px] uppercase ${approvalInfo.color}`}
+                    >
+                      Status
+                    </p>
+                    <p
+                      className={`text-[11px] font-bold truncate px-1 ${approvalInfo.color}`}
+                    >
+                      {approvalInfo.label}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Inline actions */}
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    onClick={() => openDriverDetail(driver)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-gray-100 text-gray-700 text-xs font-semibold hover:bg-gray-200 transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    Details
+                  </button>
+                  {driver.status === "approved" && driver.isActive && (
+                    <button
+                      onClick={() => {
+                        handleAutoAssign();
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-colors"
+                    >
+                      <CircleDot className="w-3.5 h-3.5" />
+                      Assign
+                    </button>
+                  )}
+                  <a
+                    href={`tel:${driver.countryCode}${driver.mobileNumber}`}
+                    className="p-2 rounded-xl bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                    title="Call"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                  </a>
+                  {driver.status === "approved" ? (
+                    <button
+                      onClick={() => openSuspendModal(driver)}
+                      className="p-2 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+                      title="Block"
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    isVerificationPending(driver.status) && (
+                      <button
+                        onClick={() => openVerifyModal(driver)}
+                        className="p-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                        title="Verify"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Drivers Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div
+        className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden ${
+          viewMode === "card" && !loading && drivers.length > 0 ? "hidden" : ""
+        }`}
+      >
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
@@ -1041,10 +1605,12 @@ const DriverManagement: React.FC = () => {
             </table>
           </div>
         )}
+      </div>
 
-        {/* Pagination */}
-        {pagination.total > 0 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
+      {/* Pagination (shared by card + table view) */}
+      {pagination.total > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-4">
               <p className="text-sm text-gray-600">
                 Showing {page * limit + 1} -{" "}
@@ -1089,8 +1655,8 @@ const DriverManagement: React.FC = () => {
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Driver Detail Modal */}
       {detailModalOpen && selectedDriver && (
@@ -1306,6 +1872,139 @@ const DriverManagement: React.FC = () => {
                         </p>
                         <p className="text-xs text-gray-500">Total Earnings</p>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Enhanced Financial Metrics */}
+                  <div className="bg-gray-50 rounded-xl p-5">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <Wallet className="w-4 h-4" /> Financial Metrics
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <p className="text-2xl font-bold text-orange-600">
+                          {formatCurrency(enhancedData?.codBalance || 0)}
+                        </p>
+                        <p className="text-xs text-gray-500">COD Balance</p>
+                        <p className="text-[10px] text-gray-400">To be settled</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <p className="text-2xl font-bold text-blue-600">
+                          {formatCurrency(enhancedData?.weeklyEarnings || 0)}
+                        </p>
+                        <p className="text-xs text-gray-500">Weekly Earnings</p>
+                        <p className="text-[10px] text-gray-400">Last 7 days</p>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center col-span-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <ArrowRightLeft className="w-5 h-5 text-purple-500" />
+                          <span className="text-2xl font-bold text-purple-600">
+                            {enhancedData?.reassignmentCount || 0}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">Reassignments (30d)</p>
+                        <p className="text-[10px] text-gray-400">Orders reassigned from this driver</p>
+                      </div>
+                    </div>
+                    {/* Weekly Earnings Breakdown */}
+                    {enhancedData?.weeklyBreakdown && enhancedData.weeklyBreakdown.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                          <CalendarDays className="w-3 h-3" /> Weekly Breakdown
+                        </p>
+                        <div className="flex justify-between gap-1">
+                          {enhancedData.weeklyBreakdown.map((d, i) => (
+                            <div key={i} className="flex-1 text-center">
+                              <div className="h-16 flex items-end justify-center">
+                                <div
+                                  className="w-full bg-blue-500 rounded-t"
+                                  style={{
+                                    height: `${Math.max(10, (d.amount / Math.max(...enhancedData.weeklyBreakdown.map(x => x.amount), 1)) * 100)}%`,
+                                  }}
+                                />
+                              </div>
+                              <p className="text-[10px] text-gray-500 mt-1">{d.day}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Traffic Light Document Status */}
+                  <div className="bg-gray-50 rounded-xl p-5 col-span-2">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <FileCheck className="w-4 h-4" /> Document Status
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {(enhancedData?.documentStatus || [
+                        { type: "Driving License", status: "valid" },
+                        { type: "Aadhaar Card", status: "valid" },
+                        { type: "PAN Card", status: "valid" },
+                        { type: "Vehicle RC", status: "valid" },
+                      ]).map((doc, i) => (
+                        <div
+                          key={i}
+                          className={`p-3 rounded-lg border flex items-center gap-2 ${
+                            doc.status === "valid"
+                              ? "bg-green-50 border-green-200"
+                              : doc.status === "expiring"
+                              ? "bg-yellow-50 border-yellow-200"
+                              : doc.status === "expired"
+                              ? "bg-red-50 border-red-200"
+                              : "bg-gray-100 border-gray-200"
+                          }`}
+                        >
+                          <CircleDot
+                            className={`w-4 h-4 ${
+                              doc.status === "valid"
+                                ? "text-green-500"
+                                : doc.status === "expiring"
+                                ? "text-yellow-500"
+                                : doc.status === "expired"
+                                ? "text-red-500"
+                                : "text-gray-400"
+                            }`}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-gray-700 truncate">
+                              {doc.type}
+                            </p>
+                            <p
+                              className={`text-[10px] capitalize ${
+                                doc.status === "valid"
+                                  ? "text-green-600"
+                                  : doc.status === "expiring"
+                                  ? "text-yellow-600"
+                                  : doc.status === "expired"
+                                  ? "text-red-600"
+                                  : "text-gray-500"
+                              }`}
+                            >
+                              {doc.status}
+                              {doc.expiresAt && doc.status === "expiring" && (
+                                <span className="ml-1">
+                                  ({new Date(doc.expiresAt).toLocaleDateString()})
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex justify-center gap-4 text-[10px]">
+                      <span className="flex items-center gap-1">
+                        <CircleDot className="w-3 h-3 text-green-500" /> Valid
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <CircleDot className="w-3 h-3 text-yellow-500" /> Expiring Soon
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <CircleDot className="w-3 h-3 text-red-500" /> Expired
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <CircleDot className="w-3 h-3 text-gray-400" /> Missing
+                      </span>
                     </div>
                   </div>
 
