@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Suspense } from "react";
+import React, { Suspense, useEffect } from "react";
 import { AuthProvider } from "./auth/AuthContext";
 import PrivateRoute from "./routes/privateRoute";
 
@@ -8,12 +8,24 @@ import AdminLayout from "./layouts/AdminLayout";
 import { authRoutes, adminRoutes } from "./routes";
 import UserDetail from "./pages/UserDetail";
 import CmsEdit from "./pages/CMSEdit";
+import { DialogProvider, useDialog, setImperativeDialog } from "./components/Layout/Dialog";
 
 
 const LoadingSpinner = () => <div>Loading...</div>;
 
+const DialogBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const d = useDialog();
+  useEffect(() => {
+    setImperativeDialog(d);
+    return () => setImperativeDialog(null);
+  }, [d]);
+  return <>{children}</>;
+};
+
 const App = () => {
   return (
+    <DialogProvider>
+    <DialogBridge>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -61,6 +73,8 @@ const App = () => {
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </DialogBridge>
+    </DialogProvider>
   );
 };
 

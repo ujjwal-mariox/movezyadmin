@@ -25,10 +25,12 @@ import {
   type PaginationMeta,
 } from "../services/api";
 import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 type TabType = "wallets" | "transactions";
 
 export default function WalletManagement() {
+  const dialog = useDialog();
   const [activeTab, setActiveTab] = useState<TabType>("wallets");
   const [search, setSearch] = useState("");
   const [wallets, setWallets] = useState<WalletUser[]>([]);
@@ -143,10 +145,10 @@ export default function WalletManagement() {
           handleViewUser(adjustModal.userId, adjustModal.name);
         }
       } else {
-        alert(res.message || "Operation failed");
+        await dialog.alert({ title: "Operation failed", message: res.message || "Operation failed", tone: "danger" });
       }
     } catch (e: any) {
-      alert(e.message);
+      await dialog.alert({ title: "Operation failed", message: e?.message || "Operation failed", tone: "danger" });
     }
     setAdjusting(false);
   };

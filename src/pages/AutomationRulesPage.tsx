@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
@@ -59,6 +60,7 @@ const OPERATOR_LABELS: Record<string, string> = {
 };
 
 const AutomationRulesPage: React.FC = () => {
+  const dialog = useDialog();
   const [rules, setRules] = useState<any[]>([]);
   const [triggerTypes, setTriggerTypes] = useState<any[]>([]);
   const [actionTypes, setActionTypes] = useState<any[]>([]);
@@ -155,7 +157,8 @@ const AutomationRulesPage: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this automation rule?")) return;
+    const ok = await dialog.confirm({ title: "Delete rule?", message: "This automation rule will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
     await fetchApi(`/admin/automation/rules/${id}`, { method: "DELETE" });
     loadData(page, limit);
   };

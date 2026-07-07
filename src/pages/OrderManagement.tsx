@@ -26,6 +26,7 @@ import {
   type BookingPaymentStatus,
   type DriverOption,
 } from "../services/api";
+import { useDialog } from "../components/Layout/Dialog";
 
 const STATUS_LABEL: Record<BookingStatus, string> = {
   DRAFT: "Draft",
@@ -115,6 +116,7 @@ const computeWaitingMinutes = (o: BookingRow): number => {
 };
 
 const OrderManagement: React.FC = () => {
+  const dialog = useDialog();
   const [orders, setOrders] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -222,24 +224,33 @@ const OrderManagement: React.FC = () => {
     try {
       const res = await assignAdminDriver(assignModal._id, driverId);
       if (res?.success === false) {
-        window.alert(res.message || "Assign failed");
+        await dialog.alert({ title: "Assign failed", message: res.message || "Assign failed", tone: "danger" });
       } else {
         setAssignModal(null);
         loadOrders();
       }
     } catch (err: any) {
-      window.alert(err?.message || "Assign failed");
+      await dialog.alert({ title: "Assign failed", message: err?.message || "Assign failed", tone: "danger" });
     } finally {
       setAssigning(false);
     }
   };
 
   const handleCancel = async (order: BookingRow) => {
-    const reason = window.prompt(`Cancel booking ${order.bookingNumber || order._id}? Enter reason:`);
+    const reason = await dialog.prompt({
+      title: `Cancel booking ${order.bookingNumber || order._id}?`,
+      message: "Please enter a reason for cancellation. This will be recorded in the audit log.",
+      placeholder: "e.g. Customer requested cancellation",
+      tone: "danger",
+      required: true,
+      multiline: true,
+      confirmLabel: "Cancel booking",
+      cancelLabel: "Keep booking",
+    });
     if (!reason) return;
     const res = await cancelAdminBooking(order._id, { reason });
     if (res?.success === false) {
-      window.alert(res.message || "Cancel failed");
+      await dialog.alert({ title: "Cancel failed", message: res.message || "Cancel failed", tone: "danger" });
     } else {
       loadOrders();
     }

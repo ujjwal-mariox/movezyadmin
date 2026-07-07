@@ -115,10 +115,12 @@ export const creditUserWallet = async (
   amount: number,
   description: string
 ) => {
-  const res = await fetch(`${API_URL}/wallet/admin/user/${userId}/credit`, {
+  // Uses the audited admin endpoint: records a WalletTransaction AND an AuditLog
+  // entry (action UPDATE / module users). Body key is `reason` per that controller.
+  const res = await fetch(`${API_URL}/admin/users/${userId}/wallet/add`, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify({ amount, description }),
+    body: JSON.stringify({ amount, reason: description }),
   });
   return res.json();
 };
@@ -218,6 +220,10 @@ export interface PromoCodeItem {
   isActive: boolean;
   isDeleted: boolean;
   createdAt: string;
+  // Real usage stats attached by the admin list endpoint (from PromoUsage + bookings).
+  realDiscount?: number;
+  realRevenue?: number;
+  redemptions?: number;
 }
 
 // Vehicle Types
@@ -1122,6 +1128,138 @@ export const fetchSnapshot = async (range?: ReportRange) => {
   return res.json();
 };
 
+// ─── SCHEDULED REPORTS ───
+export interface ScheduledReportItem {
+  _id: string;
+  name: string;
+  template: string;
+  frequency: "daily" | "weekly" | "monthly";
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  hour: number;
+  recipients: string[];
+  isActive: boolean;
+  lastRunAt?: string;
+  nextRunAt?: string;
+  lastStatus?: "SENT" | "LOGGED" | "FAILED";
+}
+
+export interface ScheduledReportInput {
+  name: string;
+  template: string;
+  frequency: "daily" | "weekly" | "monthly";
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  hour: number;
+  recipients: string[];
+  isActive?: boolean;
+}
+
+export const fetchReportSchedules = async () => {
+  const res = await fetch(`${API_URL}/admin/reports/schedules`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const createReportSchedule = async (data: ScheduledReportInput) => {
+  const res = await fetch(`${API_URL}/admin/reports/schedules`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const updateReportSchedule = async (
+  id: string,
+  data: Partial<ScheduledReportInput>,
+) => {
+  const res = await fetch(`${API_URL}/admin/reports/schedules/${id}`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const deleteReportSchedule = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/reports/schedules/${id}`, {
+    method: "DELETE",
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const runReportScheduleNow = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/reports/schedules/${id}/run`, {
+    method: "POST",
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+// ─── MANUAL DRIVER PAYOUTS ───
+export interface PayoutItem {
+  _id: string;
+  driverId: { _id: string; fullName?: string; mobileNumber?: string } | string;
+  amount: number;
+  method: "BANK" | "UPI" | "CASH";
+  status: "PENDING" | "APPROVED" | "PAID" | "REJECTED";
+  reference?: string;
+  notes?: string;
+  rejectionReason?: string;
+  createdAt: string;
+}
+
+export const fetchPayouts = async (status?: string) => {
+  const q = status ? `?status=${status}` : "";
+  const res = await fetch(`${API_URL}/admin/finance/payouts${q}`, {
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const createPayout = async (data: {
+  driverId: string;
+  amount: number;
+  method?: "BANK" | "UPI" | "CASH";
+  notes?: string;
+}) => {
+  const res = await fetch(`${API_URL}/admin/finance/payouts`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return res.json();
+};
+
+export const approvePayout = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/finance/payouts/${id}/approve`, {
+    method: "PUT",
+    headers: getHeaders(),
+  });
+  return res.json();
+};
+
+export const markPayoutPaid = async (id: string, reference?: string) => {
+  const res = await fetch(`${API_URL}/admin/finance/payouts/${id}/pay`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify({ reference }),
+  });
+  return res.json();
+};
+
+export const rejectPayout = async (id: string, reason?: string) => {
+  const res = await fetch(`${API_URL}/admin/finance/payouts/${id}/reject`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify({ reason }),
+  });
+  return res.json();
+};
+
 export const fetchDriverReports = async (range?: ReportRange) => {
   const now = new Date();
   const days = range === "7D" ? 7 : range === "90D" ? 90 : range === "YTD" ? undefined : 30;
@@ -1406,7 +1544,8 @@ export const fetchSOSStats = async () => {
 
 export const respondToSOSAlert = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/sos/${id}/respond`, {
-    method: "PUT",
+    // Backend registers this as POST — PUT never matched, so "Respond" 404'd.
+    method: "POST",
     headers: getHeaders(),
   });
   return res.json();
@@ -1414,7 +1553,8 @@ export const respondToSOSAlert = async (id: string) => {
 
 export const resolveSOSAlert = async (id: string, data: { resolutionNotes?: string; isFalseAlarm?: boolean }) => {
   const res = await fetch(`${API_URL}/admin/sos/${id}/resolve`, {
-    method: "PUT",
+    // Backend registers this as POST — PUT never matched, so "Resolve" 404'd.
+    method: "POST",
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
@@ -1423,7 +1563,9 @@ export const resolveSOSAlert = async (id: string, data: { resolutionNotes?: stri
 
 export const notifyPoliceForSOS = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/sos/${id}/notify-police`, {
-    method: "PUT",
+    // Backend route is POST (admin.routes.ts); was incorrectly PUT here, so the
+    // request never matched the route. admin-api.ts already used POST.
+    method: "POST",
     headers: getHeaders(),
   });
   return res.json();

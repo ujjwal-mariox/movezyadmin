@@ -1,4 +1,6 @@
 // Admin API Service
+import { dialog } from "../components/Layout/Dialog";
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 
 // Helper function to get auth token
@@ -34,9 +36,11 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
       const errorData = await response.json().catch(() => ({}));
       console.error("[API] 401 Unauthorized:", errorData);
       // DON'T auto-logout - let the user see the error first
-      alert(
-        `API returned 401: ${errorData.message || "Session expired"}\n\nCheck console for details.`,
-      );
+      void dialog.alert({
+        title: "Session expired",
+        message: `API returned 401: ${errorData.message || "Session expired"}\n\nCheck console for details.`,
+        tone: "warning",
+      });
       throw new Error(
         errorData.message || "Session expired. Please login again.",
       );
@@ -64,7 +68,11 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
     // Network error or other fetch error
     if (error.name === "TypeError" && error.message === "Failed to fetch") {
       console.error("[API] Network error - is the backend running?");
-      alert("Cannot connect to backend. Is the server running on port 9050?");
+      void dialog.alert({
+        title: "Connection error",
+        message: "Cannot connect to backend. Is the server running on port 9050?",
+        tone: "danger",
+      });
       throw new Error(
         "Unable to connect to server. Please check your connection.",
       );
@@ -674,6 +682,24 @@ export const driversApi = {
     ).toString();
     return fetchWithAuth(`/admin/drivers/${id}/earnings?${query}`);
   },
+
+  // Pending (SEARCHING) bookings awaiting a driver — from the action center.
+  getPendingAssignments: () =>
+    fetchWithAuth("/admin/dashboard/action-center"),
+
+  // Manually assign a specific SEARCHING booking to a driver (notifies both apps).
+  assignToBooking: (bookingId: string, driverId: string) =>
+    fetchWithAuth(`/admin/bookings/${bookingId}/assign-driver`, {
+      method: "PUT",
+      body: JSON.stringify({ driverId }),
+    }),
+
+  // Auto-assign the nearest available driver to all SEARCHING bookings (or one).
+  autoAssign: (bookingId?: string) =>
+    fetchWithAuth(`/admin/bookings/auto-assign`, {
+      method: "POST",
+      body: JSON.stringify(bookingId ? { bookingId } : {}),
+    }),
 };
 
 // ==================== APP USERS API ====================
@@ -965,6 +991,34 @@ export const trainingApi = {
 
   delete: (id: string) =>
     fetchWithAuth(`/admin/training/${id}`, { method: "DELETE" }),
+
+  // ── Training PROGRAMS (real, with enrollment stats) ──
+  listPrograms: () => fetchWithAuth(`/admin/training/programs`),
+
+  createProgram: (data: {
+    title: string;
+    description?: string;
+    type?: string;
+    materialIds?: string[];
+    mandatory?: boolean;
+    passScore?: number;
+  }) =>
+    fetchWithAuth(`/admin/training/programs`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateProgram: (id: string, data: Record<string, any>) =>
+    fetchWithAuth(`/admin/training/programs/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  toggleProgram: (id: string) =>
+    fetchWithAuth(`/admin/training/programs/${id}/toggle`, { method: "PUT" }),
+
+  deleteProgram: (id: string) =>
+    fetchWithAuth(`/admin/training/programs/${id}`, { method: "DELETE" }),
 };
 
 // ==================== DEFAULT EXPORT ====================

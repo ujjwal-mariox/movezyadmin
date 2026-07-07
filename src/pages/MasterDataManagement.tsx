@@ -15,6 +15,7 @@ import {
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import { masterDataApi } from "../services/admin-api";
+import { useDialog } from "../components/Layout/Dialog";
 
 type Tab = "cities" | "bodyTypes" | "fuelTypes";
 
@@ -34,6 +35,7 @@ interface NameItem {
 }
 
 const MasterDataManagement: React.FC = () => {
+  const dialog = useDialog();
   const [activeTab, setActiveTab] = useState<Tab>("cities");
 
   // Cities
@@ -174,7 +176,8 @@ const MasterDataManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this item?")) return;
+    const ok = await dialog.confirm({ title: "Delete item?", message: "This item will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
     try {
       setActionLoading(id);
       if (activeTab === "cities") await masterDataApi.deleteCity(id);

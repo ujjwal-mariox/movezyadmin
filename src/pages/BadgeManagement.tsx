@@ -13,11 +13,10 @@ import {
   Trophy,
   Gift,
   Sparkles,
-  TrendingUp,
-  Users,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 import {
   fetchBadges,
   createBadge,
@@ -89,6 +88,7 @@ const rewardLabel: Record<RewardType, string> = {
 };
 
 const BadgeManagement: React.FC = () => {
+  const dialog = useDialog();
   const [items, setItems] = useState<BadgeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -113,7 +113,7 @@ const BadgeManagement: React.FC = () => {
   const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
   const endIndex = Math.min(page * limit, totalItems);
 
-  // Deterministic mock intel per badge (swap when backend lands)
+  // Per-badge config (level & reward) resolved from the badge record
   const badgeMetrics = useMemo(() => {
     const map = new Map<
       string,
@@ -121,34 +121,17 @@ const BadgeManagement: React.FC = () => {
         level: BadgeLevel;
         rewardType: RewardType;
         rewardValue: string;
-        unlockedCount: number;
-        unlockedPct: number;
       }
     >();
-    const levels: BadgeLevel[] = ["BRONZE", "SILVER", "GOLD", "PLATINUM"];
-    const rewards: RewardType[] = ["BONUS", "DISCOUNT", "PRIORITY", "VISIBILITY", "BADGE_ONLY"];
     items.forEach((it) => {
-      const seed = (it._id || it.name || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) || 1;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const raw = it as any;
-      const level = (raw.level as BadgeLevel) || levels[seed % 4];
-      const rewardType = (raw.rewardType as RewardType) || rewards[seed % rewards.length];
-      const baseCap = level === "BRONZE" ? 85 : level === "SILVER" ? 55 : level === "GOLD" ? 30 : 12;
-      const unlockedPct = Math.max(3, baseCap - (seed % 20));
-      const rewardValues: Record<RewardType, string> = {
-        BONUS: `₹${100 + (seed % 9) * 50}`,
-        DISCOUNT: `${3 + (seed % 8)}% off commission`,
-        PRIORITY: "+1 priority tier",
-        VISIBILITY: "Top-of-list exposure",
-        BADGE_ONLY: "—",
-        NONE: "—",
-      };
+      const level = (raw.level as BadgeLevel) || "BRONZE";
+      const rewardType = (raw.rewardType as RewardType) || "BADGE_ONLY";
       map.set(it._id, {
         level,
         rewardType,
-        rewardValue: (raw.rewardValue as string) || rewardValues[rewardType],
-        unlockedCount: 120 + (seed % 840),
-        unlockedPct,
+        rewardValue: (raw.rewardValue as string) || "",
       });
     });
     return map;
@@ -157,14 +140,12 @@ const BadgeManagement: React.FC = () => {
   const overviewStats = useMemo(() => {
     let active = 0;
     let premium = 0;
-    let totalUnlocks = 0;
     items.forEach((it) => {
       if (it.isActive) active++;
       const m = badgeMetrics.get(it._id);
       if (m?.level === "GOLD" || m?.level === "PLATINUM") premium++;
-      totalUnlocks += m?.unlockedCount || 0;
     });
-    return { total: paginationMeta.total || items.length, active, premium, totalUnlocks };
+    return { total: paginationMeta.total || items.length, active, premium };
   }, [items, badgeMetrics, paginationMeta.total]);
 
   const showNotification = (type: "success" | "error", message: string) => {
@@ -281,7 +262,8 @@ const BadgeManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this badge?")) return;
+    const ok = await dialog.confirm({ title: "Delete badge?", message: "This badge will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
 
     try {
       setActionLoading(id);
@@ -354,7 +336,7 @@ const BadgeManagement: React.FC = () => {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -388,20 +370,6 @@ const BadgeManagement: React.FC = () => {
             </div>
             <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
               <Trophy className="w-5 h-5 text-amber-600" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-purple-500 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Unlocks</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">
-                {overviewStats.totalUnlocks.toLocaleString()}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">Across all drivers</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
-              <Users className="w-5 h-5 text-purple-600" />
             </div>
           </div>
         </div>
@@ -443,9 +411,6 @@ const BadgeManagement: React.FC = () => {
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                     Reward
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    Driver Progress
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                     Status
@@ -500,23 +465,6 @@ const BadgeManagement: React.FC = () => {
                             <div className="text-xs text-pink-700 font-semibold mt-0.5">{m?.rewardValue}</div>
                           )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2 min-w-[140px]">
-                        <div className="flex-1 bg-gray-100 rounded-full h-2">
-                          <div
-                            className={`${tone.bar} h-2 rounded-full transition-all`}
-                            style={{ width: `${Math.min(100, m?.unlockedPct || 0)}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-semibold text-gray-700 w-8">
-                          {m?.unlockedPct || 0}%
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-gray-400 mt-1 flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3" />
-                        {(m?.unlockedCount || 0).toLocaleString()} unlocked
                       </div>
                     </td>
                     <td className="px-4 py-4">

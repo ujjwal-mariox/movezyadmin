@@ -15,13 +15,12 @@ import {
   Ban,
   Users,
   Car,
-  TrendingUp,
-  TrendingDown,
   Zap,
   Flame,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 import {
   fetchCancellationReasons,
   createCancellationReason,
@@ -57,6 +56,7 @@ const initialFormData: FormData = {
 };
 
 const CancellationReasonManagement: React.FC = () => {
+  const dialog = useDialog();
   const [reasons, setReasons] = useState<CancellationReasonItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -180,7 +180,8 @@ const CancellationReasonManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this cancellation reason? It will be deactivated.")) return;
+    const ok = await dialog.confirm({ title: "Delete reason?", message: "This cancellation reason will be deactivated.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
     try {
       setActionLoading(id);
       await deleteCancellationReason(id);
@@ -203,28 +204,15 @@ const CancellationReasonManagement: React.FC = () => {
     return "LOW";
   };
 
-  // Deterministic mock metrics per reason (stage, trend, auto-action, usage count)
+  // Per-reason config (stage & auto-action) resolved from the reason record
   const reasonMetrics = React.useMemo(() => {
     return reasons.map((r) => {
-      const seed =
-        (r._id || r.code || "").split("").reduce((x, c) => x + c.charCodeAt(0), 0) ||
-        1;
-      const stages: FormData["stage"][] = ["BEFORE", "DURING", "AFTER"];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stage = ((r as any).stage as FormData["stage"]) ?? stages[seed % 3];
-      const actions: FormData["autoAction"][] = [
-        "NONE",
-        "NOTIFY_OPS",
-        "BLOCK_REBOOK",
-        "FLAG_DRIVER",
-        "ISSUE_REFUND",
-      ];
+      const stage = ((r as any).stage as FormData["stage"]) ?? "BEFORE";
       const autoAction =
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ((r as any).autoAction as FormData["autoAction"]) ?? actions[seed % 5];
-      const usage = 20 + (seed % 380);
-      const trendDelta = ((seed % 41) - 20) * 0.7; // -14% to +14%
-      return { id: r._id, stage, autoAction, usage, trendDelta };
+        ((r as any).autoAction as FormData["autoAction"]) ?? "NONE";
+      return { id: r._id, stage, autoAction };
     });
   }, [reasons]);
 
@@ -232,7 +220,6 @@ const CancellationReasonManagement: React.FC = () => {
   const totalReasons = paginationMeta.total;
   const activeReasons = reasons.filter((r) => r.isActive).length;
   const highImpactCount = reasons.filter((r) => impactOf(r) === "HIGH").length;
-  const trendingUpCount = reasonMetrics.filter((m) => m.trendDelta > 5).length;
 
   // Server-side: data is already filtered and paginated
   const paginatedFiltered = reasons;
@@ -287,7 +274,7 @@ const CancellationReasonManagement: React.FC = () => {
       </div>
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-3">
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
@@ -321,18 +308,6 @@ const CancellationReasonManagement: React.FC = () => {
             </div>
             <div className="flex items-center justify-center bg-red-50 w-11 h-11 rounded-xl">
               <Flame className="w-5 h-5 text-red-600" />
-            </div>
-          </div>
-        </div>
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Trending Up</p>
-              <h3 className="mt-1 text-2xl font-bold text-gray-800">{trendingUpCount}</h3>
-              <p className="mt-1 text-xs text-amber-600">Rising reasons</p>
-            </div>
-            <div className="flex items-center justify-center bg-amber-50 w-11 h-11 rounded-xl">
-              <TrendingUp className="w-5 h-5 text-amber-600" />
             </div>
           </div>
         </div>
@@ -376,7 +351,6 @@ const CancellationReasonManagement: React.FC = () => {
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Stage</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Auto Action</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Penalty / Refund</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Trend</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-right text-gray-500 uppercase">Actions</th>
               </tr>
@@ -387,8 +361,6 @@ const CancellationReasonManagement: React.FC = () => {
                 const metrics = reasonMetrics.find((m) => m.id === item._id) || {
                   stage: "BEFORE" as FormData["stage"],
                   autoAction: "NONE" as FormData["autoAction"],
-                  usage: 0,
-                  trendDelta: 0,
                 };
                 const impactConfig = {
                   HIGH: {
@@ -464,32 +436,6 @@ const CancellationReasonManagement: React.FC = () => {
                     >
                       Refund: {item.refundPercentage}%
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
-                      {metrics.trendDelta > 0 ? (
-                        <TrendingUp className="w-3.5 h-3.5 text-red-500" />
-                      ) : metrics.trendDelta < 0 ? (
-                        <TrendingDown className="w-3.5 h-3.5 text-green-500" />
-                      ) : (
-                        <span className="w-3.5 h-0.5 bg-gray-400 rounded" />
-                      )}
-                      <span
-                        className={`text-xs font-semibold ${
-                          metrics.trendDelta > 5
-                            ? "text-red-600"
-                            : metrics.trendDelta < -5
-                              ? "text-green-600"
-                              : "text-gray-500"
-                        }`}
-                      >
-                        {metrics.trendDelta > 0 ? "+" : ""}
-                        {metrics.trendDelta.toFixed(1)}%
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-gray-400">
-                      {metrics.usage} uses/30d
-                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${item.isActive ? "text-green-700 bg-green-100" : "text-yellow-700 bg-yellow-100"}`}>

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Plus, Edit2, Trash2, X, Save, Filter, Truck, Activity, AlertCircle, CheckCircle } from "lucide-react";
 import { usePagination } from "./hooks/usePagination";
 import Pagination from "./components/Pagination";
+import { useDialog } from "./components/Layout/Dialog";
 
 interface Vehicle {
   id: number;
@@ -55,6 +56,7 @@ const initialVehicles: Vehicle[] = [
 ];
 
 const VehicleManagement = () => {
+  const dialog = useDialog();
   const [vehicles, setVehicles] = useState<Vehicle[]>(initialVehicles);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -72,10 +74,10 @@ const VehicleManagement = () => {
   const inTransitVehicles = vehicles.filter(v => v.status === "In Transit").length;
   const maintenanceVehicles = vehicles.filter(v => v.status === "Maintenance").length;
 
-  const handleDelete = (id: number) => {
-    if (window.confirm("Are you sure you want to delete this vehicle?")) {
-      setVehicles(vehicles.filter((v) => v.id !== id));
-    }
+  const handleDelete = async (id: number) => {
+    const ok = await dialog.confirm({ title: "Delete vehicle?", message: "This vehicle will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
+    setVehicles(vehicles.filter((v) => v.id !== id));
   };
 
   const handleEdit = (vehicle: Vehicle) => {

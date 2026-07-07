@@ -32,10 +32,12 @@ import {
 } from "../services/api";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 type TargetAudience = "all" | "users" | "drivers" | "city";
 
 const PromoManagement: React.FC = () => {
+  const dialog = useDialog();
   const [promos, setPromos] = useState<PromoCodeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -190,13 +192,13 @@ const PromoManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Delete this promo code?")) {
-      try {
-        await deletePromoApi(id);
-        loadPromos(page, limit);
-      } catch (err) {
-        console.error("Failed to delete promo", err);
-      }
+    const ok = await dialog.confirm({ title: "Delete promo code?", message: "This promo code will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
+    try {
+      await deletePromoApi(id);
+      loadPromos(page, limit);
+    } catch (err) {
+      console.error("Failed to delete promo", err);
     }
   };
 
@@ -226,7 +228,8 @@ const PromoManagement: React.FC = () => {
   };
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Delete ${selectedIds.size} promo(s)?`)) return;
+    const ok = await dialog.confirm({ title: `Delete ${selectedIds.size} promo${selectedIds.size > 1 ? "s" : ""}?`, message: "These promo codes will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
     for (const id of Array.from(selectedIds)) {
       try {
         await deletePromoApi(id);
@@ -560,13 +563,14 @@ const PromoManagement: React.FC = () => {
                   const used = promo.usedCount || 0;
                   const max = promo.maxUsage || 0;
                   const redemptionRate = max > 0 ? (used / max) * 100 : 0;
+                  // Real figures from the backend (PromoUsage + linked bookings).
+                  // Fall back to an estimate only if the backend didn't send them.
                   const discount =
-                    promo.discountType === "FIXED"
+                    promo.realDiscount ??
+                    (promo.discountType === "FIXED"
                       ? promo.discountValue * used
-                      : (promo.maxDiscount || 50) * used;
-                  // Mock revenue = avg order * redemptions (swap when backend sends)
-                  const avgOrder = (promo.minOrderValue || 300) * 1.4;
-                  const revenue = avgOrder * used;
+                      : (promo.maxDiscount || 50) * used);
+                  const revenue = promo.realRevenue ?? 0;
                   const expiry = getExpiryLabel(promo.validTo);
                   const isSelected = selectedIds.has(promo._id);
 

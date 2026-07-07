@@ -11,11 +11,14 @@ import {
   Shield,
   AlertCircle,
   Loader2,
+  Plus,
+  X,
 } from "lucide-react";
 import {
   fetchAdminUserById,
   fetchAdminUserBookings,
   fetchAdminUserTransactions,
+  creditUserWallet,
   type AdminUserDetailResponse,
   type AdminUserBookingRow,
   type AdminUserTransactionRow,
@@ -80,6 +83,13 @@ const UserDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Add-balance modal state (credits via the audited admin endpoint).
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [creditAmount, setCreditAmount] = useState("");
+  const [creditReason, setCreditReason] = useState("");
+  const [crediting, setCrediting] = useState(false);
+  const [creditError, setCreditError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -110,6 +120,32 @@ const UserDetail: React.FC = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleCredit = useCallback(async () => {
+    if (!id) return;
+    const amt = Number(creditAmount);
+    if (!amt || amt <= 0) {
+      setCreditError("Enter a valid amount");
+      return;
+    }
+    setCrediting(true);
+    setCreditError(null);
+    try {
+      const res = await creditUserWallet(id, amt, creditReason.trim());
+      if (res?.success) {
+        setCreditOpen(false);
+        setCreditAmount("");
+        setCreditReason("");
+        await load();
+      } else {
+        setCreditError(res?.message || "Failed to add balance");
+      }
+    } catch (e) {
+      setCreditError(e instanceof Error ? e.message : "Failed to add balance");
+    } finally {
+      setCrediting(false);
+    }
+  }, [id, creditAmount, creditReason, load]);
 
   const user = detail?.user;
   const wallet = detail?.wallet;
@@ -171,6 +207,9 @@ const UserDetail: React.FC = () => {
         : "bg-yellow-100 text-yellow-800";
 
   const profilePicture =
+    // User model field is `profileImage` — the old `profilePicture` read was
+    // always undefined, so real uploaded avatars never showed.
+    (user as { profileImage?: string; profilePicture?: string }).profileImage ||
     (user as { profilePicture?: string }).profilePicture ||
     `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.fullName || user.email || "U")}`;
 
@@ -237,9 +276,21 @@ const UserDetail: React.FC = () => {
             <div className="mt-6 pt-6 border-t border-gray-100 space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-500">Wallet Balance</span>
-                <span className="text-lg font-bold text-gray-900">
-                  ₹{(wallet?.balance ?? 0).toLocaleString("en-IN")}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold text-gray-900">
+                    ₹{(wallet?.balance ?? 0).toLocaleString("en-IN")}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setCreditError(null);
+                      setCreditOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100"
+                    title="Add balance"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add
+                  </button>
+                </div>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-500">Coin Balance</span>
@@ -393,6 +444,63 @@ const UserDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {creditOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Add Wallet Balance
+              </h2>
+              <button
+                onClick={() => setCreditOpen(false)}
+                className="p-1 rounded-md hover:bg-gray-100"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Amount (₹)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reason
+                </label>
+                <input
+                  type="text"
+                  value={creditReason}
+                  onChange={(e) => setCreditReason(e.target.value)}
+                  placeholder="Reason for credit"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+              {creditError && (
+                <p className="text-sm text-red-600">{creditError}</p>
+              )}
+              <button
+                onClick={handleCredit}
+                disabled={crediting || !creditAmount}
+                className="w-full py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium text-sm disabled:opacity-50"
+              >
+                {crediting
+                  ? "Processing..."
+                  : `Credit ₹${creditAmount || "0"}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

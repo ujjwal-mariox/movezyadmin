@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
@@ -108,13 +109,13 @@ const STATUS_CONFIG: Record<
   },
 };
 
+// Only the document types the driver KYC/onboarding flow actually captures.
+// insurance/permit/fitness/puc were never collected anywhere, so including
+// them capped every driver at 50% compliance. Keep this list in sync with
+// what the backend emits in `driver.documents` (buildDriverDocuments).
 const DOC_TYPES = [
   { key: "driving_license", label: "Driving License" },
   { key: "rc_book", label: "RC Book" },
-  { key: "insurance", label: "Insurance" },
-  { key: "permit", label: "Permit" },
-  { key: "fitness", label: "Fitness Certificate" },
-  { key: "puc", label: "PUC Certificate" },
   { key: "aadhar", label: "Aadhar Card" },
   { key: "pan", label: "PAN Card" },
 ];
@@ -178,6 +179,7 @@ const friendlyDate = (iso?: string): string => {
 };
 
 const DocumentCompliancePage: React.FC = () => {
+  const dialog = useDialog();
   const [drivers, setDrivers] = useState<DriverDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -378,10 +380,16 @@ const DocumentCompliancePage: React.FC = () => {
 
   const bulkApprove = useCallback(async () => {
     if (selectedIds.size === 0) {
-      alert("Select at least one driver first.");
+      await dialog.alert({ title: "No selection", message: "Select at least one driver first.", tone: "info" });
       return;
     }
-    if (!confirm(`Approve documents for ${selectedIds.size} driver(s)?`)) return;
+    const ok = await dialog.confirm({
+      title: `Approve ${selectedIds.size} driver${selectedIds.size > 1 ? "s" : ""}?`,
+      message: "All selected drivers will have their documents approved.",
+      tone: "warning",
+      confirmLabel: "Approve",
+    });
+    if (!ok) return;
     setBulkBusy(true);
     try {
       const ids = Array.from(selectedIds);
@@ -402,17 +410,22 @@ const DocumentCompliancePage: React.FC = () => {
     } finally {
       setBulkBusy(false);
     }
-  }, [selectedIds, loadDrivers]);
+  }, [selectedIds, loadDrivers, dialog]);
 
   const bulkBlock = useCallback(async () => {
     if (selectedIds.size === 0) {
-      alert("Select at least one driver first.");
+      await dialog.alert({ title: "No selection", message: "Select at least one driver first.", tone: "info" });
       return;
     }
-    const reason = prompt(
-      "Reason for blocking these drivers?",
-      "Document compliance",
-    );
+    const reason = await dialog.prompt({
+      title: `Block ${selectedIds.size} driver${selectedIds.size > 1 ? "s" : ""}?`,
+      message: "Provide a reason for blocking — this will be recorded.",
+      tone: "danger",
+      defaultValue: "Document compliance",
+      required: true,
+      multiline: true,
+      confirmLabel: "Block drivers",
+    });
     if (reason === null) return;
     setBulkBusy(true);
     try {
@@ -438,17 +451,22 @@ const DocumentCompliancePage: React.FC = () => {
     } finally {
       setBulkBusy(false);
     }
-  }, [selectedIds, loadDrivers]);
+  }, [selectedIds, loadDrivers, dialog]);
 
   const bulkNotify = useCallback(async () => {
     if (selectedIds.size === 0) {
-      alert("Select at least one driver first.");
+      await dialog.alert({ title: "No selection", message: "Select at least one driver first.", tone: "info" });
       return;
     }
-    const message = prompt(
-      "Reminder message to send:",
-      "Please update your expiring documents to continue accepting bookings.",
-    );
+    const message = await dialog.prompt({
+      title: "Send reminder",
+      message: "This message will be sent to all selected drivers as a notification.",
+      tone: "info",
+      defaultValue: "Please update your expiring documents to continue accepting bookings.",
+      required: true,
+      multiline: true,
+      confirmLabel: "Send reminder",
+    });
     if (!message) return;
     setBulkBusy(true);
     try {
@@ -473,7 +491,88 @@ const DocumentCompliancePage: React.FC = () => {
     } finally {
       setBulkBusy(false);
     }
-  }, [selectedIds]);
+  }, [selectedIds, dialog]);
+
+  // Per-driver approve — hits the same real endpoint the bulk bar uses. These
+  // row buttons previously only showed a dialog.alert() and did nothing.
+  const approveDriver = useCallback(
+    async (driverId: string, driverName: string) => {
+      const ok = await dialog.confirm({
+        title: `Approve ${driverName}?`,
+        message: "This approves the driver's documents and activates their account.",
+        tone: "success",
+        confirmLabel: "Approve",
+      });
+      if (!ok) return;
+      const res = await fetchApi(`/admin/drivers/${driverId}/verify`, {
+        method: "PUT",
+        body: JSON.stringify({ action: "approve" }),
+      }).catch(() => null);
+      if (res) {
+        setBulkNotice(`Approved ${driverName}.`);
+        loadDrivers();
+      } else {
+        await dialog.alert({ title: "Approve failed", message: "Could not approve. Try again.", tone: "danger" });
+      }
+    },
+    [dialog, loadDrivers],
+  );
+
+  const rejectDriver = useCallback(
+    async (driverId: string, driverName: string) => {
+      const reason = await dialog.prompt({
+        title: `Reject ${driverName}?`,
+        message: "Provide a reason — the driver sees this and can re-upload.",
+        tone: "danger",
+        defaultValue: "Documents unclear or invalid. Please re-upload.",
+        required: true,
+        multiline: true,
+        confirmLabel: "Reject",
+      });
+      if (reason === null) return;
+      const res = await fetchApi(`/admin/drivers/${driverId}/verify`, {
+        method: "PUT",
+        body: JSON.stringify({ action: "reject", rejectionReason: reason }),
+      }).catch(() => null);
+      if (res) {
+        setBulkNotice(`Rejected ${driverName}.`);
+        loadDrivers();
+      } else {
+        await dialog.alert({ title: "Reject failed", message: "Could not reject. Try again.", tone: "danger" });
+      }
+    },
+    [dialog, loadDrivers],
+  );
+
+  // "Request re-upload" — notify a single driver to re-submit documents.
+  const requestReupload = useCallback(
+    async (driverId: string, driverName: string) => {
+      const message = await dialog.prompt({
+        title: `Request re-upload from ${driverName}`,
+        message: "This is sent to the driver as a notification.",
+        tone: "info",
+        defaultValue: "Please re-upload your documents — some were unclear or expired.",
+        required: true,
+        multiline: true,
+        confirmLabel: "Send request",
+      });
+      if (!message) return;
+      const res = await fetchApi(`/admin/notifications/broadcast`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Document Re-upload Requested",
+          body: message,
+          type: "SYSTEM",
+          audience: "DRIVERS",
+          data: { targetType: "COMPLIANCE", driverIds: driverId },
+        }),
+      }).catch(() => null);
+      setBulkNotice(
+        res ? `Re-upload request sent to ${driverName}.` : "Could not send request.",
+      );
+    },
+    [dialog],
+  );
 
   useEffect(() => {
     if (!bulkNotice) return;
@@ -583,7 +682,7 @@ const DocumentCompliancePage: React.FC = () => {
             secondary: `${doc.label} • ${days === 0 ? "today" : `${days}d`}`,
             ctaLabel: "Notify",
             ctaIcon: Bell,
-            onCta: () => alert(`Notify ${driver.driverName} about ${doc.label}`),
+            onCta: () => dialog.alert({ title: "Notify driver", message: `Notify ${driver.driverName} about ${doc.label}.`, tone: "info" }),
           }))}
         />
 
@@ -602,11 +701,11 @@ const DocumentCompliancePage: React.FC = () => {
             secondary: `${doc.label} • ${friendlyDate(doc.expiryDate)}`,
             ctaLabel: "Block",
             ctaIcon: Ban,
-            onCta: () => alert(`Block ${driver.driverName}`),
+            onCta: () => dialog.alert({ title: "Block driver", message: `Block ${driver.driverName}.`, tone: "danger" }),
             secondaryAction: {
               label: "Request Update",
               icon: Send,
-              onClick: () => alert(`Request update from ${driver.driverName}`),
+              onClick: () => dialog.alert({ title: "Request update", message: `Request update from ${driver.driverName}.`, tone: "info" }),
             },
           }))}
         />
@@ -626,11 +725,11 @@ const DocumentCompliancePage: React.FC = () => {
             secondary: doc.label,
             ctaLabel: "Approve",
             ctaIcon: CheckCircle,
-            onCta: () => alert(`Approve ${doc.label} for ${driver.driverName}`),
+            onCta: () => dialog.alert({ title: "Approve document", message: `Approve ${doc.label} for ${driver.driverName}.`, tone: "success" }),
             secondaryAction: {
               label: "Reject",
               icon: X,
-              onClick: () => alert(`Reject ${doc.label} for ${driver.driverName}`),
+              onClick: () => dialog.alert({ title: "Reject document", message: `Reject ${doc.label} for ${driver.driverName}.`, tone: "danger" }),
             },
           }))}
         />
@@ -880,25 +979,21 @@ const DocumentCompliancePage: React.FC = () => {
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() =>
-                              alert(`Approve all for ${driver.driverName}`)
-                            }
+                            onClick={() => approveDriver(driver.driverId, driver.driverName)}
                             className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
                             title="Approve"
                           >
                             <CheckCircle className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() =>
-                              alert(`Request re-upload from ${driver.driverName}`)
-                            }
+                            onClick={() => requestReupload(driver.driverId, driver.driverName)}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
                             title="Request Re-upload"
                           >
                             <Send className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => alert(`Reject ${driver.driverName}`)}
+                            onClick={() => rejectDriver(driver.driverId, driver.driverName)}
                             className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
                             title="Reject"
                           >
@@ -1241,6 +1336,7 @@ const CompliancePanel: React.FC<{
   driver: DriverDoc;
   onClose: () => void;
 }> = ({ driver, onClose }) => {
+  const dialog = useDialog();
   const missing = driver.documents.filter((d) => d.status === "missing");
   const nonCompliant = driver.documents.filter(
     (d) => d.status === "expired" || d.status === "expiring" || d.status === "pending",
@@ -1370,7 +1466,7 @@ const CompliancePanel: React.FC<{
                             {doc.status !== "valid" && (
                               <button
                                 onClick={() =>
-                                  alert(`Request ${doc.label} update`)
+                                  dialog.alert({ title: "Request update", message: `Request ${doc.label} update.`, tone: "info" })
                                 }
                                 className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-[11px] font-semibold rounded-lg hover:bg-blue-700"
                               >
@@ -1391,14 +1487,73 @@ const CompliancePanel: React.FC<{
 
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex items-center gap-2">
           <button
-            onClick={() => alert(`Notify ${driver.driverName}`)}
+            onClick={async () => {
+              // Was alert-only; now sends a real notification to this driver.
+              const message = await dialog.prompt({
+                title: `Notify ${driver.driverName}`,
+                message: "This is sent to the driver as a notification.",
+                tone: "info",
+                defaultValue:
+                  "Please update your documents to stay compliant.",
+                required: true,
+                multiline: true,
+                confirmLabel: "Send",
+              });
+              if (!message) return;
+              const res = await fetchApi(`/admin/notifications/broadcast`, {
+                method: "POST",
+                body: JSON.stringify({
+                  title: "Document Compliance",
+                  body: message,
+                  type: "SYSTEM",
+                  audience: "DRIVERS",
+                  data: { targetType: "COMPLIANCE", driverIds: driver.driverId },
+                }),
+              }).catch(() => null);
+              await dialog.alert({
+                title: res ? "Sent" : "Failed",
+                message: res
+                  ? `Notification sent to ${driver.driverName}.`
+                  : "Could not send notification.",
+                tone: res ? "success" : "danger",
+              });
+            }}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100"
           >
             <Bell className="w-4 h-4" />
             Notify
           </button>
           <button
-            onClick={() => alert(`Block ${driver.driverName}`)}
+            onClick={async () => {
+              // Was alert-only; now actually suspends the driver.
+              const reason = await dialog.prompt({
+                title: `Block ${driver.driverName}?`,
+                message:
+                  "The driver will be suspended and taken offline. Provide a reason.",
+                tone: "danger",
+                defaultValue: "Document compliance",
+                required: true,
+                multiline: true,
+                confirmLabel: "Block driver",
+              });
+              if (reason === null) return;
+              const res = await fetchApi(`/admin/drivers/${driver.driverId}/status`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  status: "suspended",
+                  reason: reason || "Document compliance",
+                  isActive: false,
+                }),
+              }).catch(() => null);
+              await dialog.alert({
+                title: res ? "Driver blocked" : "Failed",
+                message: res
+                  ? `${driver.driverName} has been suspended.`
+                  : "Could not block the driver.",
+                tone: res ? "success" : "danger",
+              });
+              if (res) onClose();
+            }}
             className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 text-red-700 font-semibold hover:bg-red-100"
           >
             <Ban className="w-4 h-4" />

@@ -38,6 +38,7 @@ import {
 } from "../services/api";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 type TemplateFormState = {
   _id?: string;
@@ -65,6 +66,7 @@ const EMPTY_TEMPLATE: TemplateFormState = {
 };
 
 const NotificationCenter: React.FC = () => {
+  const dialog = useDialog();
   const [activeTab, setActiveTab] = useState<"send" | "templates" | "history">(
     "send",
   );
@@ -181,12 +183,12 @@ const NotificationCenter: React.FC = () => {
         setSelectedTemplateId(undefined);
         loadAnalytics();
         loadHistory();
-        alert(`Broadcast dispatched to ${res.data?.targetedCount ?? 0} recipients`);
+        await dialog.alert({ title: "Broadcast sent", message: `Broadcast dispatched to ${res.data?.targetedCount ?? 0} recipients.`, tone: "success" });
       } else {
-        alert(res?.message || "Failed to send notification");
+        await dialog.alert({ title: "Send failed", message: res?.message || "Failed to send notification", tone: "danger" });
       }
     } catch (err) {
-      alert((err as Error).message || "Failed to send notification");
+      await dialog.alert({ title: "Send failed", message: (err as Error).message || "Failed to send notification", tone: "danger" });
     } finally {
       setSending(false);
     }
@@ -224,7 +226,7 @@ const NotificationCenter: React.FC = () => {
 
   const saveTemplate = async () => {
     if (!templateForm.name || !templateForm.code || !templateForm.title || !templateForm.body) {
-      alert("Name, code, title and body are required");
+      await dialog.alert({ title: "Missing fields", message: "Name, code, title and body are required.", tone: "warning" });
       return;
     }
     setTemplateSaving(true);
@@ -247,7 +249,7 @@ const NotificationCenter: React.FC = () => {
         setShowTemplateModal(false);
         loadTemplates();
       } else {
-        alert(res?.message || "Failed to save template");
+        await dialog.alert({ title: "Save failed", message: res?.message || "Failed to save template", tone: "danger" });
       }
     } finally {
       setTemplateSaving(false);
@@ -255,10 +257,16 @@ const NotificationCenter: React.FC = () => {
   };
 
   const handleDeleteTemplate = async (id: string) => {
-    if (!window.confirm("Delete this template?")) return;
+    const ok = await dialog.confirm({
+      title: "Delete template?",
+      message: "This template will be permanently removed.",
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     const res = await deleteNotificationTemplate(id);
     if (res?.success) loadTemplates();
-    else alert(res?.message || "Failed to delete template");
+    else await dialog.alert({ title: "Delete failed", message: res?.message || "Failed to delete template", tone: "danger" });
   };
 
   const formatDate = (dateString?: string) => {

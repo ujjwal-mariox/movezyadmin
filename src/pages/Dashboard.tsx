@@ -28,6 +28,10 @@ import {
   TrendingUp,
   TrendingDown,
   Filter,
+  Bell,
+  FileWarning,
+  CreditCard,
+  History,
 } from "lucide-react";
 import {
   BarChart,
@@ -162,6 +166,9 @@ const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"delayed" | "unassigned" | "nearby">("delayed");
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null);
 
+  // Event timeline filter
+  const [eventFilter, setEventFilter] = useState<"all" | "orders" | "refunds" | "sos">("all");
+
   const abortRef = useRef<AbortController | null>(null);
 
   const loadDashboardData = useCallback(async () => {
@@ -224,6 +231,91 @@ const Dashboard: React.FC = () => {
   const completedCount = s.completedOrders ?? Math.max(s.totalOrders - s.liveOrders - s.pendingOrders - failedCount, 0);
   const idleDrivers = s.idleDrivers ?? Math.max(s.activeDrivers - Math.round(s.activeDrivers * (s.driverUtilization / 100)), 0);
   const activeOnTrip = Math.max(s.activeDrivers - idleDrivers, 0);
+
+  // ============ REAL-TIME ALERT STRIP ============
+  // Thresholds for operational risk conditions
+  const ALERT_THRESHOLDS = {
+    unassignedMins: 10,
+    idleMins: 60,
+    codFloatingHigh: 50000,
+    docExpiryDays: 7,
+    cancelSpikePct: 25,
+  };
+
+  const minsSince = (iso?: string) => (iso ? (Date.now() - new Date(iso).getTime()) / 60000 : 0);
+
+  const alerts: Array<{ id: string; level: "red" | "amber"; icon: React.ElementType; message: string; path?: string }> = [];
+
+  const stuckOrders = pendingOrders.filter((o) => minsSince(o.waitingSince) > ALERT_THRESHOLDS.unassignedMins).length;
+  if (stuckOrders > 0) {
+    alerts.push({
+      id: "unassigned",
+      level: "red",
+      icon: Clock,
+      message: `${stuckOrders} order${stuckOrders > 1 ? "s" : ""} unassigned > ${ALERT_THRESHOLDS.unassignedMins} mins`,
+      path: "/admin/orders?status=pending",
+    });
+  }
+  if (idleDrivers > 0 && s.activeDrivers > 0) {
+    const idlePct = (idleDrivers / s.activeDrivers) * 100;
+    if (idlePct >= 50) {
+      alerts.push({
+        id: "idle-drivers",
+        level: "amber",
+        icon: Truck,
+        message: `${idleDrivers} drivers idle > ${ALERT_THRESHOLDS.idleMins} mins (${idlePct.toFixed(0)}% of active)`,
+        path: "/admin/tracking?filter=idle",
+      });
+    }
+  }
+  if (s.activeSOS > 0) {
+    alerts.push({
+      id: "sos",
+      level: "red",
+      icon: AlertTriangle,
+      message: `${s.activeSOS} active SOS case${s.activeSOS > 1 ? "s" : ""} pending acknowledgement`,
+      path: "/admin/sos",
+    });
+  }
+  if (s.failureRate > 10) {
+    alerts.push({
+      id: "failure-rate",
+      level: "red",
+      icon: XCircle,
+      message: `Failure rate ${s.failureRate.toFixed(1)}% — cancellation spike vs prev 24h`,
+      path: "/admin/orders?status=cancelled",
+    });
+  }
+  // Placeholders for backend-fed signals (enterprise credit, COD outstanding, doc expiry)
+  // These render when the backend includes them in liveStats
+  const anyExt = liveStats as any;
+  if (anyExt?.enterpriseCreditExceeded > 0) {
+    alerts.push({
+      id: "credit",
+      level: "amber",
+      icon: CreditCard,
+      message: `${anyExt.enterpriseCreditExceeded} enterprise${anyExt.enterpriseCreditExceeded > 1 ? "s" : ""} exceeded credit limit`,
+      path: "/admin/finance?tab=dso",
+    });
+  }
+  if (anyExt?.highCODDrivers > 0) {
+    alerts.push({
+      id: "cod",
+      level: "amber",
+      icon: CreditCard,
+      message: `${anyExt.highCODDrivers} drivers with floating COD > ₹${ALERT_THRESHOLDS.codFloatingHigh.toLocaleString()}`,
+      path: "/admin/finance?tab=cod",
+    });
+  }
+  if (anyExt?.docsExpiringSoon > 0) {
+    alerts.push({
+      id: "docs",
+      level: "amber",
+      icon: FileWarning,
+      message: `${anyExt.docsExpiringSoon} driver document${anyExt.docsExpiringSoon > 1 ? "s" : ""} expiring within ${ALERT_THRESHOLDS.docExpiryDays} days`,
+      path: "/admin/documents",
+    });
+  }
 
   const formatTimeAgo = (dateStr: string) => {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -369,6 +461,51 @@ const Dashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* REAL-TIME ALERT STRIP */}
+      {alerts.length > 0 && (
+        <div className="space-y-2">
+          {alerts.map((a) => {
+            const Icon = a.icon;
+            const isRed = a.level === "red";
+            return (
+              <button
+                key={a.id}
+                onClick={() => a.path && navigate(a.path)}
+                className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg border ${
+                  isRed
+                    ? "bg-red-50 border-red-200 hover:bg-red-100"
+                    : "bg-amber-50 border-amber-200 hover:bg-amber-100"
+                } transition text-left`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span
+                    className={`inline-flex w-7 h-7 rounded-full items-center justify-center flex-shrink-0 ${
+                      isRed ? "bg-red-500 text-white" : "bg-amber-500 text-white"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                  </span>
+                  <span
+                    className={`text-sm font-medium ${
+                      isRed ? "text-red-800" : "text-amber-800"
+                    }`}
+                  >
+                    {a.message}
+                  </span>
+                </div>
+                {a.path && (
+                  <ChevronRight
+                    className={`w-4 h-4 flex-shrink-0 ${
+                      isRed ? "text-red-500" : "text-amber-500"
+                    }`}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* SECTION 1 — CRITICAL CONTROL STRIP */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -780,6 +917,97 @@ const Dashboard: React.FC = () => {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* SECTION 3.5 — LIVE EVENT TIMELINE FEED */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <History className="w-5 h-5 text-movezy-500" /> Live Event Timeline
+            </h2>
+            <p className="text-xs text-gray-500">Real-time stream of operational events.</p>
+          </div>
+          <div className="flex bg-white border border-gray-200 rounded-lg p-0.5">
+            {([
+              { key: "all", label: "All" },
+              { key: "orders", label: "Orders" },
+              { key: "refunds", label: "Refunds" },
+              { key: "sos", label: "SOS" },
+            ] as const).map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setEventFilter(f.key)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition ${
+                  eventFilter === f.key
+                    ? "bg-movezy-500 text-white shadow-sm"
+                    : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+          {(() => {
+            const filtered = timeline.filter((ev) => {
+              if (eventFilter === "all") return true;
+              const mod = (ev.module || "").toLowerCase();
+              const act = (ev.action || "").toLowerCase();
+              if (eventFilter === "orders") return mod.includes("order") || mod.includes("booking") || act.includes("assign") || act.includes("created") || act.includes("reassign");
+              if (eventFilter === "refunds") return mod.includes("refund") || act.includes("refund");
+              if (eventFilter === "sos") return mod.includes("sos") || act.includes("sos");
+              return true;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-8 text-center text-sm text-gray-400">
+                  <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  No events to show for this filter.
+                </div>
+              );
+            }
+
+            const eventVisuals = (ev: TimelineEvent) => {
+              const mod = (ev.module || "").toLowerCase();
+              const act = (ev.action || "").toLowerCase();
+              if (mod.includes("sos") || act.includes("sos")) return { Icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" };
+              if (mod.includes("refund") || act.includes("refund")) return { Icon: DollarSign, color: "text-purple-600", bg: "bg-purple-50" };
+              if (act.includes("reassign")) return { Icon: UserPlus, color: "text-orange-600", bg: "bg-orange-50" };
+              if (act.includes("created") || mod.includes("booking") || mod.includes("order")) return { Icon: Package, color: "text-blue-600", bg: "bg-blue-50" };
+              return { Icon: Activity, color: "text-gray-600", bg: "bg-gray-50" };
+            };
+
+            return (
+              <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
+                {filtered.map((ev) => {
+                  const { Icon, color, bg } = eventVisuals(ev);
+                  return (
+                    <div key={ev._id} className="p-3 hover:bg-gray-50 transition flex items-start gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bg} ${color}`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-gray-900">{ev.action}</span>
+                          <span className="text-[10px] uppercase tracking-wide text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{ev.module}</span>
+                        </div>
+                        {ev.description && <p className="text-xs text-gray-600 mt-0.5">{ev.description}</p>}
+                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                          <span>by {ev.adminName || "System"}</span>
+                          <span>•</span>
+                          <span>{formatTimeAgo(ev.createdAt)} ago</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

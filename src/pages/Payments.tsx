@@ -16,9 +16,11 @@ import {
 import {
   fetchAdminBookings,
   refundAdminBooking,
+  sendNotificationBroadcast,
   type BookingRow,
   type BookingPaymentStatus,
 } from "../services/api";
+import { useDialog } from "../components/Layout/Dialog";
 
 type PaymentRow = {
   id: string;
@@ -57,6 +59,7 @@ const bookingToPayment = (b: BookingRow): PaymentRow => ({
 });
 
 const Payments: React.FC = () => {
+  const dialog = useDialog();
   const [bookings, setBookings] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<BookingPaymentStatus | "">("");
@@ -164,7 +167,7 @@ const Payments: React.FC = () => {
     if (!refundFor) return;
     const amt = Number(refundAmount);
     if (!amt || amt <= 0) {
-      window.alert("Enter a valid refund amount");
+      await dialog.alert({ title: "Invalid amount", message: "Enter a valid refund amount.", tone: "warning" });
       return;
     }
     setSubmittingRefund(true);
@@ -174,13 +177,13 @@ const Payments: React.FC = () => {
         reason: refundReason || undefined,
       });
       if (res?.success === false) {
-        window.alert(res.message || "Refund failed");
+        await dialog.alert({ title: "Refund failed", message: res.message || "Refund failed", tone: "danger" });
       } else {
         setRefundFor(null);
         loadPayments();
       }
     } catch (err: any) {
-      window.alert(err?.message || "Refund failed");
+      await dialog.alert({ title: "Refund failed", message: err?.message || "Refund failed", tone: "danger" });
     } finally {
       setSubmittingRefund(false);
     }
@@ -233,7 +236,37 @@ const Payments: React.FC = () => {
             </div>
           </div>
           <button
-            onClick={() => window.alert("Notify affected users — TODO backend trigger")}
+            onClick={async () => {
+              // Was a stub; now sends a real broadcast to affected users.
+              const message = await dialog.prompt({
+                title: "Notify users about failed payments",
+                message: `This will notify users of the ${failedPayments.length} failed payment(s).`,
+                tone: "warning",
+                defaultValue:
+                  "Your recent payment could not be processed. Please retry from your bookings.",
+                required: true,
+                multiline: true,
+                confirmLabel: "Send notification",
+              });
+              if (!message) return;
+              const res = await sendNotificationBroadcast({
+                title: "Payment Failed",
+                body: message,
+                type: "PAYMENT",
+                audience: "USERS",
+                data: {
+                  targetType: "FAILED_PAYMENTS",
+                  bookingIds: failedPayments.map((p) => p.bookingId).join(","),
+                },
+              }).catch(() => null);
+              await dialog.alert({
+                title: res?.success ? "Sent" : "Failed",
+                message: res?.success
+                  ? "Users have been notified."
+                  : "Could not send the notification.",
+                tone: res?.success ? "success" : "danger",
+              });
+            }}
             className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-lg hover:bg-red-700"
           >
             <Bell className="w-3 h-3" /> Notify

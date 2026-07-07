@@ -46,6 +46,7 @@ import {
   type EnterpriseFaqData,
   type EnterpriseClientData,
 } from "../services/api";
+import { useDialog } from "../components/Layout/Dialog";
 
 // ─── Tab definitions ───
 type TabId = "accounts" | "inquiries" | "content";
@@ -108,6 +109,7 @@ const EMPTY_FORM: Partial<Enterprise> = {
 };
 
 const AccountsTab: React.FC = () => {
+  const dialog = useDialog();
   const [enterprises, setEnterprises] = useState<Enterprise[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -227,10 +229,10 @@ const AccountsTab: React.FC = () => {
       const payload = { ...formData, creditLimit: Number(formData.creditLimit) || 0, discountPercentage: Number(formData.discountPercentage) || 0, paymentTerms: Number(formData.paymentTerms) || 0 };
       if (isEditing && formData._id) {
         const res = await updateEnterprise(formData._id, payload);
-        if (!res.success) return alert(res.message || "Update failed");
+        if (!res.success) { await dialog.alert({ title: "Update failed", message: res.message || "Update failed", tone: "danger" }); return; }
       } else {
         const res = await createEnterprise(payload);
-        if (!res.success) return alert(res.message || "Create failed");
+        if (!res.success) { await dialog.alert({ title: "Create failed", message: res.message || "Create failed", tone: "danger" }); return; }
       }
       setShowFormModal(false);
       await loadEnterprises(page, limit);
@@ -738,6 +740,7 @@ const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
   fmt,
   getStatusBadge,
 }) => {
+  const dialog = useDialog();
   const creditLimit = enterprise.creditLimit || 0;
   const usedCredit = enterprise.usedCredit || 0;
   const usagePct = creditLimit > 0 ? (usedCredit / creditLimit) * 100 : 0;
@@ -765,13 +768,28 @@ const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
   }));
   const maxSeries = Math.max(1, ...usageSeries.map((s) => s.value));
 
-  const handleAdjustCredit = () => {
-    const newLimit = window.prompt(
-      "New credit limit (INR)",
-      String(creditLimit),
-    );
+  const handleAdjustCredit = async () => {
+    const newLimit = await dialog.prompt({
+      title: "Adjust credit limit",
+      message: `Enter new credit limit (INR) for ${enterprise.companyName || "this enterprise"}.`,
+      tone: "warning",
+      inputType: "number",
+      defaultValue: String(creditLimit),
+      placeholder: "e.g. 500000",
+      required: true,
+      confirmLabel: "Update limit",
+      validate: (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0) return "Enter a non-negative number.";
+        return null;
+      },
+    });
     if (!newLimit) return;
-    alert(`Credit limit will be updated to ${fmt(Number(newLimit))} once the API is wired.`);
+    await dialog.alert({
+      title: "Limit queued",
+      message: `Credit limit will be updated to ${fmt(Number(newLimit))} once the API is wired.`,
+      tone: "info",
+    });
   };
 
   const handleContact = () => {
@@ -1051,6 +1069,7 @@ const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
 // Inquiries Tab
 // ────────────────────────────────────────────────────────────
 const InquiriesTab: React.FC = () => {
+  const dialog = useDialog();
   const [inquiries, setInquiries] = useState<EnterpriseInquiryData[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -1119,7 +1138,13 @@ const InquiriesTab: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this inquiry?")) return;
+    const ok = await dialog.confirm({
+      title: "Delete inquiry?",
+      message: "This will permanently remove the inquiry record.",
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
     try {
       const res = await deleteEnterpriseInquiry(id);
       if (res.success) loadInquiries(inqPage, inqLimit);
@@ -1263,6 +1288,7 @@ const InquiriesTab: React.FC = () => {
 // Content Tab – manage enterprise page content
 // ────────────────────────────────────────────────────────────
 const ContentTab: React.FC = () => {
+  const dialog = useDialog();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [content, setContent] = useState<EnterpriseContentData>({
@@ -1290,7 +1316,7 @@ const ContentTab: React.FC = () => {
     setSaving(true);
     try {
       const res = await updateEnterpriseContent(content);
-      if (res.success) alert("Enterprise page content saved!");
+      if (res.success) await dialog.alert({ title: "Saved", message: "Enterprise page content saved successfully.", tone: "success" });
     } catch (e) { console.error(e); }
     setSaving(false);
   };

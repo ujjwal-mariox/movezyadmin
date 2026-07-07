@@ -13,12 +13,12 @@ import {
   ShieldAlert,
   ShieldCheck,
   AlertTriangle,
-  Zap,
   GitBranch,
   CheckCircle2,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 import {
   fetchDriverInstructions,
   createDriverInstruction,
@@ -97,6 +97,7 @@ const violationTone: Record<ViolationAction, { badge: string; label: string }> =
 };
 
 const DriverInstructionManagement: React.FC = () => {
+  const dialog = useDialog();
   const [items, setItems] = useState<DriverInstructionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -121,7 +122,7 @@ const DriverInstructionManagement: React.FC = () => {
   const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
   const endIndex = Math.min(page * limit, totalItems);
 
-  // Deterministic mock intel per instruction (swap when backend lands)
+  // Per-instruction config (policy & enforcement) resolved from the instruction record
   const instructionMetrics = useMemo(() => {
     const map = new Map<
       string,
@@ -130,34 +131,19 @@ const DriverInstructionManagement: React.FC = () => {
         trigger: TriggerCondition;
         enforcement: EnforcementMethod;
         violation: ViolationAction;
-        complianceImpact: number;
-        complianceRate: number;
         version: string;
       }
     >();
-    const types: InstructionType[] = ["MANDATORY", "ADVISORY", "CONDITIONAL"];
-    const triggers: TriggerCondition[] = ["ALWAYS", "ON_LOGIN", "BEFORE_PICKUP", "BEFORE_DELIVERY", "RAIN_WEATHER", "NIGHT_SHIFT", "NEW_DRIVER"];
-    const enforcements: EnforcementMethod[] = ["ACKNOWLEDGEMENT", "OTP_CONFIRM", "SIGNATURE", "PHOTO_PROOF", "PASSIVE"];
-    const violations: ViolationAction[] = ["NONE", "WARNING", "PENALTY", "SUSPEND", "DEACTIVATE"];
     items.forEach((it) => {
-      const seed = (it._id || it.text || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) || 1;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const raw = it as any;
-      const type = (raw.type as InstructionType) || types[seed % 3];
+      const type = (raw.type as InstructionType) || "MANDATORY";
       map.set(it._id, {
         type,
-        trigger: (raw.trigger as TriggerCondition) || triggers[seed % triggers.length],
-        enforcement: (raw.enforcement as EnforcementMethod) || enforcements[seed % enforcements.length],
-        violation:
-          (raw.violationAction as ViolationAction) ||
-          (type === "MANDATORY"
-            ? violations[2 + (seed % 3)]
-            : type === "ADVISORY"
-            ? violations[seed % 2]
-            : violations[1 + (seed % 3)]),
-        complianceImpact: type === "MANDATORY" ? 55 + (seed % 40) : type === "CONDITIONAL" ? 25 + (seed % 30) : 5 + (seed % 20),
-        complianceRate: 62 + (seed % 36),
-        version: (raw.version as string) || `v1.${seed % 7}`,
+        trigger: (raw.trigger as TriggerCondition) || "ALWAYS",
+        enforcement: (raw.enforcement as EnforcementMethod) || "ACKNOWLEDGEMENT",
+        violation: (raw.violationAction as ViolationAction) || "WARNING",
+        version: (raw.version as string) || "v1.0",
       });
     });
     return map;
@@ -166,14 +152,12 @@ const DriverInstructionManagement: React.FC = () => {
   const overviewStats = useMemo(() => {
     let active = 0;
     let mandatory = 0;
-    let highImpact = 0;
     items.forEach((it) => {
       if (it.isActive) active++;
       const m = instructionMetrics.get(it._id);
       if (m?.type === "MANDATORY") mandatory++;
-      if ((m?.complianceImpact || 0) >= 60) highImpact++;
     });
-    return { total: paginationMeta.total || items.length, active, mandatory, highImpact };
+    return { total: paginationMeta.total || items.length, active, mandatory };
   }, [items, instructionMetrics, paginationMeta.total]);
 
   const showNotification = (type: "success" | "error", message: string) => {
@@ -233,7 +217,7 @@ const DriverInstructionManagement: React.FC = () => {
       trigger: (raw.trigger as TriggerCondition) || m?.trigger || "ALWAYS",
       enforcement: (raw.enforcement as EnforcementMethod) || m?.enforcement || "ACKNOWLEDGEMENT",
       violationAction: (raw.violationAction as ViolationAction) || m?.violation || "WARNING",
-      complianceImpact: raw.complianceImpact ?? m?.complianceImpact ?? 20,
+      complianceImpact: raw.complianceImpact ?? 20,
       version: (raw.version as string) || m?.version || "v1.0",
     });
     setIsEditing(true);
@@ -286,8 +270,8 @@ const DriverInstructionManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this instruction?"))
-      return;
+    const ok = await dialog.confirm({ title: "Delete instruction?", message: "This driver instruction will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
 
     try {
       setActionLoading(id);
@@ -354,7 +338,7 @@ const DriverInstructionManagement: React.FC = () => {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -388,18 +372,6 @@ const DriverInstructionManagement: React.FC = () => {
             </div>
             <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
               <ShieldAlert className="w-5 h-5 text-red-600" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">High Compliance Impact</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{overviewStats.highImpact}</p>
-              <p className="text-xs text-gray-400 mt-1">≥60% score weight</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-amber-600" />
             </div>
           </div>
         </div>
@@ -443,9 +415,6 @@ const DriverInstructionManagement: React.FC = () => {
                     Violation
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    Compliance Impact
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                     Version
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
@@ -461,8 +430,6 @@ const DriverInstructionManagement: React.FC = () => {
                   const m = instructionMetrics.get(item._id);
                   const type = m?.type || "MANDATORY";
                   const TypeIcon = typeTone[type].icon;
-                  const impact = m?.complianceImpact || 0;
-                  const impactTone = impact >= 60 ? "bg-red-500" : impact >= 30 ? "bg-amber-500" : "bg-gray-400";
                   return (
                   <tr key={item._id} className="hover:bg-gray-50">
                     <td className="px-4 py-4">
@@ -494,15 +461,6 @@ const DriverInstructionManagement: React.FC = () => {
                       <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${violationTone[m?.violation || "WARNING"].badge}`}>
                         {violationTone[m?.violation || "WARNING"].label}
                       </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-20 bg-gray-100 rounded-full h-1.5">
-                          <div className={`${impactTone} h-1.5 rounded-full`} style={{ width: `${Math.min(100, impact)}%` }} />
-                        </div>
-                        <span className="text-xs font-semibold text-gray-700">{impact}%</span>
-                      </div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">{m?.complianceRate || 0}% followed</div>
                     </td>
                     <td className="px-4 py-4">
                       <span className="inline-flex items-center gap-1 text-xs text-gray-600">

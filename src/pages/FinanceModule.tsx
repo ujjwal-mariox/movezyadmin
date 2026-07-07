@@ -33,6 +33,15 @@ import {
   Bar,
 } from "recharts";
 import { enhancedFinanceApi, enterpriseCreditApi } from "../services/admin-api";
+import {
+  fetchPayouts,
+  createPayout,
+  approvePayout,
+  markPayoutPaid,
+  rejectPayout,
+  type PayoutItem,
+} from "../services/api";
+import { useDialog } from "../components/Layout/Dialog";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
@@ -59,6 +68,7 @@ const EXPENSE_CATEGORIES = [
 ];
 
 const FinanceModule: React.FC = () => {
+  const dialog = useDialog();
   const [period, setPeriod] = useState<"week" | "month" | "year" | "custom">("month");
   const [customDateRange, setCustomDateRange] = useState({ from: "", to: "" });
   const [loading, setLoading] = useState(true);
@@ -113,7 +123,7 @@ const FinanceModule: React.FC = () => {
         : await fetchApi(`/admin/finance/export?type=${type}&format=csv`);
 
       const rows = result.data?.rows || [];
-      if (rows.length === 0) { alert("No data to export"); return; }
+      if (rows.length === 0) { await dialog.alert({ title: "No data", message: "There is no data to export for the selected range.", tone: "info" }); return; }
       const headers = Object.keys(rows[0]);
       const csv = [headers.join(","), ...rows.map((r: any) => headers.map((h) => JSON.stringify(r[h] ?? "")).join(","))].join("\n");
       const blob = new Blob([csv], { type: "text/csv" });
@@ -124,7 +134,7 @@ const FinanceModule: React.FC = () => {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert("Export failed");
+      await dialog.alert({ title: "Export failed", message: "We couldn't generate the export. Please try again.", tone: "danger" });
     }
   };
 
@@ -141,7 +151,7 @@ const FinanceModule: React.FC = () => {
       setNewExpense({ description: "", amount: "", category: "OTHER", notes: "" });
       loadData();
     } catch (err) {
-      alert("Failed to create expense");
+      await dialog.alert({ title: "Create failed", message: "Failed to create expense.", tone: "danger" });
     }
   };
 
@@ -150,12 +160,32 @@ const FinanceModule: React.FC = () => {
       await enhancedFinanceApi.approveExpense(id);
       loadData();
     } catch (err) {
-      alert("Failed to approve expense");
+      await dialog.alert({ title: "Approve failed", message: "Failed to approve expense.", tone: "danger" });
     }
   };
 
   const s = data?.summary || {};
-  const es = enhancedData || {};
+  // The enhanced-overview API returns a NESTED shape
+  // ({ summary, expenses, cod, enterpriseCredit, dso, ... }), but the cards below
+  // read flat fields (es.grossRevenue, es.totalExpenses, es.codBalance, …).
+  // Flatten it here so the cards populate instead of falling back to ₹0.
+  const eo = enhancedData || {};
+  const eSummary = eo.summary || {};
+  const es: any = {
+    grossRevenue: eSummary.grossRevenue,
+    netRevenue: eSummary.netRevenue,
+    totalExpenses: eo.expenses?.total ?? eSummary.totalExpenses,
+    expenseCount: eo.expenses?.byCategory?.length,
+    // These come from the base overview (`s`) — enhanced-overview doesn't return them.
+    todayEarnings: s.todayEarnings,
+    pendingPayouts: eo.cod?.pendingSettlement,
+    completedTrips: s.completedOrders ?? s.totalOrders,
+    distanceKm: eSummary.distanceKm,
+    cancellationRate: s.cancellationRate,
+    growthPercent: s.growthPercent,
+    codBalance: eo.cod?.pendingSettlement,
+    enterpriseCreditOutstanding: eo.enterpriseCredit?.totalUsed,
+  };
 
   return (
     <div className="space-y-6">
@@ -844,22 +874,114 @@ interface DriverEarningsRow {
   payoutStatus: "pending" | "processing" | "paid";
 }
 
-const MOCK_DRIVER_EARNINGS: DriverEarningsRow[] = [
-  { id: "d1", name: "Kamal Joshi", trips: 42, distance: 312, earnings: 8420, cancellation: 2.3, payoutStatus: "pending" },
-  { id: "d2", name: "Ravi Kumar", trips: 38, distance: 280, earnings: 7650, cancellation: 5.1, payoutStatus: "processing" },
-  { id: "d3", name: "Suresh Patel", trips: 35, distance: 245, earnings: 7010, cancellation: 1.8, payoutStatus: "paid" },
-  { id: "d4", name: "Priya Mehta", trips: 30, distance: 218, earnings: 6240, cancellation: 3.5, payoutStatus: "pending" },
-  { id: "d5", name: "Amit Singh", trips: 28, distance: 201, earnings: 5780, cancellation: 8.2, payoutStatus: "pending" },
-];
-
 const SmartPayoutsSection: React.FC<{ onExport: () => void }> = ({ onExport }) => {
+  const dialog = useDialog();
   const [selected, setSelected] = useState<DriverEarningsRow | null>(null);
   const [autoPayout, setAutoPayout] = useState(false);
   const [schedule, setSchedule] = useState<"daily" | "weekly" | "biweekly">("weekly");
   const [minPayout, setMinPayout] = useState(500);
   const [holdOnCancel, setHoldOnCancel] = useState(true);
 
-  const rows = MOCK_DRIVER_EARNINGS;
+  // Real driver earnings from bookings (was MOCK_DRIVER_EARNINGS).
+  const [rows, setRows] = useState<DriverEarningsRow[]>([]);
+  const [loadingRows, setLoadingRows] = useState(true);
+
+  // Real manual payouts queue.
+  const [payouts, setPayouts] = useState<PayoutItem[]>([]);
+  const [payoutBusy, setPayoutBusy] = useState(false);
+
+  const loadPayouts = useCallback(async () => {
+    try {
+      const res = await fetchPayouts();
+      if (res?.success) setPayouts(res.data?.payouts || []);
+    } catch { /* non-fatal */ }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoadingRows(true);
+      try {
+        const res = await fetchApi("/admin/finance/driver-earnings?period=month");
+        const list: DriverEarningsRow[] = res?.data?.drivers || [];
+        if (active) setRows(list);
+      } catch {
+        if (active) setRows([]);
+      } finally {
+        if (active) setLoadingRows(false);
+      }
+    })();
+    loadPayouts();
+    return () => {
+      active = false;
+    };
+  }, [loadPayouts]);
+
+  // Create a payout request for the selected driver (prompts for amount).
+  const handleProcessPayout = useCallback(async () => {
+    if (!selected) return;
+    const input = await dialog.prompt({
+      title: `Pay out to ${selected.name}`,
+      message: `Amount to pay out (this month's earnings: ₹${selected.earnings.toLocaleString()}). A payout request will be created for approval.`,
+      defaultValue: String(selected.earnings),
+      confirmLabel: "Create payout",
+    });
+    if (input === null) return;
+    const amount = Number(input);
+    if (!amount || amount <= 0) {
+      await dialog.alert({ title: "Invalid amount", message: "Enter a positive amount." });
+      return;
+    }
+    setPayoutBusy(true);
+    try {
+      const res = await createPayout({ driverId: selected.id, amount, method: "BANK" });
+      if (res?.success) {
+        await loadPayouts();
+        await dialog.alert({
+          title: "Payout requested",
+          message: `₹${amount.toLocaleString()} payout created for ${selected.name} (pending approval).`,
+        });
+      } else {
+        await dialog.alert({ title: "Failed", message: res?.message || "Could not create payout", tone: "danger" });
+      }
+    } finally {
+      setPayoutBusy(false);
+    }
+  }, [selected, dialog, loadPayouts]);
+
+  const handleApprove = useCallback(async (id: string) => {
+    setPayoutBusy(true);
+    await approvePayout(id);
+    await loadPayouts();
+    setPayoutBusy(false);
+  }, [loadPayouts]);
+
+  const handleMarkPaid = useCallback(async (id: string) => {
+    const ref = await dialog.prompt({
+      title: "Mark as paid",
+      message: "Enter the payment reference (UTR / transaction id), optional:",
+      confirmLabel: "Mark paid",
+    });
+    if (ref === null) return; // cancelled
+    setPayoutBusy(true);
+    await markPayoutPaid(id, ref || undefined);
+    await loadPayouts();
+    setPayoutBusy(false);
+  }, [dialog, loadPayouts]);
+
+  const handleReject = useCallback(async (id: string) => {
+    const reason = await dialog.prompt({
+      title: "Reject payout",
+      message: "Reason for rejection:",
+      confirmLabel: "Reject",
+    });
+    if (reason === null) return;
+    setPayoutBusy(true);
+    await rejectPayout(id, reason || undefined);
+    await loadPayouts();
+    setPayoutBusy(false);
+  }, [dialog, loadPayouts]);
+
   const totalPending = rows
     .filter((r) => r.payoutStatus === "pending")
     .reduce((sum, r) => sum + r.earnings, 0);
@@ -952,6 +1074,20 @@ const SmartPayoutsSection: React.FC<{ onExport: () => void }> = ({ onExport }) =
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
+                {loadingRows && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                      Loading driver earnings…
+                    </td>
+                  </tr>
+                )}
+                {!loadingRows && rows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                      No completed trips in this period yet
+                    </td>
+                  </tr>
+                )}
                 {rows.map((r) => (
                   <tr
                     key={r.id}
@@ -1005,37 +1141,125 @@ const SmartPayoutsSection: React.FC<{ onExport: () => void }> = ({ onExport }) =
               </p>
               <p className="text-xs text-gray-400 mt-1">Current period</p>
 
+              {/* Real per-driver facts (the old breakdown fabricated base/
+                  incentive/surge splits as fixed ratios of the total). */}
               <div className="space-y-2 mt-4">
+                <BreakdownRow label="Completed trips" value={`${selected.trips}`} />
+                <BreakdownRow label="Distance" value={`${selected.distance} km`} />
                 <BreakdownRow
-                  label="Base earnings"
-                  value={`₹${Math.round(selected.earnings * 0.75).toLocaleString()}`}
+                  label="Cancellation rate"
+                  value={`${selected.cancellation.toFixed(1)}%`}
+                  tone={selected.cancellation > 5 ? "red" : "default"}
                 />
                 <BreakdownRow
-                  label="Incentives / Bonus"
-                  value={`₹${Math.round(selected.earnings * 0.2).toLocaleString()}`}
-                />
-                <BreakdownRow
-                  label="Surge / Peak"
-                  value={`₹${Math.round(selected.earnings * 0.08).toLocaleString()}`}
-                />
-                <BreakdownRow
-                  label="Adjustments"
-                  value={`- ₹${Math.round(selected.earnings * 0.03).toLocaleString()}`}
-                  tone="red"
+                  label="Avg per trip"
+                  value={`₹${selected.trips > 0 ? Math.round(selected.earnings / selected.trips).toLocaleString() : 0}`}
                 />
               </div>
 
-              <div className="mt-4 flex items-center gap-2">
-                <button className="flex-1 py-2 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600">
+              <div className="mt-4">
+                <button
+                  onClick={handleProcessPayout}
+                  disabled={payoutBusy}
+                  className="w-full py-2 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 disabled:opacity-50"
+                >
                   Process Payout
-                </button>
-                <button className="flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200">
-                  Adjust
                 </button>
               </div>
             </div>
           )}
         </div>
+      </div>
+
+      {/* Manual payouts queue — real create/approve/pay/reject lifecycle */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <p className="text-sm font-semibold text-gray-800">Payouts Queue</p>
+          <span className="text-xs text-gray-500">{payouts.length} record(s)</span>
+        </div>
+        {payouts.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm text-gray-400">
+            No payouts yet. Select a driver above and click “Process Payout”.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100 text-gray-600">
+                  <th className="text-left px-4 py-2 font-medium">Driver</th>
+                  <th className="text-right px-4 py-2 font-medium">Amount</th>
+                  <th className="text-left px-4 py-2 font-medium">Method</th>
+                  <th className="text-center px-4 py-2 font-medium">Status</th>
+                  <th className="text-right px-4 py-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {payouts.map((p) => {
+                  const drv =
+                    p.driverId && typeof p.driverId === "object"
+                      ? p.driverId.fullName || p.driverId.mobileNumber
+                      : "—";
+                  const statusTone =
+                    p.status === "PAID"
+                      ? "bg-green-100 text-green-700"
+                      : p.status === "APPROVED"
+                        ? "bg-blue-100 text-blue-700"
+                        : p.status === "REJECTED"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-amber-100 text-amber-700";
+                  return (
+                    <tr key={p._id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-gray-800">{drv}</td>
+                      <td className="px-4 py-2 text-right font-semibold">
+                        ₹{p.amount.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-gray-600">{p.method}</td>
+                      <td className="px-4 py-2 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusTone}`}>
+                          {p.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex justify-end gap-1.5">
+                          {p.status === "PENDING" && (
+                            <button
+                              onClick={() => handleApprove(p._id)}
+                              disabled={payoutBusy}
+                              className="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 disabled:opacity-50"
+                            >
+                              Approve
+                            </button>
+                          )}
+                          {(p.status === "PENDING" || p.status === "APPROVED") && (
+                            <>
+                              <button
+                                onClick={() => handleMarkPaid(p._id)}
+                                disabled={payoutBusy}
+                                className="px-2 py-1 rounded-md bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 disabled:opacity-50"
+                              >
+                                Mark paid
+                              </button>
+                              <button
+                                onClick={() => handleReject(p._id)}
+                                disabled={payoutBusy}
+                                className="px-2 py-1 rounded-md bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 disabled:opacity-50"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                          {p.status === "PAID" && p.reference && (
+                            <span className="text-xs text-gray-400">ref {p.reference}</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

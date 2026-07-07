@@ -18,6 +18,7 @@ import {
   upsertAppSetting,
   type AppConfigItem,
 } from "../services/api";
+import { useDialog } from "../components/Layout/Dialog";
 
 // Known configuration keys wired into this page.
 const KEYS = {
@@ -60,6 +61,7 @@ function readBool(items: AppConfigItem[], key: string, fallback: boolean) {
 }
 
 const Settings: React.FC = () => {
+  const dialog = useDialog();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -279,7 +281,16 @@ const Settings: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all group">
+            <button
+              onClick={() =>
+                dialog.alert({
+                  title: "Coming soon",
+                  message:
+                    "Password change from the settings page isn't available yet. Use the 'Forgot password' flow on the login screen to reset it.",
+                })
+              }
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all group"
+            >
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-white rounded-lg shadow-sm">
                   <Lock className="w-4 h-4 text-gray-600 group-hover:text-movezy-600 transition-colors" />
@@ -292,7 +303,16 @@ const Settings: React.FC = () => {
               <span className="text-gray-400 group-hover:translate-x-1 transition-transform">→</span>
             </button>
 
-            <button className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all group">
+            <button
+              onClick={() =>
+                dialog.alert({
+                  title: "Coming soon",
+                  message:
+                    "Two-factor authentication isn't available yet.",
+                })
+              }
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all group"
+            >
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-white rounded-lg shadow-sm">
                   <Shield className="w-4 h-4 text-gray-600 group-hover:text-movezy-600 transition-colors" />

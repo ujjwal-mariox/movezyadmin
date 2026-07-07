@@ -28,6 +28,7 @@ import {
   type SOSAlertRow,
   type SOSStatsResponse,
 } from "../services/api";
+import { useDialog } from "../components/Layout/Dialog";
 
 type FilterKey = "ALL" | "ACTIVE" | "RESPONDED" | "RESOLVED";
 
@@ -82,6 +83,7 @@ const coordsOf = (alert: SOSAlertRow): [number, number] | null => {
 };
 
 const SOSDashboard: React.FC = () => {
+  const dialog = useDialog();
   const [alerts, setAlerts] = useState<SOSAlertRow[]>([]);
   const [stats, setStats] = useState<SOSStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,7 +159,7 @@ const SOSDashboard: React.FC = () => {
     try {
       const res = await respondToSOSAlert(alert._id);
       if (res?.success === false) {
-        alert && alert._id && window.alert(res.message || "Failed to respond");
+        await dialog.alert({ title: "Action failed", message: res.message || "Failed to respond", tone: "danger" });
       } else {
         const updated: SOSAlertRow | undefined = res?.data;
         setAlerts((list) =>
@@ -178,7 +180,7 @@ const SOSDashboard: React.FC = () => {
         }
       }
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Failed to respond");
+      await dialog.alert({ title: "Action failed", message: e instanceof Error ? e.message : "Failed to respond", tone: "danger" });
     } finally {
       setActioningId(null);
     }
@@ -193,7 +195,7 @@ const SOSDashboard: React.FC = () => {
         isFalseAlarm: resolveAsFalseAlarm,
       });
       if (res?.success === false) {
-        window.alert(res.message || "Failed to resolve");
+        await dialog.alert({ title: "Action failed", message: res.message || "Failed to resolve", tone: "danger" });
       } else {
         const updated: SOSAlertRow | undefined = res?.data;
         setAlerts((list) =>
@@ -213,7 +215,7 @@ const SOSDashboard: React.FC = () => {
         setResolveAsFalseAlarm(false);
       }
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Failed to resolve");
+      await dialog.alert({ title: "Action failed", message: e instanceof Error ? e.message : "Failed to resolve", tone: "danger" });
     } finally {
       setResolveSaving(false);
     }
@@ -224,7 +226,7 @@ const SOSDashboard: React.FC = () => {
     try {
       const res = await notifyPoliceForSOS(alert._id);
       if (res?.success === false) {
-        window.alert(res.message || "Failed to notify police");
+        await dialog.alert({ title: "Action failed", message: res.message || "Failed to notify police", tone: "danger" });
       } else {
         const updated: SOSAlertRow | undefined = res?.data;
         setAlerts((list) =>
@@ -236,7 +238,7 @@ const SOSDashboard: React.FC = () => {
         );
       }
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Failed to notify police");
+      await dialog.alert({ title: "Action failed", message: e instanceof Error ? e.message : "Failed to notify police", tone: "danger" });
     } finally {
       setActioningId(null);
     }

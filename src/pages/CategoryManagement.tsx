@@ -30,6 +30,7 @@ import {
 } from "../services/api";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 interface FormData {
   name: string;
@@ -52,6 +53,7 @@ const initialFormData: FormData = {
 };
 
 const CategoryManagement: React.FC = () => {
+  const dialog = useDialog();
   const [categories, setCategories] = useState<GoodsTypeItem[]>([]);
   const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,7 +171,8 @@ const CategoryManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this category?")) return;
+    const ok = await dialog.confirm({ title: "Delete category?", message: "This category will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
     try {
       setActionLoading(id);
       await deleteGoodsType(id);
@@ -193,34 +196,9 @@ const CategoryManagement: React.FC = () => {
 
   const totalCategories = paginationMeta.total;
   const activeCategories = categories.filter((c) => c.isActive && !c.isDeleted).length;
-
-  // Deterministic mock metrics per category (swap with backend aggregates when ready)
-  const categoryMetrics = React.useMemo(() => {
-    return categories.map((c) => {
-      const seed =
-        (c._id || c.code || "").split("").reduce((a, ch) => a + ch.charCodeAt(0), 0) ||
-        1;
-      const basePrice = 80 + (seed % 320);
-      const avgOrder = basePrice * (2 + (seed % 4));
-      const usage = 80 + (seed % 900);
-      const etaMin = 15 + (seed % 40);
-      const pricingLogic =
-        seed % 3 === 0 ? "Per-km" : seed % 3 === 1 ? "Flat + Per-km" : "Slab-based";
-      return { id: c._id, basePrice, avgOrder, usage, etaMin, pricingLogic };
-    });
-  }, [categories]);
-
-  const mostUsed = categoryMetrics.reduce(
-    (max, m) => (m.usage > max.usage ? m : max),
-    { id: "", usage: 0, basePrice: 0, avgOrder: 0, etaMin: 0, pricingLogic: "" },
-  );
-  const mostUsedCategory = categories.find((c) => c._id === mostUsed.id);
-  const totalUsage = categoryMetrics.reduce((s, m) => s + m.usage, 0) || 1;
-  const totalRevenue = categoryMetrics.reduce(
-    (s, m) => s + m.usage * m.avgOrder,
-    0,
-  );
-  const avgOrderValue = totalRevenue / totalUsage;
+  // Real breakdown by the category field (no per-category booking analytics exist).
+  const businessCategories = categories.filter((c) => c.category === "BUSINESS").length;
+  const personalCategories = categories.filter((c) => c.category === "PERSONAL").length;
 
   // Server-side: data is already filtered and paginated
   const paginatedCategories = categories;
@@ -280,13 +258,9 @@ const CategoryManagement: React.FC = () => {
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Most Used</p>
-              <h3 className="mt-1 text-lg font-bold text-gray-800 truncate">
-                {mostUsedCategory?.name || "—"}
-              </h3>
-              <p className="mt-1 text-xs text-amber-600">
-                {mostUsed.usage.toLocaleString("en-IN")} orders
-              </p>
+              <p className="text-xs font-medium text-gray-500 uppercase">Business</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">{businessCategories}</h3>
+              <p className="mt-1 text-xs text-amber-600">Business categories</p>
             </div>
             <div className="flex items-center justify-center bg-amber-50 w-11 h-11 rounded-xl">
               <Star className="w-5 h-5 text-amber-600" />
@@ -297,14 +271,12 @@ const CategoryManagement: React.FC = () => {
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-purple-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Avg Order Value</p>
-              <h3 className="mt-1 text-2xl font-bold text-gray-800">
-                ₹{Math.round(avgOrderValue).toLocaleString("en-IN")}
-              </h3>
-              <p className="mt-1 text-xs text-purple-600">Across categories</p>
+              <p className="text-xs font-medium text-gray-500 uppercase">Personal</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">{personalCategories}</h3>
+              <p className="mt-1 text-xs text-purple-600">Personal categories</p>
             </div>
             <div className="flex items-center justify-center bg-purple-50 w-11 h-11 rounded-xl">
-              <IndianRupee className="w-5 h-5 text-purple-600" />
+              <Package className="w-5 h-5 text-purple-600" />
             </div>
           </div>
         </div>
@@ -332,16 +304,6 @@ const CategoryManagement: React.FC = () => {
         <>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {paginatedCategories.map((cat) => {
-            const metrics = categoryMetrics.find((m) => m.id === cat._id) || {
-              basePrice: 0,
-              avgOrder: 0,
-              usage: 0,
-              etaMin: 0,
-              pricingLogic: "Flat",
-            };
-            const revContribPct = totalRevenue
-              ? (metrics.usage * metrics.avgOrder * 100) / totalRevenue
-              : 0;
             return (
             <div key={cat._id} className={`bg-white rounded-xl shadow-sm border overflow-hidden hover:shadow-md transition-all ${cat.isActive ? "border-gray-100" : "border-yellow-200 bg-yellow-50"}`}>
               {/* Card Header */}
@@ -365,69 +327,15 @@ const CategoryManagement: React.FC = () => {
               <div className="p-4 space-y-3">
                 {cat.description && <p className="text-sm text-gray-600 line-clamp-2">{cat.description}</p>}
 
-                {/* Pricing Intelligence */}
-                <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Base Price</p>
-                    <p className="text-sm font-bold text-gray-800 flex items-center gap-0.5">
-                      <IndianRupee className="w-3 h-3" />
-                      {metrics.basePrice}
-                    </p>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Type</p>
+                    <p className="text-sm font-medium text-gray-800">{cat.category}</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Avg Order</p>
-                    <p className="text-sm font-bold text-gray-800 flex items-center gap-0.5">
-                      <IndianRupee className="w-3 h-3" />
-                      {metrics.avgOrder}
-                    </p>
+                  <div className="text-right">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Sort Order</p>
+                    <p className="text-sm font-medium text-gray-800">#{cat.sortOrder}</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase">Pricing Logic</p>
-                    <p className="text-sm font-medium text-gray-800">{metrics.pricingLogic}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase">ETA</p>
-                    <p className="text-sm font-medium text-gray-800 flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-gray-500" />
-                      {metrics.etaMin} min
-                    </p>
-                  </div>
-                </div>
-
-                {/* Revenue Contribution */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-gray-500 flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" />
-                      Revenue Contribution
-                    </span>
-                    <span
-                      className={`text-xs font-bold ${
-                        revContribPct >= 25
-                          ? "text-green-600"
-                          : revContribPct >= 10
-                            ? "text-amber-600"
-                            : "text-gray-500"
-                      }`}
-                    >
-                      {revContribPct.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 overflow-hidden bg-gray-100 rounded-full">
-                    <div
-                      className={`h-full rounded-full ${
-                        revContribPct >= 25
-                          ? "bg-green-500"
-                          : revContribPct >= 10
-                            ? "bg-amber-500"
-                            : "bg-gray-400"
-                      }`}
-                      style={{ width: `${Math.min(revContribPct * 3, 100)}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[10px] text-gray-400">
-                    {metrics.usage.toLocaleString("en-IN")} orders · Sort #{cat.sortOrder}
-                  </p>
                 </div>
 
                 <div>

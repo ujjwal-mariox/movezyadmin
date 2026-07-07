@@ -24,6 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { useDialog } from "../components/Layout/Dialog";
 import {
   fetchAuditLogs,
   fetchAuditStats,
@@ -143,6 +144,7 @@ const detectSuspicious = (log: AuditLogEntry, all: AuditLogEntry[]): SuspiciousF
 };
 
 const AuditLogPage: React.FC = () => {
+  const dialog = useDialog();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [stats, setStats] = useState<AuditStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -237,28 +239,38 @@ const AuditLogPage: React.FC = () => {
 
   const handleRevert = async (log: AuditLogEntry) => {
     if (log.revertedAt) {
-      alert("This entry has already been reverted.");
+      await dialog.alert({ title: "Already reverted", message: "This entry has already been reverted.", tone: "info" });
       return;
     }
-    if (
-      !confirm(
-        `Revert action "${log.action}" on ${log.module}? A compensating audit entry will be created.`,
-      )
-    ) {
-      return;
-    }
-    const reason = prompt("Reason for revert (optional)") || undefined;
+    const ok = await dialog.confirm({
+      title: "Revert action?",
+      message: `Revert action "${log.action}" on ${log.module}? A compensating audit entry will be created.`,
+      tone: "warning",
+      confirmLabel: "Revert",
+    });
+    if (!ok) return;
+    const reasonInput = await dialog.prompt({
+      title: "Reason for revert",
+      message: "Optionally describe why this action is being reverted. Leave blank to skip.",
+      tone: "info",
+      placeholder: "e.g. Wrong user — duplicate action",
+      confirmLabel: "Continue",
+      required: false,
+      multiline: true,
+    });
+    if (reasonInput === null) return;
+    const reason = reasonInput || undefined;
     setReverting(true);
     try {
       const res = await revertAuditLog(log._id, reason);
       if (res?.success === false || res?.data?.success === false) {
-        alert(res?.message || res?.data?.message || "Revert failed");
+        await dialog.alert({ title: "Revert failed", message: res?.message || res?.data?.message || "Revert failed", tone: "danger" });
       } else {
-        alert("Compensating audit entry created.");
+        await dialog.alert({ title: "Reverted", message: "Compensating audit entry created.", tone: "success" });
         loadLogs();
       }
     } catch (err) {
-      alert((err as Error).message || "Revert failed");
+      await dialog.alert({ title: "Revert failed", message: (err as Error).message || "Revert failed", tone: "danger" });
     } finally {
       setReverting(false);
     }

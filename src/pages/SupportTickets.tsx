@@ -42,10 +42,12 @@ import {
   replySupportTicket,
   updateSupportTicketStatus,
   escalateSupportTicket,
+  assignSupportTicket,
   fetchQuickReplies,
   markQuickReplyUsed,
   type QuickReplyItem,
 } from "../services/api";
+import { useAuth } from "../auth/useAuth";
 
 type TicketType = SupportTicketType;
 type ResolutionType = SupportResolutionType;
@@ -102,6 +104,7 @@ const DEFAULT_QUICK_REPLIES = [
 ];
 
 const SupportTickets: React.FC = () => {
+  const { user } = useAuth();
   const [tickets, setTickets] = useState<ExtTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -349,6 +352,26 @@ const SupportTickets: React.FC = () => {
     }
   };
 
+  // Assign the selected ticket to the logged-in admin. Previously tickets were
+  // permanently "Unassigned" — the assign API existed but nothing in the UI
+  // ever called it. The backend defaults assignee to the token's admin when no
+  // adminId is sent, so we just pass our display name/role for the label.
+  const handleAssignToMe = async () => {
+    if (!selectedTicket) return;
+    try {
+      await assignSupportTicket(selectedTicket.ticketId, {
+        staffName: user?.name,
+        staffRole: user?.roleName,
+      });
+      await loadTickets();
+      const fresh = await fetchSupportTicket(selectedTicket.ticketId, channel);
+      const t = fresh?.data?.ticket ?? fresh?.ticket;
+      if (t) setSelectedTicket(t as ExtTicket);
+    } catch (e) {
+      console.error("[Support] assign failed", e);
+    }
+  };
+
   const typedMessages = messages as (SupportMessage & { channel?: ThreadChannel })[];
   const visibleMessages = typedMessages.filter((m) => (m.channel ?? "CUSTOMER") === channel);
 
@@ -547,6 +570,26 @@ const SupportTickets: React.FC = () => {
                     <p className="font-medium text-gray-800 text-sm mb-1 line-clamp-1">
                       {ticket.subject}
                     </p>
+                    {(() => {
+                      // Show WHO filed the ticket. Customer tickets populate
+                      // userId; driver tickets populate driverId. Falling back
+                      // across both means driver tickets no longer render blank.
+                      const who =
+                        getName(ticket.userId) ||
+                        getName(ticket.driverId) ||
+                        (ticket.type === "DRIVER" ? "Driver" : "Customer");
+                      const phone =
+                        getPhone(ticket.userId) || getPhone(ticket.driverId);
+                      return (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600 mb-1.5">
+                          <User className="w-3 h-3 text-gray-400" />
+                          <span className="font-medium truncate">{who}</span>
+                          {phone && (
+                            <span className="text-gray-400">· {phone}</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
                       {Meta && (
                         <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${Meta.tone}`}>
@@ -702,6 +745,15 @@ const SupportTickets: React.FC = () => {
                           <p className="text-xs text-gray-500">
                             {selectedTicket.assignedStaffRole}
                           </p>
+                        )}
+                        {!selectedTicket.assignedAt && (
+                          <button
+                            onClick={handleAssignToMe}
+                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-movezy-600 text-white text-xs font-semibold hover:bg-movezy-700 transition-colors"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            Assign to me
+                          </button>
                         )}
                       </div>
                       <div className="p-3 bg-gray-50 rounded-lg flex items-center justify-between">

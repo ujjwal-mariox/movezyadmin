@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Save, Plus, Edit2, Trash2, X, CheckCircle, AlertCircle } from "lucide-react";
+import { useDialog } from "../components/Layout/Dialog";
 
 // --- Types ---
 interface Commission {
@@ -22,6 +23,7 @@ const initialCommissions: Commission[] = [
 // --- Components ---
 
 const CommissionManagement = () => {
+  const dialog = useDialog();
   const [commissions, setCommissions] = useState<Commission[]>(initialCommissions);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentCommission, setCurrentCommission] = useState<Partial<Commission>>({});
@@ -39,10 +41,10 @@ const CommissionManagement = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (window.confirm("Are you sure you want to delete this commission rule?")) {
-      setCommissions(commissions.filter(c => c.id !== id));
-    }
+  const handleDelete = async (id: number) => {
+    const ok = await dialog.confirm({ title: "Delete commission rule?", message: "This commission rule will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
+    setCommissions(commissions.filter(c => c.id !== id));
   };
 
   const handleSubmit = (e: React.FormEvent) => {

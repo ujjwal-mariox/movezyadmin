@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 import {
   fetchProhibitedItems,
   createProhibitedItem,
@@ -85,6 +86,7 @@ const presetColors = [
 ];
 
 const ProhibitedItemManagement: React.FC = () => {
+  const dialog = useDialog();
   const [items, setItems] = useState<ProhibitedItemData[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -111,7 +113,7 @@ const ProhibitedItemManagement: React.FC = () => {
   const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
   const endIndex = Math.min(page * limit, totalItems);
 
-  // Deterministic mock intel per item (replace when backend lands)
+  // Per-item config (risk, action, detection, category) resolved from the item record
   const itemMetrics = useMemo(() => {
     const map = new Map<
       string,
@@ -120,23 +122,16 @@ const ProhibitedItemManagement: React.FC = () => {
         action: ActionRule;
         detection: DetectionMethod;
         category: string;
-        flagged30d: number;
       }
     >();
-    const risks: RiskLevel[] = ["HIGH", "MEDIUM", "LOW"];
-    const actions: ActionRule[] = ["BLOCK", "WARNING", "REQUIRE_APPROVAL"];
-    const detections: DetectionMethod[] = ["IMAGE_AI", "KEYWORD", "MANUAL_REVIEW", "DRIVER_REPORT"];
-    const categories = ["Household", "Electronics", "Hazardous", "Fragile", "Food", "Commercial"];
     items.forEach((it) => {
-      const seed = (it._id || it.name || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) || 1;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const raw = it as any;
       map.set(it._id, {
-        risk: (raw.riskLevel as RiskLevel) || risks[seed % 3],
-        action: (raw.actionRule as ActionRule) || actions[seed % 3],
-        detection: (raw.detectionMethod as DetectionMethod) || detections[seed % 4],
-        category: (raw.categoryMapping as string) || categories[seed % categories.length],
-        flagged30d: 4 + (seed % 42),
+        risk: (raw.riskLevel as RiskLevel) || "MEDIUM",
+        action: (raw.actionRule as ActionRule) || "BLOCK",
+        detection: (raw.detectionMethod as DetectionMethod) || "MANUAL_REVIEW",
+        category: (raw.categoryMapping as string) || "—",
       });
     });
     return map;
@@ -243,8 +238,8 @@ const ProhibitedItemManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to deactivate this item?"))
-      return;
+    const ok = await dialog.confirm({ title: "Deactivate item?", message: "This prohibited item will be deactivated.", tone: "warning", confirmLabel: "Deactivate" });
+    if (!ok) return;
 
     try {
       setActionLoading(id);
@@ -401,9 +396,6 @@ const ProhibitedItemManagement: React.FC = () => {
                   Detection
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  Flagged (30d)
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                   Status
                 </th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
@@ -418,7 +410,6 @@ const ProhibitedItemManagement: React.FC = () => {
                 const action = m?.action || "BLOCK";
                 const detection = m?.detection || "MANUAL_REVIEW";
                 const category = m?.category || "—";
-                const flagged = m?.flagged30d || 0;
                 const RiskIcon = riskTone[risk].icon;
                 return (
                 <tr key={item._id} className="hover:bg-gray-50">
@@ -476,10 +467,6 @@ const ProhibitedItemManagement: React.FC = () => {
                       <Eye className="w-3 h-3 text-gray-400" />
                       {detectionLabel[detection]}
                     </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="text-sm font-semibold text-gray-900">{flagged}</div>
-                    <div className="text-xs text-gray-400">incidents</div>
                   </td>
                   <td className="px-4 py-4">
                     <span

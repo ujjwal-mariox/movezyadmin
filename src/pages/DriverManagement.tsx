@@ -39,6 +39,11 @@ import {
   CalendarDays,
   ArrowRightLeft,
   CircleDot,
+  Smartphone,
+  BatteryCharging,
+  TrendingUp,
+  TrendingDown,
+  Timer,
 } from "lucide-react";
 import { driversApi, enhancedDriverApi } from "../services/admin-api";
 import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
@@ -109,13 +114,28 @@ interface DriverKYC {
 
 interface DriverVehicle {
   _id: string;
-  vehicleTypeId: {
+  vehicleTypeId?: {
     _id: string;
     name: string;
     icon?: string;
     maxWeightKg?: number;
-  };
+  } | null;
+  vehicleNumber?: string;
   registrationNumber: string;
+  vehicleType?: string;
+  vehicleBodyType?: string;
+  fuelType?: string;
+  city?: string;
+  rcFrontImage?: string;
+  rcBackImage?: string;
+  vehicleImages?: string[];
+  assignedDriverName?: string;
+  assignedDriverPhone?: string;
+  assignedDriverLicenseFrontImage?: string;
+  assignedDriverLicenseBackImage?: string;
+  onboardingFeePaid?: boolean;
+  verificationStatus?: "pending" | "under_verification" | "approved" | "rejected";
+  isPrimary?: boolean;
   isOnline: boolean;
   isActive: boolean;
 }
@@ -156,6 +176,15 @@ interface DriverStats {
   onlineDrivers: number;
   activeDrivers: number;
   inactiveDrivers: number;
+  unassignedOrders?: number;
+}
+
+interface PendingAssignment {
+  _id: string;
+  bookingNumber?: string;
+  pickupAddress?: string;
+  customerName?: string;
+  waitingSince?: string;
 }
 
 interface ToastState {
@@ -308,6 +337,9 @@ const DriverManagement: React.FC = () => {
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [driverKYC, setDriverKYC] = useState<DriverKYC | null>(null);
   const [driverVehicles, setDriverVehicles] = useState<DriverVehicle[]>([]);
+  // Real booking history for the driver-detail Bookings tab.
+  const [driverBookings, setDriverBookings] = useState<any[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [verifyModalOpen, setVerifyModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -318,6 +350,13 @@ const DriverManagement: React.FC = () => {
   const [suspensionReason, setSuspensionReason] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
+  // Manual-assign modal: pick a SEARCHING booking to assign to a chosen driver.
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignDriver, setAssignDriver] = useState<Driver | null>(null);
+  const [pendingBookings, setPendingBookings] = useState<PendingAssignment[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+
   // Enhanced driver data
   const [enhancedData, setEnhancedData] = useState<{
     codBalance: number;
@@ -325,7 +364,17 @@ const DriverManagement: React.FC = () => {
     reassignmentCount: number;
     documentStatus: { type: string; status: "valid" | "expiring" | "expired" | "missing"; expiresAt?: string }[];
     weeklyBreakdown: { day: string; amount: number }[];
+    acceptanceRate?: number;
+    cancellationRate?: number;
+    lateDeliveryRate?: number;
+    daysSinceLastTrip?: number;
+    appVersion?: string;
+    batteryLevel?: number;
+    lastSeenAt?: string;
   } | null>(null);
+
+  // Driver intelligence thresholds
+  const COD_FLOAT_THRESHOLD = 5000;
 
   // Show toast
   const showToast = useCallback((payload: ToastState) => {
@@ -392,6 +441,15 @@ const DriverManagement: React.FC = () => {
     setActiveTab("overview");
     setDetailModalOpen(true);
     setEnhancedData(null);
+    setDriverBookings([]);
+
+    // Load the driver's real booking history (for the Bookings tab).
+    setBookingsLoading(true);
+    driversApi
+      .getBookings(driver._id, { limit: 20 })
+      .then((res: any) => setDriverBookings(res?.data?.bookings || []))
+      .catch(() => setDriverBookings([]))
+      .finally(() => setBookingsLoading(false));
 
     try {
       const [docResponse, vehicleResponse, codResponse, earningsResponse, docStatusResponse, reassignResponse] = await Promise.all([
@@ -416,12 +474,22 @@ const DriverManagement: React.FC = () => {
       ]);
       setDriverKYC(docResponse.data?.documents || null);
       setDriverVehicles(vehicleResponse.data?.vehicles || []);
+      const codAny = codResponse.data as any;
+      const earnAny = earningsResponse.data as any;
+      const reassignAny = reassignResponse.data as any;
       setEnhancedData({
-        codBalance: codResponse.data?.balance || 0,
-        weeklyEarnings: earningsResponse.data?.total || 0,
-        reassignmentCount: reassignResponse.data?.total || 0,
+        codBalance: codAny?.balance || 0,
+        weeklyEarnings: earnAny?.total || 0,
+        reassignmentCount: reassignAny?.total || 0,
         documentStatus: docStatusResponse.data?.documents || [],
-        weeklyBreakdown: earningsResponse.data?.breakdown || [],
+        weeklyBreakdown: earnAny?.breakdown || [],
+        acceptanceRate: earnAny?.acceptanceRate ?? reassignAny?.acceptanceRate,
+        cancellationRate: earnAny?.cancellationRate ?? reassignAny?.cancellationRate,
+        lateDeliveryRate: earnAny?.lateDeliveryRate,
+        daysSinceLastTrip: earnAny?.daysSinceLastTrip,
+        appVersion: codAny?.appVersion ?? earnAny?.appVersion,
+        batteryLevel: codAny?.batteryLevel ?? earnAny?.batteryLevel,
+        lastSeenAt: codAny?.lastSeenAt ?? earnAny?.lastSeenAt,
       });
     } catch (err) {
       console.error("Failed to load driver details", err);
@@ -616,11 +684,8 @@ const DriverManagement: React.FC = () => {
     (d) => d.isOnline && d.status === "approved" && d.isActive,
   );
 
-  // Mock unassigned orders count — replace with /admin/orders?status=unassigned when wired
-  const unassignedOrdersCount = Math.max(
-    0,
-    Math.min(12, Math.floor(availableDrivers.length * 0.6) + 3),
-  );
+  // Real unassigned orders count (SEARCHING bookings) from /admin/drivers/stats.
+  const unassignedOrdersCount = stats?.unassignedOrders ?? 0;
   const assignmentGap = unassignedOrdersCount - availableDrivers.length;
 
   // Top/low performers from loaded page (sorted by rating)
@@ -635,24 +700,94 @@ const DriverManagement: React.FC = () => {
     idleDrivers.length > 0 && unassignedOrdersCount > 0
       ? {
           driver: idleDrivers[0],
-          distanceKm: 0.8,
           pendingOrders: Math.min(unassignedOrdersCount, 3),
         }
       : null;
 
-  const handleAutoAssign = () => {
-    showToast({
-      type: "success",
-      message: `Auto-assigning ${Math.min(unassignedOrdersCount, availableDrivers.length)} orders to nearest available drivers…`,
-    });
+  const [autoAssigning, setAutoAssigning] = useState(false);
+
+  // Auto-assign the nearest available driver to every SEARCHING booking.
+  const handleAutoAssign = async () => {
+    if (autoAssigning) return;
+    setAutoAssigning(true);
+    try {
+      const res = await driversApi.autoAssign();
+      const assigned = res?.data?.assigned ?? 0;
+      const evaluated = res?.data?.evaluated ?? 0;
+      showToast({
+        type: assigned > 0 ? "success" : "warning",
+        message:
+          evaluated === 0
+            ? "No unassigned orders to auto-assign right now."
+            : assigned > 0
+              ? `Auto-assigned ${assigned} of ${evaluated} order(s) to the nearest available drivers.`
+              : `No available online drivers found for ${evaluated} searching order(s).`,
+      });
+      fetchStats();
+      loadDrivers();
+    } catch (e: any) {
+      showToast({ type: "error", message: e?.message || "Auto-assign failed" });
+    } finally {
+      setAutoAssigning(false);
+    }
   };
 
-  const handleRebalance = () => {
-    showToast({
-      type: "success",
-      message: `Pushing orders to ${idleDrivers.length} idle drivers…`,
-    });
-  };
+  // "Rebalance" uses the same nearest-driver pass over all searching orders.
+  const handleRebalance = () => handleAutoAssign();
+
+  // Manual assign: open the picker for a specific driver and load pending orders.
+  const openAssignModal = useCallback(
+    async (driver: Driver) => {
+      setAssignDriver(driver);
+      setAssignModalOpen(true);
+      setPendingLoading(true);
+      try {
+        const res = await driversApi.getPendingAssignments();
+        setPendingBookings(res?.data?.pendingAssignments || []);
+      } catch (err) {
+        console.error("Failed to load pending orders", err);
+        setPendingBookings([]);
+      } finally {
+        setPendingLoading(false);
+      }
+    },
+    [],
+  );
+
+  const handleAssignToBooking = useCallback(
+    async (bookingId: string) => {
+      if (!assignDriver) return;
+      setAssigningId(bookingId);
+      try {
+        const res = await driversApi.assignToBooking(bookingId, assignDriver._id);
+        if (res?.success) {
+          showToast({
+            type: "success",
+            message: `Assigned ${assignDriver.fullName} to the order.`,
+          });
+          setAssignModalOpen(false);
+          setAssignDriver(null);
+          setPendingBookings([]);
+          fetchStats();
+          loadDrivers();
+        } else {
+          showToast({
+            type: "error",
+            message: res?.message || "Failed to assign driver.",
+          });
+        }
+      } catch (err) {
+        showToast({
+          type: "error",
+          message:
+            err instanceof Error ? err.message : "Failed to assign driver.",
+        });
+      } finally {
+        setAssigningId(null);
+      }
+    },
+    [assignDriver, showToast, fetchStats, loadDrivers],
+  );
 
   return (
     <div className="space-y-6">
@@ -918,20 +1053,16 @@ const DriverManagement: React.FC = () => {
                 <span className="font-semibold">
                   {smartSuggestion.driver.fullName}
                 </span>{" "}
-                is{" "}
-                <span className="font-semibold text-orange-700">
-                  {smartSuggestion.distanceKm} km
-                </span>{" "}
-                from{" "}
+                is idle and available for{" "}
                 <span className="font-semibold">
-                  {smartSuggestion.pendingOrders} pending orders
-                </span>{" "}
-                → Assign?
+                  {smartSuggestion.pendingOrders} pending order
+                  {smartSuggestion.pendingOrders === 1 ? "" : "s"}
+                </span>
               </p>
             </div>
           </div>
           <button
-            onClick={handleAutoAssign}
+            onClick={() => openAssignModal(smartSuggestion.driver)}
             className="px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors"
           >
             Assign Now
@@ -1284,9 +1415,7 @@ const DriverManagement: React.FC = () => {
                   </button>
                   {driver.status === "approved" && driver.isActive && (
                     <button
-                      onClick={() => {
-                        handleAutoAssign();
-                      }}
+                      onClick={() => openAssignModal(driver)}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-colors"
                     >
                       <CircleDot className="w-3.5 h-3.5" />
@@ -1881,13 +2010,34 @@ const DriverManagement: React.FC = () => {
                       <Wallet className="w-4 h-4" /> Financial Metrics
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-white rounded-lg p-3 text-center">
-                        <p className="text-2xl font-bold text-orange-600">
-                          {formatCurrency(enhancedData?.codBalance || 0)}
-                        </p>
-                        <p className="text-xs text-gray-500">COD Balance</p>
-                        <p className="text-[10px] text-gray-400">To be settled</p>
-                      </div>
+                      {(() => {
+                        const cod = enhancedData?.codBalance || 0;
+                        const over = cod > COD_FLOAT_THRESHOLD;
+                        return (
+                          <div
+                            className={`rounded-lg p-3 text-center border ${
+                              over
+                                ? "bg-red-50 border-red-200 ring-1 ring-red-300"
+                                : "bg-white border-transparent"
+                            }`}
+                          >
+                            <p className={`text-2xl font-bold ${over ? "text-red-600" : "text-orange-600"}`}>
+                              {formatCurrency(cod)}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Floating COD
+                              {over && (
+                                <span className="ml-1 inline-flex items-center gap-0.5 text-red-600 font-semibold">
+                                  <AlertTriangle className="w-3 h-3" /> Over threshold
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-[10px] text-gray-400">
+                              Threshold {formatCurrency(COD_FLOAT_THRESHOLD)}
+                            </p>
+                          </div>
+                        );
+                      })()}
                       <div className="bg-white rounded-lg p-3 text-center">
                         <p className="text-2xl font-bold text-blue-600">
                           {formatCurrency(enhancedData?.weeklyEarnings || 0)}
@@ -1929,6 +2079,121 @@ const DriverManagement: React.FC = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  {/* Performance Metrics — auto-calculated KPIs */}
+                  <div className="bg-gray-50 rounded-xl p-5 col-span-2">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <Award className="w-4 h-4" /> Performance Metrics
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {(() => {
+                        const acc = enhancedData?.acceptanceRate;
+                        const accDanger = acc != null && acc < 70;
+                        return (
+                          <div className={`rounded-lg p-3 text-center border ${accDanger ? "bg-red-50 border-red-200" : "bg-white border-gray-100"}`}>
+                            <div className="flex items-center justify-center gap-1">
+                              <TrendingUp className={`w-4 h-4 ${accDanger ? "text-red-500" : "text-green-500"}`} />
+                              <span className={`text-2xl font-bold ${accDanger ? "text-red-600" : "text-green-600"}`}>
+                                {acc != null ? `${acc.toFixed(0)}%` : "—"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Acceptance Rate</p>
+                          </div>
+                        );
+                      })()}
+                      {(() => {
+                        const can = enhancedData?.cancellationRate;
+                        const canDanger = can != null && can > 20;
+                        return (
+                          <div className={`rounded-lg p-3 text-center border ${canDanger ? "bg-red-50 border-red-200" : "bg-white border-gray-100"}`}>
+                            <div className="flex items-center justify-center gap-1">
+                              <TrendingDown className={`w-4 h-4 ${canDanger ? "text-red-500" : "text-gray-400"}`} />
+                              <span className={`text-2xl font-bold ${canDanger ? "text-red-600" : "text-gray-700"}`}>
+                                {can != null ? `${can.toFixed(1)}%` : "—"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Cancellation Rate</p>
+                            {canDanger && <p className="text-[10px] text-red-600 font-medium">Auto-flag &gt; 20%</p>}
+                          </div>
+                        );
+                      })()}
+                      {(() => {
+                        const late = enhancedData?.lateDeliveryRate;
+                        const lateDanger = late != null && late > 15;
+                        return (
+                          <div className={`rounded-lg p-3 text-center border ${lateDanger ? "bg-yellow-50 border-yellow-200" : "bg-white border-gray-100"}`}>
+                            <div className="flex items-center justify-center gap-1">
+                              <Clock className={`w-4 h-4 ${lateDanger ? "text-yellow-600" : "text-gray-400"}`} />
+                              <span className={`text-2xl font-bold ${lateDanger ? "text-yellow-700" : "text-gray-700"}`}>
+                                {late != null ? `${late.toFixed(1)}%` : "—"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Late Delivery %</p>
+                          </div>
+                        );
+                      })()}
+                      {(() => {
+                        const days = enhancedData?.daysSinceLastTrip;
+                        const stale = days != null && days > 7;
+                        return (
+                          <div className={`rounded-lg p-3 text-center border ${stale ? "bg-yellow-50 border-yellow-200" : "bg-white border-gray-100"}`}>
+                            <div className="flex items-center justify-center gap-1">
+                              <Timer className={`w-4 h-4 ${stale ? "text-yellow-600" : "text-gray-400"}`} />
+                              <span className={`text-2xl font-bold ${stale ? "text-yellow-700" : "text-gray-700"}`}>
+                                {days != null ? days : "—"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Days Since Last Trip</p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Device Intelligence */}
+                  <div className="bg-gray-50 rounded-xl p-5 col-span-2">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                      <Smartphone className="w-4 h-4" /> Device Intelligence
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      <div className="bg-white rounded-lg p-3 border border-gray-100">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="w-4 h-4 text-blue-500" />
+                          <p className="text-xs font-semibold text-gray-500 uppercase">App Version</p>
+                        </div>
+                        <p className="text-lg font-bold text-gray-800 mt-1">
+                          {enhancedData?.appVersion || "—"}
+                        </p>
+                      </div>
+                      {(() => {
+                        const bat = enhancedData?.batteryLevel;
+                        const low = bat != null && bat < 20;
+                        return (
+                          <div className={`rounded-lg p-3 border ${low ? "bg-red-50 border-red-200" : "bg-white border-gray-100"}`}>
+                            <div className="flex items-center gap-2">
+                              <BatteryCharging className={`w-4 h-4 ${low ? "text-red-500" : "text-green-500"}`} />
+                              <p className="text-xs font-semibold text-gray-500 uppercase">Battery</p>
+                            </div>
+                            <p className={`text-lg font-bold mt-1 ${low ? "text-red-600" : "text-gray-800"}`}>
+                              {bat != null ? `${bat}%` : "—"}
+                              {low && <span className="ml-2 text-xs text-red-600 font-medium">Low</span>}
+                            </p>
+                          </div>
+                        );
+                      })()}
+                      <div className="bg-white rounded-lg p-3 border border-gray-100">
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-gray-500" />
+                          <p className="text-xs font-semibold text-gray-500 uppercase">Last Seen</p>
+                        </div>
+                        <p className="text-lg font-bold text-gray-800 mt-1">
+                          {enhancedData?.lastSeenAt
+                            ? new Date(enhancedData.lastSeenAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Traffic Light Document Status */}
@@ -2314,81 +2579,6 @@ const DriverManagement: React.FC = () => {
               {/* Vehicle Tab */}
               {activeTab === "vehicle" && (
                 <div className="space-y-6">
-                  {/* RC Document */}
-                  {driverKYC?.vehicleRc && (
-                    <div className="bg-gray-50 rounded-xl p-5">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                          <FileCheck className="w-4 h-4" /> Vehicle RC
-                        </h3>
-                        <span className="text-sm font-mono text-gray-600">
-                          {driverKYC.vehicleRc.vehicleNumber}
-                        </span>
-                      </div>
-                      <img
-                        src={driverKYC.vehicleRc.image}
-                        alt="Vehicle RC"
-                        className="w-full max-w-md h-48 object-cover rounded-lg cursor-pointer hover:opacity-90"
-                        onClick={() =>
-                          setImagePreview(driverKYC.vehicleRc?.image || null)
-                        }
-                      />
-                    </div>
-                  )}
-
-                  {/* Vehicle Images */}
-                  {driverKYC?.vehicleImages &&
-                    driverKYC.vehicleImages.length > 0 && (
-                      <div className="bg-gray-50 rounded-xl p-5">
-                        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
-                          <Car className="w-4 h-4" /> Vehicle Photos
-                        </h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {driverKYC.vehicleImages.map((img, idx) => (
-                            <img
-                              key={idx}
-                              src={img}
-                              alt={`Vehicle ${idx + 1}`}
-                              className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-90"
-                              onClick={() => setImagePreview(img)}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                  {/* Vehicle Details */}
-                  {driverKYC &&
-                    (driverKYC.city ||
-                      driverKYC.bodyType ||
-                      driverKYC.fuelType) && (
-                      <div className="bg-gray-50 rounded-xl p-5">
-                        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
-                          <Truck className="w-4 h-4" /> Vehicle Details
-                        </h3>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div>
-                            <p className="text-xs text-gray-500">City</p>
-                            <p className="text-sm font-medium text-gray-900">
-                              {driverKYC.city || "-"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Body Type</p>
-                            <p className="text-sm font-medium text-gray-900">
-                              {driverKYC.bodyType || "-"}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Fuel Type</p>
-                            <p className="text-sm font-medium text-gray-900">
-                              {driverKYC.fuelType || "-"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                   {/* Registered Vehicles */}
                   <div className="bg-gray-50 rounded-xl p-5">
                     <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
@@ -2403,38 +2593,171 @@ const DriverManagement: React.FC = () => {
                         {driverVehicles.map((vehicle) => (
                           <div
                             key={vehicle._id}
-                            className="flex items-center justify-between bg-white rounded-lg p-4"
+                            className="bg-white rounded-lg p-4 space-y-3"
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                                <Truck className="w-5 h-5 text-orange-600" />
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                                  <Truck className="w-5 h-5 text-orange-600" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-gray-900">
+                                    {vehicle.vehicleTypeId?.name ||
+                                      vehicle.vehicleType ||
+                                      "Unknown Type"}
+                                    {vehicle.isPrimary && (
+                                      <span className="ml-2 text-xs font-normal text-orange-600">
+                                        (Primary)
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-sm text-gray-500 font-mono">
+                                    {vehicle.registrationNumber}
+                                  </p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-medium text-gray-900">
-                                  {vehicle.vehicleTypeId?.name ||
-                                    "Unknown Type"}
-                                </p>
-                                <p className="text-sm text-gray-500 font-mono">
-                                  {vehicle.registrationNumber}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  vehicle.isActive
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-gray-100 text-gray-600"
-                                }`}
-                              >
-                                {vehicle.isActive ? "Active" : "Inactive"}
-                              </span>
-                              {vehicle.isOnline && (
-                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                                  Online
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                {vehicle.verificationStatus && (
+                                  <span
+                                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      vehicle.verificationStatus === "approved"
+                                        ? "bg-green-100 text-green-700"
+                                        : vehicle.verificationStatus === "rejected"
+                                        ? "bg-red-100 text-red-700"
+                                        : "bg-yellow-100 text-yellow-700"
+                                    }`}
+                                  >
+                                    {vehicle.verificationStatus.replace("_", " ")}
+                                  </span>
+                                )}
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    vehicle.onboardingFeePaid
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-orange-100 text-orange-700"
+                                  }`}
+                                >
+                                  {vehicle.onboardingFeePaid ? "Fee Paid" : "Fee Pending"}
                                 </span>
-                              )}
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    vehicle.isActive
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-gray-100 text-gray-600"
+                                  }`}
+                                >
+                                  {vehicle.isActive ? "Active" : "Inactive"}
+                                </span>
+                                {vehicle.isOnline && (
+                                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                    Online
+                                  </span>
+                                )}
+                              </div>
                             </div>
+
+                            {(vehicle.assignedDriverName ||
+                              vehicle.assignedDriverPhone) && (
+                              <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    Assigned Driver
+                                  </p>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {vehicle.assignedDriverName || "-"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">
+                                    Driver Mobile
+                                  </p>
+                                  <p className="text-sm font-medium text-gray-900 font-mono">
+                                    {vehicle.assignedDriverPhone || "-"}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {(vehicle.vehicleBodyType ||
+                              vehicle.fuelType ||
+                              vehicle.city) && (
+                              <div className="border-t border-gray-100 pt-3 grid grid-cols-3 gap-3">
+                                <div>
+                                  <p className="text-xs text-gray-500">City</p>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {vehicle.city || "-"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">Body Type</p>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {vehicle.vehicleBodyType || "-"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">Fuel Type</p>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {vehicle.fuelType || "-"}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {(vehicle.rcFrontImage || vehicle.rcBackImage) && (
+                              <div className="border-t border-gray-100 pt-3">
+                                <p className="text-xs font-semibold text-gray-700 flex items-center gap-1 mb-2">
+                                  <FileCheck className="w-3.5 h-3.5" /> Vehicle RC
+                                </p>
+                                <div className="grid grid-cols-2 gap-3">
+                                  {vehicle.rcFrontImage && (
+                                    <div>
+                                      <p className="text-[11px] text-gray-500 mb-1">Front</p>
+                                      <img
+                                        src={vehicle.rcFrontImage}
+                                        alt={`RC Front ${vehicle.registrationNumber}`}
+                                        className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-90"
+                                        onClick={() =>
+                                          setImagePreview(vehicle.rcFrontImage || null)
+                                        }
+                                      />
+                                    </div>
+                                  )}
+                                  {vehicle.rcBackImage && (
+                                    <div>
+                                      <p className="text-[11px] text-gray-500 mb-1">Back</p>
+                                      <img
+                                        src={vehicle.rcBackImage}
+                                        alt={`RC Back ${vehicle.registrationNumber}`}
+                                        className="w-full h-32 object-cover rounded-lg cursor-pointer hover:opacity-90"
+                                        onClick={() =>
+                                          setImagePreview(vehicle.rcBackImage || null)
+                                        }
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {vehicle.vehicleImages &&
+                              vehicle.vehicleImages.length > 0 && (
+                                <div className="border-t border-gray-100 pt-3">
+                                  <p className="text-xs font-semibold text-gray-700 flex items-center gap-1 mb-2">
+                                    <Car className="w-3.5 h-3.5" /> Vehicle Photos
+                                  </p>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                    {vehicle.vehicleImages.map((img, idx) => (
+                                      <img
+                                        key={idx}
+                                        src={img}
+                                        alt={`${vehicle.registrationNumber} ${idx + 1}`}
+                                        className="w-full h-24 object-cover rounded-lg cursor-pointer hover:opacity-90"
+                                        onClick={() => setImagePreview(img)}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                           </div>
                         ))}
                       </div>
@@ -2501,14 +2824,61 @@ const DriverManagement: React.FC = () => {
                 </div>
               )}
 
-              {/* Bookings Tab */}
+              {/* Bookings Tab — real booking history */}
               {activeTab === "bookings" && (
-                <div className="text-center py-10">
-                  <Truck className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-                  <p className="text-gray-500">
-                    Booking history will be shown here
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">Coming soon...</p>
+                <div>
+                  {bookingsLoading ? (
+                    <div className="flex justify-center py-10">
+                      <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                    </div>
+                  ) : driverBookings.length === 0 ? (
+                    <div className="text-center py-10">
+                      <Truck className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                      <p className="text-gray-500">No bookings for this driver yet</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-gray-600">
+                          <tr>
+                            <th className="text-left px-3 py-2 font-medium">Order</th>
+                            <th className="text-left px-3 py-2 font-medium">Customer</th>
+                            <th className="text-left px-3 py-2 font-medium">Date</th>
+                            <th className="text-right px-3 py-2 font-medium">Fare</th>
+                            <th className="text-center px-3 py-2 font-medium">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {driverBookings.map((b: any) => {
+                            const cust =
+                              b.userId && typeof b.userId === "object"
+                                ? b.userId.fullName || b.userId.mobileNumber
+                                : "—";
+                            const fare = b.finalFare ?? b.fare ?? 0;
+                            return (
+                              <tr key={b._id} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 font-medium text-gray-900">
+                                  {b.orderId || b.bookingNumber || String(b._id).slice(-6).toUpperCase()}
+                                </td>
+                                <td className="px-3 py-2 text-gray-600">{cust}</td>
+                                <td className="px-3 py-2 text-gray-500">
+                                  {b.createdAt ? new Date(b.createdAt).toLocaleDateString("en-IN") : "—"}
+                                </td>
+                                <td className="px-3 py-2 text-right font-medium">
+                                  ₹{Number(fare).toLocaleString("en-IN")}
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                    {b.status || "—"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2705,6 +3075,74 @@ const DriverManagement: React.FC = () => {
                 )}
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Assign Modal — pick a pending order for this driver */}
+      {assignModalOpen && assignDriver && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Assign an Order</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  To {assignDriver.fullName} · {assignDriver.mobileNumber}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setAssignModalOpen(false);
+                  setAssignDriver(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto">
+              {pendingLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="w-6 h-6 text-orange-500 animate-spin" />
+                </div>
+              ) : pendingBookings.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm">
+                  No orders are currently searching for a driver.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {pendingBookings.map((b) => (
+                    <div
+                      key={b._id}
+                      className="flex items-center justify-between gap-3 p-3 border border-gray-100 rounded-xl hover:bg-gray-50"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">
+                          {b.bookingNumber || `Order ${b._id.slice(-6).toUpperCase()}`}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {b.customerName ? `${b.customerName} · ` : ""}
+                          {b.pickupAddress || "Pickup pending"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleAssignToBooking(b._id)}
+                        disabled={assigningId !== null}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-colors disabled:opacity-50 flex-shrink-0"
+                      >
+                        {assigningId === b._id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <CircleDot className="w-3.5 h-3.5" />
+                        )}
+                        Assign
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

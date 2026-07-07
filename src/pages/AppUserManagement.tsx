@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 import {
   fetchAdminUsers,
   fetchAdminUserStats,
@@ -62,6 +63,7 @@ const getTimeAgo = (dateString?: string) => {
 };
 
 const AppUserManagement: React.FC = () => {
+  const dialog = useDialog();
   const [users, setUsers] = useState<AdminUserRow[]>([]);
   const [stats, setStats] = useState<AdminUserStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -171,7 +173,7 @@ const AppUserManagement: React.FC = () => {
     try {
       const res = await blockAdminUser(userToBlock._id, blockReason.trim());
       if (res?.success === false) {
-        alert(res.message || "Failed to block user");
+        await dialog.alert({ title: "Block failed", message: res.message || "Failed to block user", tone: "danger" });
       } else {
         setUsers((prev) =>
           prev.map((u) =>
@@ -183,7 +185,7 @@ const AppUserManagement: React.FC = () => {
         setBlockReason("");
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to block user");
+      await dialog.alert({ title: "Block failed", message: e instanceof Error ? e.message : "Failed to block user", tone: "danger" });
     } finally {
       setActioning(false);
     }
@@ -194,7 +196,7 @@ const AppUserManagement: React.FC = () => {
     try {
       const res = await unblockAdminUser(userId);
       if (res?.success === false) {
-        alert(res.message || "Failed to unblock user");
+        await dialog.alert({ title: "Unblock failed", message: res.message || "Failed to unblock user", tone: "danger" });
       } else {
         setUsers((prev) =>
           prev.map((u) =>
@@ -206,7 +208,7 @@ const AppUserManagement: React.FC = () => {
         }
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to unblock user");
+      await dialog.alert({ title: "Unblock failed", message: e instanceof Error ? e.message : "Failed to unblock user", tone: "danger" });
     } finally {
       setActioning(false);
     }
@@ -224,7 +226,7 @@ const AppUserManagement: React.FC = () => {
         reason: coinAdjustment.reason.trim(),
       });
       if (res?.success === false) {
-        alert(res.message || "Failed to adjust coin balance");
+        await dialog.alert({ title: "Adjustment failed", message: res.message || "Failed to adjust coin balance", tone: "danger" });
       } else {
         const newBalance = res?.data?.wallet?.balance;
         const resolvedBalance =
@@ -245,7 +247,7 @@ const AppUserManagement: React.FC = () => {
         setCoinAdjustment({ type: "CREDIT", amount: 0, reason: "" });
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to adjust coin balance");
+      await dialog.alert({ title: "Adjustment failed", message: e instanceof Error ? e.message : "Failed to adjust coin balance", tone: "danger" });
     } finally {
       setCoinSaving(false);
     }

@@ -14,7 +14,6 @@ import {
   Loader2,
   Wrench,
   IndianRupee,
-  TrendingUp,
   Zap,
   MapPin,
   Truck,
@@ -32,6 +31,7 @@ import {
 } from "../services/api";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 interface FormData {
   name: string;
@@ -60,6 +60,7 @@ const initialFormData: FormData = {
 };
 
 const AddonServiceManagement: React.FC = () => {
+  const dialog = useDialog();
   const [addons, setAddons] = useState<AddonServiceItem[]>([]);
   const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -182,7 +183,8 @@ const AddonServiceManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this add-on service?")) return;
+    const ok = await dialog.confirm({ title: "Delete service?", message: "This add-on service will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
     try {
       setActionLoading(id);
       await deleteAddonService(id);
@@ -217,20 +219,6 @@ const AddonServiceManagement: React.FC = () => {
   const totalAddons = paginationMeta.total;
   const activeAddons = addons.filter((a) => a.isActive).length;
 
-  // Deterministic mock revenue per add-on (swap with backend aggregate when ready)
-  const addonMetrics = React.useMemo(() => {
-    return addons.map((a) => {
-      const seed =
-        (a._id || a.code || "").split("").reduce((x, c) => x + c.charCodeAt(0), 0) ||
-        1;
-      const attachRate = 10 + (seed % 60); // 10-70% of orders
-      const monthlyRevenue = attachRate * a.price * 3;
-      return { id: a._id, attachRate, monthlyRevenue };
-    });
-  }, [addons]);
-  const totalRevenue =
-    addonMetrics.reduce((s, m) => s + m.monthlyRevenue, 0) || 1;
-
   // Server-side: data is already filtered and paginated
   const paginatedAddons = addons;
   const totalItems = paginationMeta.total;
@@ -259,7 +247,7 @@ const AddonServiceManagement: React.FC = () => {
       </div>
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-3">
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
@@ -296,20 +284,6 @@ const AddonServiceManagement: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-purple-500 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Monthly Revenue</p>
-              <h3 className="mt-1 text-2xl font-bold text-gray-800">
-                ₹{(totalRevenue / 1000).toFixed(1)}k
-              </h3>
-              <p className="mt-1 text-xs text-purple-600">From add-ons</p>
-            </div>
-            <div className="flex items-center justify-center bg-purple-50 w-11 h-11 rounded-xl">
-              <TrendingUp className="w-5 h-5 text-purple-600" />
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Filters */}
@@ -334,11 +308,6 @@ const AddonServiceManagement: React.FC = () => {
         <>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {paginatedAddons.map((addon) => {
-            const metrics = addonMetrics.find((m) => m.id === addon._id) || {
-              attachRate: 0,
-              monthlyRevenue: 0,
-            };
-            const revContribPct = (metrics.monthlyRevenue * 100) / totalRevenue;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const autoApply = (addon as any).autoApply ?? false;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -392,41 +361,7 @@ const AddonServiceManagement: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Revenue Contribution */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-semibold text-gray-500 flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" />
-                      Revenue Contribution
-                    </span>
-                    <span
-                      className={`text-xs font-bold ${
-                        revContribPct >= 25
-                          ? "text-green-600"
-                          : revContribPct >= 10
-                            ? "text-amber-600"
-                            : "text-gray-500"
-                      }`}
-                    >
-                      {revContribPct.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 overflow-hidden bg-gray-100 rounded-full">
-                    <div
-                      className={`h-full rounded-full ${
-                        revContribPct >= 25
-                          ? "bg-green-500"
-                          : revContribPct >= 10
-                            ? "bg-amber-500"
-                            : "bg-gray-400"
-                      }`}
-                      style={{ width: `${Math.min(revContribPct * 3, 100)}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[10px] text-gray-400">
-                    Attach rate: {metrics.attachRate}% · Sort #{addon.sortOrder}
-                  </p>
-                </div>
+                <p className="text-[10px] text-gray-400">Sort #{addon.sortOrder}</p>
 
                 <div>
                   <span className="text-xs text-gray-500 flex items-center gap-1">

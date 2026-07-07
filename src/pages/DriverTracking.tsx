@@ -28,12 +28,14 @@ import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import "leaflet.markercluster";
 import type { DriverLocation } from "../types/admin";
 import { useNavigate } from "react-router-dom";
+import { useDialog } from "../components/Layout/Dialog";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
 
 const DriverTracking: React.FC = () => {
   const navigate = useNavigate();
+  const dialog = useDialog();
   const [drivers, setDrivers] = useState<DriverLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -845,7 +847,7 @@ const DriverTracking: React.FC = () => {
                           );
                           const body = await res.json().catch(() => ({}));
                           if (!res.ok || body?.success === false) {
-                            window.alert(body?.message || "Failed to assign order");
+                            await dialog.alert({ title: "Assignment failed", message: body?.message || "Failed to assign order", tone: "danger" });
                             return;
                           }
                           setAssignModalOpen(false);

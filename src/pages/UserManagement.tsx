@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { usersApi } from "../services/admin-api";
 import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 // ==================== TYPES ====================
 interface UserAddress {
@@ -92,6 +93,7 @@ const formatDate = (value?: string) => {
 
 // ==================== COMPONENT ====================
 const UserManagement: React.FC = () => {
+  const dialog = useDialog();
   // State
   const [stats, setStats] = useState<UserStatsSummary | null>(null);
   const [users, setUsers] = useState<ApiUser[]>([]);
@@ -324,7 +326,9 @@ const UserManagement: React.FC = () => {
 
   // Delete address
   const handleDeleteAddress = async (addressId: string) => {
-    if (!selectedUser || !confirm("Delete this address?")) return;
+    if (!selectedUser) return;
+    const ok = await dialog.confirm({ title: "Delete address?", message: "This saved address will be permanently removed from the user's profile.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
     setActionLoading(true);
     try {
       await usersApi.deleteAddress(selectedUser._id, addressId);

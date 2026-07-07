@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Edit2,
@@ -12,16 +12,14 @@ import {
   ExternalLink,
   GraduationCap,
   BookOpen,
-  Award,
   Users,
   Layers,
-  Clock,
-  Zap,
   CheckCircle2,
   TrendingUp,
   AlertCircle,
 } from "lucide-react";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 import {
   trainingApi,
   type TrainingMaterialItem,
@@ -48,213 +46,65 @@ const TYPE_COLORS: Record<string, string> = {
   document: "bg-amber-100 text-amber-700",
 };
 
-type ProgramType = "ONBOARDING" | "SAFETY" | "COMPLIANCE" | "SKILL_UP" | "REFRESHER";
-type ProgramTrigger = "MANUAL" | "ON_SIGNUP" | "INCIDENT" | "LOW_RATING" | "POLICY_UPDATE" | "EXPIRY_DUE";
-type AssignmentControl = "ALL_DRIVERS" | "BY_CITY" | "BY_COHORT" | "INCIDENT_TRIGGER" | "MANUAL";
+type ProgramType = "ONBOARDING" | "SAFETY" | "SKILL_UP" | "COMPLIANCE" | "OTHER";
 
-interface ProgramSeed {
-  id: string;
+interface ProgramMaterialRef {
+  _id?: string;
+  title?: string;
+  type?: string;
+}
+
+interface Program {
+  _id: string;
   title: string;
   description: string;
   type: ProgramType;
-  trigger: ProgramTrigger;
-  assignment: AssignmentControl;
-  modules: number;
-  durationMin: number;
-  assessment: boolean;
-  passScore: number;
-  avgAssessmentScore: number;
-  certification: boolean;
-  expiryDays: number;
-  completionRate: number;
-  impactScore: number;
-  enrolled: number;
-  certified: number;
-  reTrainingDue: number;
+  materialIds: (string | ProgramMaterialRef)[];
   mandatory: boolean;
-  status: "ACTIVE" | "DRAFT" | "ARCHIVED";
+  passScore: number;
+  isActive: boolean;
+  enrolled: number;
+  completed: number;
+  completionRate: number;
 }
 
-const PROGRAM_SEEDS: ProgramSeed[] = [
-  {
-    id: "p1",
-    title: "Driver Onboarding Essentials",
-    description: "App walkthrough, platform rules, and the first-week checklist for new drivers.",
-    type: "ONBOARDING",
-    trigger: "ON_SIGNUP",
-    assignment: "ALL_DRIVERS",
-    modules: 6,
-    durationMin: 45,
-    assessment: true,
-    passScore: 70,
-    avgAssessmentScore: 82,
-    certification: true,
-    expiryDays: 365,
-    completionRate: 92,
-    impactScore: 84,
-    enrolled: 1240,
-    certified: 1142,
-    reTrainingDue: 32,
-    mandatory: true,
-    status: "ACTIVE",
-  },
-  {
-    id: "p2",
-    title: "Road Safety & Defensive Driving",
-    description: "Core safety module — traffic rules, hazards, and defensive techniques.",
-    type: "SAFETY",
-    trigger: "ON_SIGNUP",
-    assignment: "ALL_DRIVERS",
-    modules: 8,
-    durationMin: 75,
-    assessment: true,
-    passScore: 80,
-    avgAssessmentScore: 86,
-    certification: true,
-    expiryDays: 180,
-    completionRate: 78,
-    impactScore: 91,
-    enrolled: 1180,
-    certified: 920,
-    reTrainingDue: 214,
-    mandatory: true,
-    status: "ACTIVE",
-  },
-  {
-    id: "p3",
-    title: "Handling Fragile & Sensitive Items",
-    description: "Packaging standards, loading sequence, and liability for fragile deliveries.",
-    type: "SKILL_UP",
-    trigger: "MANUAL",
-    assignment: "BY_COHORT",
-    modules: 4,
-    durationMin: 30,
-    assessment: true,
-    passScore: 70,
-    avgAssessmentScore: 74,
-    certification: false,
-    expiryDays: 0,
-    completionRate: 64,
-    impactScore: 58,
-    enrolled: 420,
-    certified: 268,
-    reTrainingDue: 0,
-    mandatory: false,
-    status: "ACTIVE",
-  },
-  {
-    id: "p4",
-    title: "Customer Service Excellence",
-    description: "Communication, de-escalation, and handling complaints with professionalism.",
-    type: "SKILL_UP",
-    trigger: "LOW_RATING",
-    assignment: "INCIDENT_TRIGGER",
-    modules: 5,
-    durationMin: 40,
-    assessment: true,
-    passScore: 75,
-    avgAssessmentScore: 79,
-    certification: false,
-    expiryDays: 0,
-    completionRate: 71,
-    impactScore: 77,
-    enrolled: 186,
-    certified: 132,
-    reTrainingDue: 0,
-    mandatory: false,
-    status: "ACTIVE",
-  },
-  {
-    id: "p5",
-    title: "Prohibited Items & Compliance",
-    description: "What you must refuse to carry — legal, safety, and platform policy.",
-    type: "COMPLIANCE",
-    trigger: "POLICY_UPDATE",
-    assignment: "ALL_DRIVERS",
-    modules: 3,
-    durationMin: 20,
-    assessment: true,
-    passScore: 90,
-    avgAssessmentScore: 93,
-    certification: true,
-    expiryDays: 365,
-    completionRate: 88,
-    impactScore: 95,
-    enrolled: 1240,
-    certified: 1090,
-    reTrainingDue: 68,
-    mandatory: true,
-    status: "ACTIVE",
-  },
-  {
-    id: "p6",
-    title: "Accident & Incident Response",
-    description: "What to do during and after an accident — triggered automatically after any incident.",
-    type: "SAFETY",
-    trigger: "INCIDENT",
-    assignment: "INCIDENT_TRIGGER",
-    modules: 4,
-    durationMin: 25,
-    assessment: true,
-    passScore: 85,
-    avgAssessmentScore: 88,
-    certification: false,
-    expiryDays: 0,
-    completionRate: 81,
-    impactScore: 89,
-    enrolled: 94,
-    certified: 76,
-    reTrainingDue: 0,
-    mandatory: true,
-    status: "ACTIVE",
-  },
-  {
-    id: "p7",
-    title: "Annual Safety Refresher",
-    description: "Mandatory yearly refresher on updated safety protocols and platform changes.",
-    type: "REFRESHER",
-    trigger: "EXPIRY_DUE",
-    assignment: "ALL_DRIVERS",
-    modules: 5,
-    durationMin: 35,
-    assessment: true,
-    passScore: 75,
-    avgAssessmentScore: 81,
-    certification: true,
-    expiryDays: 365,
-    completionRate: 69,
-    impactScore: 72,
-    enrolled: 860,
-    certified: 594,
-    reTrainingDue: 124,
-    mandatory: true,
-    status: "DRAFT",
-  },
-];
+interface ProgramOverview {
+  totalPrograms: number;
+  totalEnrolled: number;
+  totalCompleted: number;
+  avgCompletion: number;
+}
 
 const PROGRAM_TYPE_TONE: Record<ProgramType, { badge: string; label: string }> = {
   ONBOARDING: { badge: "bg-blue-100 text-blue-700", label: "Onboarding" },
   SAFETY: { badge: "bg-red-100 text-red-700", label: "Safety" },
-  COMPLIANCE: { badge: "bg-purple-100 text-purple-700", label: "Compliance" },
   SKILL_UP: { badge: "bg-amber-100 text-amber-700", label: "Skill Up" },
-  REFRESHER: { badge: "bg-teal-100 text-teal-700", label: "Refresher" },
+  COMPLIANCE: { badge: "bg-purple-100 text-purple-700", label: "Compliance" },
+  OTHER: { badge: "bg-gray-100 text-gray-700", label: "Other" },
 };
 
-const TRIGGER_LABEL: Record<ProgramTrigger, string> = {
-  MANUAL: "Manual",
-  ON_SIGNUP: "On signup",
-  INCIDENT: "After incident",
-  LOW_RATING: "Low rating",
-  POLICY_UPDATE: "Policy update",
-  EXPIRY_DUE: "Expiry due",
-};
+const PROGRAM_TYPE_OPTIONS: ProgramType[] = [
+  "ONBOARDING",
+  "SAFETY",
+  "SKILL_UP",
+  "COMPLIANCE",
+  "OTHER",
+];
 
-const ASSIGNMENT_LABEL: Record<AssignmentControl, string> = {
-  ALL_DRIVERS: "All drivers",
-  BY_CITY: "By city",
-  BY_COHORT: "By cohort",
-  INCIDENT_TRIGGER: "Incident-based",
-  MANUAL: "Manual assign",
+interface ProgramFormState {
+  title: string;
+  description: string;
+  type: ProgramType;
+  mandatory: boolean;
+  passScore: string;
+}
+
+const initialProgramForm: ProgramFormState = {
+  title: "",
+  description: "",
+  type: "ONBOARDING",
+  mandatory: false,
+  passScore: "70",
 };
 
 interface FormState {
@@ -274,6 +124,7 @@ const initialForm: FormState = {
 };
 
 export default function TrainingManagement() {
+  const dialog = useDialog();
   const [viewMode, setViewMode] = useState<"programs" | "content">("programs");
   const [items, setItems] = useState<TrainingMaterialItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -295,6 +146,19 @@ export default function TrainingManagement() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Programs (real API)
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [programsLoading, setProgramsLoading] = useState(false);
+  const [programOverview, setProgramOverview] = useState<ProgramOverview>({
+    totalPrograms: 0,
+    totalEnrolled: 0,
+    totalCompleted: 0,
+    avgCompletion: 0,
+  });
+  const [isProgramModalOpen, setIsProgramModalOpen] = useState(false);
+  const [programForm, setProgramForm] = useState<ProgramFormState>(initialProgramForm);
+  const [savingProgram, setSavingProgram] = useState(false);
 
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
@@ -325,6 +189,91 @@ export default function TrainingManagement() {
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
+
+  const fetchPrograms = useCallback(async () => {
+    setProgramsLoading(true);
+    try {
+      const res = await trainingApi.listPrograms();
+      const data = res.data || res;
+      setPrograms(data.programs || []);
+      setProgramOverview(
+        data.overview || {
+          totalPrograms: 0,
+          totalEnrolled: 0,
+          totalCompleted: 0,
+          avgCompletion: 0,
+        },
+      );
+    } catch {
+      showNotification("error", "Failed to load training programs");
+    } finally {
+      setProgramsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPrograms();
+  }, [fetchPrograms]);
+
+  useEffect(() => {
+    if (viewMode === "programs") fetchPrograms();
+  }, [viewMode, fetchPrograms]);
+
+  const openProgramModal = () => {
+    setProgramForm(initialProgramForm);
+    setIsProgramModalOpen(true);
+  };
+
+  const handleSaveProgram = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!programForm.title.trim()) {
+      showNotification("error", "Title is required");
+      return;
+    }
+    setSavingProgram(true);
+    try {
+      await trainingApi.createProgram({
+        title: programForm.title.trim(),
+        description: programForm.description.trim() || undefined,
+        type: programForm.type,
+        mandatory: programForm.mandatory,
+        passScore: Number(programForm.passScore) || 0,
+      });
+      showNotification("success", "Program created");
+      setIsProgramModalOpen(false);
+      fetchPrograms();
+    } catch (err: unknown) {
+      showNotification("error", err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSavingProgram(false);
+    }
+  };
+
+  const handleToggleProgram = async (id: string) => {
+    try {
+      await trainingApi.toggleProgram(id);
+      fetchPrograms();
+    } catch {
+      showNotification("error", "Toggle failed");
+    }
+  };
+
+  const handleDeleteProgram = async (id: string) => {
+    const ok = await dialog.confirm({
+      title: "Delete program?",
+      message: "This training program will be permanently removed.",
+      tone: "danger",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    try {
+      await trainingApi.deleteProgram(id);
+      showNotification("success", "Deleted");
+      fetchPrograms();
+    } catch {
+      showNotification("error", "Delete failed");
+    }
+  };
 
   const openAdd = () => {
     setForm(initialForm);
@@ -388,7 +337,8 @@ export default function TrainingManagement() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this training material?")) return;
+    const ok = await dialog.confirm({ title: "Delete material?", message: "This training material will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
     try {
       await trainingApi.delete(id);
       showNotification("success", "Deleted");
@@ -399,17 +349,6 @@ export default function TrainingManagement() {
   };
 
   const needsFile = form.type !== "youtube";
-
-  const programStats = useMemo(() => {
-    const totalPrograms = PROGRAM_SEEDS.length;
-    const totalEnrolled = PROGRAM_SEEDS.reduce((a, p) => a + p.enrolled, 0);
-    const totalCertified = PROGRAM_SEEDS.reduce((a, p) => a + p.certified, 0);
-    const reTrainingDue = PROGRAM_SEEDS.reduce((a, p) => a + p.reTrainingDue, 0);
-    const avgCompletion = Math.round(
-      PROGRAM_SEEDS.reduce((a, p) => a + p.completionRate, 0) / totalPrograms,
-    );
-    return { totalPrograms, totalEnrolled, totalCertified, reTrainingDue, avgCompletion };
-  }, []);
 
   return (
     <div className="space-y-6 p-6 max-w-7xl mx-auto">
@@ -434,7 +373,7 @@ export default function TrainingManagement() {
         )}
         {viewMode === "programs" && (
           <button
-            onClick={() => showNotification("success", "Program builder coming soon — backend in progress")}
+            onClick={openProgramModal}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             <Plus size={18} /> New Program
@@ -458,27 +397,39 @@ export default function TrainingManagement() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Active Programs</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{programStats.totalPrograms}</p>
-                <p className="text-xs text-gray-400 mt-1">Across 5 categories</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{programOverview.totalPrograms}</p>
+                <p className="text-xs text-gray-400 mt-1">Total training programs</p>
               </div>
               <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
                 <BookOpen className="w-5 h-5 text-blue-600" />
               </div>
             </div>
           </div>
+          <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-indigo-500 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Total Enrolled</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">
+                  {programOverview.totalEnrolled.toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Across all programs</p>
+              </div>
+              <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <Users className="w-5 h-5 text-indigo-600" />
+              </div>
+            </div>
+          </div>
           <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-green-500 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Certified Drivers</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Completed</p>
                 <p className="text-2xl font-bold text-gray-900 mt-1">
-                  {programStats.totalCertified.toLocaleString()}
+                  {programOverview.totalCompleted.toLocaleString()}
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  of {programStats.totalEnrolled.toLocaleString()} enrolled
-                </p>
+                <p className="text-xs text-gray-400 mt-1">Completed enrollments</p>
               </div>
               <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                <Award className="w-5 h-5 text-green-600" />
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
               </div>
             </div>
           </div>
@@ -486,23 +437,11 @@ export default function TrainingManagement() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Avg Completion</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{programStats.avgCompletion}%</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{programOverview.avgCompletion}%</p>
                 <p className="text-xs text-gray-400 mt-1">Across all programs</p>
               </div>
               <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-purple-600" />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Re-training Due</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{programStats.reTrainingDue}</p>
-                <p className="text-xs text-gray-400 mt-1">Certificates expiring</p>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
-                <AlertCircle className="w-5 h-5 text-amber-600" />
               </div>
             </div>
           </div>
@@ -522,7 +461,7 @@ export default function TrainingManagement() {
           <GraduationCap className="w-4 h-4" />
           Training Programs
           <span className="ml-1 text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
-            {programStats.totalPrograms}
+            {programs.length}
           </span>
         </button>
         <button
@@ -543,107 +482,96 @@ export default function TrainingManagement() {
 
       {/* Training Programs view */}
       {viewMode === "programs" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {PROGRAM_SEEDS.map((p) => {
-            const tone = PROGRAM_TYPE_TONE[p.type];
-            const completionTone =
-              p.completionRate >= 85
-                ? "bg-green-500"
-                : p.completionRate >= 65
-                ? "bg-blue-500"
-                : "bg-amber-500";
-            const impactTone =
-              p.impactScore >= 85
-                ? "text-green-700"
-                : p.impactScore >= 70
-                ? "text-blue-700"
-                : "text-amber-700";
-            return (
-              <div
-                key={p.id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <h3 className="font-semibold text-gray-900 text-base">{p.title}</h3>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tone.badge}`}>
-                        {tone.label}
-                      </span>
-                      {p.mandatory && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
-                          <AlertCircle className="w-3 h-3" /> Mandatory
+        programsLoading ? (
+          <div className="text-center py-16 text-gray-400 text-sm">Loading programs…</div>
+        ) : programs.length === 0 ? (
+          <div className="bg-white rounded-xl border border-dashed border-gray-300 py-16 text-center">
+            <GraduationCap className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-500">
+              No training programs yet. Click 'New Program' to create one.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {programs.map((p) => {
+              const tone = PROGRAM_TYPE_TONE[p.type] || PROGRAM_TYPE_TONE.OTHER;
+              const completionTone =
+                p.completionRate >= 85
+                  ? "bg-green-500"
+                  : p.completionRate >= 65
+                  ? "bg-blue-500"
+                  : "bg-amber-500";
+              return (
+                <div
+                  key={p._id}
+                  className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <h3 className="font-semibold text-gray-900 text-base">{p.title}</h3>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tone.badge}`}>
+                          {tone.label}
                         </span>
-                      )}
-                      {p.certification && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
-                          <Award className="w-3 h-3" /> Certified
+                        {p.mandatory && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200">
+                            <AlertCircle className="w-3 h-3" /> Mandatory
+                          </span>
+                        )}
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          p.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {p.isActive ? "Active" : "Inactive"}
                         </span>
+                      </div>
+                      {p.description && (
+                        <p className="text-xs text-gray-500 leading-snug">{p.description}</p>
                       )}
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        p.status === "ACTIVE" ? "bg-green-100 text-green-700" :
-                        p.status === "DRAFT" ? "bg-amber-100 text-amber-700" :
-                        "bg-gray-100 text-gray-600"
-                      }`}>
-                        {p.status}
-                      </span>
                     </div>
-                    <p className="text-xs text-gray-500 leading-snug">{p.description}</p>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleToggleProgram(p._id)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          p.isActive
+                            ? "bg-green-100 text-green-700 hover:bg-green-200"
+                            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                        }`}
+                        title={p.isActive ? "Deactivate" : "Activate"}
+                      >
+                        {p.isActive ? "Active" : "Inactive"}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProgram(p._id)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 rounded"
+                        title="Delete program"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-5 gap-2 mb-3 text-xs">
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
-                      <Layers className="w-3 h-3" /> Modules
+                  <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
+                    <div className="bg-gray-50 rounded-lg p-2 text-center">
+                      <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
+                        <Layers className="w-3 h-3" /> Materials
+                      </div>
+                      <div className="font-semibold text-gray-900">{p.materialIds.length}</div>
                     </div>
-                    <div className="font-semibold text-gray-900">{p.modules}</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
-                      <Clock className="w-3 h-3" /> Duration
+                    <div className="bg-gray-50 rounded-lg p-2 text-center">
+                      <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
+                        <CheckCircle2 className="w-3 h-3" /> Pass Score
+                      </div>
+                      <div className="font-semibold text-gray-900">{p.passScore}%</div>
                     </div>
-                    <div className="font-semibold text-gray-900">{p.durationMin}m</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
-                      <CheckCircle2 className="w-3 h-3" /> Pass
-                    </div>
-                    <div className="font-semibold text-gray-900">
-                      {p.assessment ? `${p.passScore}%` : "—"}
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
-                      <TrendingUp className="w-3 h-3" /> Avg Score
-                    </div>
-                    <div className={`font-semibold ${
-                      p.avgAssessmentScore >= p.passScore ? "text-green-700" : "text-amber-700"
-                    }`}>
-                      {p.assessment ? `${p.avgAssessmentScore}%` : "—"}
+                    <div className="bg-gray-50 rounded-lg p-2 text-center">
+                      <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
+                        <Users className="w-3 h-3" /> Enrolled
+                      </div>
+                      <div className="font-semibold text-gray-900">{p.enrolled.toLocaleString()}</div>
                     </div>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-2 text-center">
-                    <div className="flex items-center justify-center gap-1 text-gray-400 mb-0.5">
-                      <Clock className="w-3 h-3" /> Expiry
-                    </div>
-                    <div className="font-semibold text-gray-900">
-                      {p.expiryDays > 0 ? `${p.expiryDays}d` : "Never"}
-                    </div>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 text-xs border border-indigo-100">
-                    <Zap className="w-3 h-3" /> Trigger: {TRIGGER_LABEL[p.trigger]}
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-50 text-gray-700 text-xs border border-gray-200">
-                    <Users className="w-3 h-3" /> {ASSIGNMENT_LABEL[p.assignment]}
-                  </span>
-                </div>
-
-                <div className="border-t pt-3 space-y-2">
-                  <div>
+                  <div className="border-t pt-3">
                     <div className="flex items-center justify-between text-xs mb-1">
                       <span className="text-gray-500">Completion Rate</span>
                       <span className="font-semibold text-gray-900">{p.completionRate}%</span>
@@ -655,30 +583,11 @@ export default function TrainingManagement() {
                       />
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="text-gray-500">
-                      <span className="font-semibold text-gray-900">{p.certified.toLocaleString()}</span>
-                      <span className="text-gray-400"> / {p.enrolled.toLocaleString()}</span> certified
-                    </div>
-                    <div className={`flex items-center gap-1 font-semibold ${impactTone}`}>
-                      <TrendingUp className="w-3 h-3" />
-                      Impact {p.impactScore}
-                    </div>
-                  </div>
-                  {p.reTrainingDue > 0 && (
-                    <div className="flex items-center gap-1 text-xs text-amber-700 bg-amber-50 rounded-md px-2 py-1 border border-amber-200">
-                      <AlertCircle className="w-3 h-3" />
-                      {p.reTrainingDue} drivers due for re-training
-                    </div>
-                  )}
                 </div>
-              </div>
-            );
-          })}
-          <div className="lg:col-span-2 text-xs text-gray-400 italic px-2">
-            Programs view shows structured, module-based training with assessments and certification. The content library tab manages supporting media.
+              );
+            })}
           </div>
-        </div>
+        )
       )}
 
       {/* Filters (content view) */}
@@ -1016,6 +925,117 @@ export default function TrainingManagement() {
                     : isEditing
                       ? "Update"
                       : "Create"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Program Modal */}
+      {isProgramModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-bold text-gray-900">New Training Program</h2>
+              <button
+                onClick={() => setIsProgramModalOpen(false)}
+                className="p-1 hover:bg-gray-100 rounded-full"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProgram} className="p-6 space-y-5">
+              {/* Title */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={programForm.title}
+                  onChange={(e) => setProgramForm({ ...programForm, title: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. Driver Onboarding Essentials"
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={programForm.description}
+                  onChange={(e) => setProgramForm({ ...programForm, description: e.target.value })}
+                  rows={2}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Brief description..."
+                />
+              </div>
+
+              {/* Type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                <select
+                  value={programForm.type}
+                  onChange={(e) =>
+                    setProgramForm({ ...programForm, type: e.target.value as ProgramType })
+                  }
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {PROGRAM_TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {PROGRAM_TYPE_TONE[t].label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Pass score */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pass Score (%)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={programForm.passScore}
+                  onChange={(e) => setProgramForm({ ...programForm, passScore: e.target.value })}
+                  className="w-24 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Mandatory */}
+              <div className="flex items-center gap-2">
+                <input
+                  id="program-mandatory"
+                  type="checkbox"
+                  checked={programForm.mandatory}
+                  onChange={(e) =>
+                    setProgramForm({ ...programForm, mandatory: e.target.checked })
+                  }
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="program-mandatory" className="text-sm text-gray-700">
+                  Mandatory program
+                </label>
+              </div>
+
+              {/* Submit */}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsProgramModalOpen(false)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingProgram}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingProgram ? "Saving…" : "Create"}
                 </button>
               </div>
             </form>

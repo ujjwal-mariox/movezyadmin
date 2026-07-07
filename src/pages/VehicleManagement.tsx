@@ -16,8 +16,6 @@ import {
   Activity,
   Upload,
   Home,
-  TrendingUp,
-  Zap,
   MapPin,
   Package,
   Droplets,
@@ -26,6 +24,7 @@ import {
 import { vehicleTypesApi } from "../services/admin-api";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
+import { useDialog } from "../components/Layout/Dialog";
 
 interface VehicleType {
   _id: string;
@@ -85,6 +84,7 @@ const initialFormData: FormData = {
 };
 
 const VehicleManagement: React.FC = () => {
+  const dialog = useDialog();
   // Data state
   const [vehicleTypes, setVehicleTypes] = useState<VehicleType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -239,9 +239,8 @@ const VehicleManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this vehicle type?")) {
-      return;
-    }
+    const ok = await dialog.confirm({ title: "Delete vehicle type?", message: "This vehicle type will be permanently removed.", tone: "danger", confirmLabel: "Delete" });
+    if (!ok) return;
 
     try {
       setActionLoading(id);
@@ -424,14 +423,6 @@ const VehicleManagement: React.FC = () => {
         /* Vehicle Types Grid */
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {paginatedVehicleTypes.map((vt) => {
-            // Deterministic mock metrics derived from the id (swap when backend sends real usage)
-            const seed =
-              (vt._id || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0) ||
-              1;
-            const trips = 240 + (seed % 700);
-            const revenue = trips * (vt.baseFare + vt.perKmRate * 8);
-            const performance = 55 + (seed % 42); // 55-96
-            const surge = 1 + ((seed % 6) * 0.1); // 1.0x - 1.5x
             // Load types inferred from weight capacity
             const supports = {
               fragile: vt.maxWeightKg <= 50,
@@ -523,17 +514,6 @@ const VehicleManagement: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Surge & Speed Factor */}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 flex items-center gap-1">
-                    <Zap className="w-3.5 h-3.5 text-amber-500" />
-                    Surge / Speed
-                  </span>
-                  <span className="font-medium text-gray-900">
-                    {surge.toFixed(1)}x · ETA {(1 / surge).toFixed(2)}x
-                  </span>
-                </div>
-
                 {/* Service Area */}
                 <div className="flex gap-1.5 pt-2 flex-wrap">
                   {vt.showOnHomeScreen && (
@@ -581,59 +561,6 @@ const VehicleManagement: React.FC = () => {
                       Liquid
                     </span>
                   )}
-                </div>
-
-                {/* Usage + Performance */}
-                <div className="pt-3 mt-1 border-t border-gray-100">
-                  <div className="grid grid-cols-2 gap-3 mb-2">
-                    <div>
-                      <p className="text-[10px] font-semibold text-gray-400 uppercase">
-                        Trips (30d)
-                      </p>
-                      <p className="text-sm font-bold text-gray-900">
-                        {trips.toLocaleString("en-IN")}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-semibold text-gray-400 uppercase">
-                        Revenue
-                      </p>
-                      <p className="text-sm font-bold text-gray-900">
-                        ₹{(revenue / 1000).toFixed(1)}k
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-semibold text-gray-400 uppercase flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3" />
-                        Performance
-                      </span>
-                      <span
-                        className={`text-xs font-bold ${
-                          performance >= 80
-                            ? "text-green-600"
-                            : performance >= 65
-                              ? "text-amber-600"
-                              : "text-red-600"
-                        }`}
-                      >
-                        {performance}%
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 overflow-hidden bg-gray-100 rounded-full">
-                      <div
-                        className={`h-full rounded-full ${
-                          performance >= 80
-                            ? "bg-green-500"
-                            : performance >= 65
-                              ? "bg-amber-500"
-                              : "bg-red-500"
-                        }`}
-                        style={{ width: `${performance}%` }}
-                      />
-                    </div>
-                  </div>
                 </div>
               </div>
 

@@ -30,13 +30,19 @@ import {
   fetchOpsMetrics,
   fetchSnapshot,
   fetchDriverReports,
+  fetchReportSchedules,
+  createReportSchedule,
+  deleteReportSchedule,
+  runReportScheduleNow,
   type ReportRange,
   type ReportCityRow,
   type ReportCategoryRow,
   type ReportEnterpriseRow,
   type ReportOpsMetrics,
   type ReportSnapshot,
+  type ScheduledReportItem,
 } from "../services/api";
+import { useDialog } from "../components/Layout/Dialog";
 
 type MetricKey =
   | "revenue"
@@ -216,6 +222,7 @@ interface TopDriverRow {
 }
 
 const ReportsPage: React.FC = () => {
+  const dialog = useDialog();
   const [range, setRange] = useState<Range>("7D");
   const [granularity, setGranularity] = useState<Granularity>("DAY");
   const [primaryMetric, setPrimaryMetric] = useState<MetricKey>("revenue");
@@ -228,6 +235,92 @@ const ReportsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<ReportSnapshot | null>(null);
   const [builderSnapshot, setBuilderSnapshot] = useState<ReportSnapshot | null>(null);
+
+  // ── Scheduled reports ──
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [schedules, setSchedules] = useState<ScheduledReportItem[]>([]);
+  const [schedTemplate, setSchedTemplate] = useState("weekly_fin");
+  const [schedFrequency, setSchedFrequency] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [schedHour, setSchedHour] = useState(8);
+  const [schedRecipients, setSchedRecipients] = useState("");
+  const [schedSaving, setSchedSaving] = useState(false);
+  const [schedError, setSchedError] = useState<string | null>(null);
+
+  const loadSchedules = useCallback(async () => {
+    try {
+      const res = await fetchReportSchedules();
+      if (res?.success) setSchedules(res.data?.schedules || []);
+    } catch { /* non-fatal */ }
+  }, []);
+
+  const openScheduleModal = useCallback(() => {
+    setSchedError(null);
+    setScheduleModalOpen(true);
+    loadSchedules();
+  }, [loadSchedules]);
+
+  const handleCreateSchedule = useCallback(async () => {
+    const recipients = schedRecipients
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (recipients.length === 0) {
+      setSchedError("Enter at least one recipient email");
+      return;
+    }
+    setSchedSaving(true);
+    setSchedError(null);
+    try {
+      const label =
+        reportTemplates.find((t) => t.key === schedTemplate)?.label || schedTemplate;
+      const res = await createReportSchedule({
+        name: `${label} (${schedFrequency})`,
+        template: schedTemplate,
+        frequency: schedFrequency,
+        dayOfWeek: schedFrequency === "weekly" ? 0 : undefined,
+        dayOfMonth: schedFrequency === "monthly" ? 1 : undefined,
+        hour: schedHour,
+        recipients,
+      });
+      if (res?.success) {
+        setSchedRecipients("");
+        await loadSchedules();
+      } else {
+        setSchedError(res?.message || "Failed to create schedule");
+      }
+    } catch (e) {
+      setSchedError(e instanceof Error ? e.message : "Failed to create schedule");
+    } finally {
+      setSchedSaving(false);
+    }
+  }, [schedRecipients, schedTemplate, schedFrequency, schedHour, loadSchedules]);
+
+  const handleRunSchedule = useCallback(
+    async (id: string) => {
+      const res = await runReportScheduleNow(id);
+      await dialog.alert({
+        title: res?.success ? "Report run" : "Run failed",
+        message: res?.data?.message || res?.message || "Done",
+      });
+      loadSchedules();
+    },
+    [dialog, loadSchedules],
+  );
+
+  const handleDeleteSchedule = useCallback(
+    async (id: string) => {
+      const ok = await dialog.confirm({
+        title: "Delete schedule?",
+        message: "This scheduled report will stop running.",
+        tone: "danger",
+        confirmLabel: "Delete",
+      });
+      if (!ok) return;
+      await deleteReportSchedule(id);
+      loadSchedules();
+    },
+    [dialog, loadSchedules],
+  );
   const [cities, setCities] = useState<ReportCityRow[]>([]);
   const [categories, setCategories] = useState<ReportCategoryRow[]>([]);
   const [enterprises, setEnterprises] = useState<ReportEnterpriseRow[]>([]);
@@ -863,14 +956,136 @@ const ReportsPage: React.FC = () => {
                 <FileText className="w-4 h-4" />
                 Generate Report
               </button>
-              <button className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50">
+              <button
+                onClick={openScheduleModal}
+                className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-50"
+              >
                 <Calendar className="w-3.5 h-3.5" />
-                Schedule weekly
+                Schedule reports
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {scheduleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[88vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-gray-900">Scheduled Reports</h2>
+              <button
+                onClick={() => setScheduleModalOpen(false)}
+                className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-6">
+              {/* Create form */}
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700">New schedule</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Report</label>
+                    <select
+                      value={schedTemplate}
+                      onChange={(e) => setSchedTemplate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    >
+                      {reportTemplates.map((t) => (
+                        <option key={t.key} value={t.key}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Frequency</label>
+                    <select
+                      value={schedFrequency}
+                      onChange={(e) => setSchedFrequency(e.target.value as "daily" | "weekly" | "monthly")}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly (Mon)</option>
+                      <option value="monthly">Monthly (1st)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Hour (0-23)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={schedHour}
+                      onChange={(e) => setSchedHour(Math.min(23, Math.max(0, Number(e.target.value) || 0)))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Recipients (comma-separated)</label>
+                    <input
+                      type="text"
+                      value={schedRecipients}
+                      onChange={(e) => setSchedRecipients(e.target.value)}
+                      placeholder="ops@movezy.com, finance@movezy.com"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                {schedError && <p className="text-sm text-red-600">{schedError}</p>}
+                <button
+                  onClick={handleCreateSchedule}
+                  disabled={schedSaving}
+                  className="px-4 py-2 rounded-lg bg-movezy-600 text-white text-sm font-medium hover:bg-movezy-700 disabled:opacity-50"
+                >
+                  {schedSaving ? "Saving..." : "Create schedule"}
+                </button>
+              </div>
+
+              {/* Existing schedules */}
+              <div>
+                <p className="text-sm font-semibold text-gray-700 mb-2">
+                  Existing schedules ({schedules.length})
+                </p>
+                {schedules.length === 0 ? (
+                  <p className="text-sm text-gray-400">No schedules yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {schedules.map((s) => (
+                      <div
+                        key={s._id}
+                        className="flex items-center justify-between gap-3 p-3 border border-gray-100 rounded-xl"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{s.name}</p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {s.frequency} @ {s.hour}:00 · {s.recipients.join(", ")}
+                            {s.lastStatus ? ` · last: ${s.lastStatus}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => handleRunSchedule(s._id)}
+                            className="px-2.5 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-medium hover:bg-gray-200"
+                          >
+                            Run now
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSchedule(s._id)}
+                            className="px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
