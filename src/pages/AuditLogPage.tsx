@@ -359,6 +359,7 @@ const AuditLogPage: React.FC = () => {
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Suspicious</p>
               <p className="mt-1 text-2xl font-bold text-purple-600">{health.suspicious}</p>
+              <p className="mt-1 text-xs text-purple-600">(current page sample)</p>
             </div>
             <div className="flex items-center justify-center w-10 h-10 bg-purple-50 rounded-lg">
               <ShieldAlert className="w-5 h-5 text-purple-600" />

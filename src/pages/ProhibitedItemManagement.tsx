@@ -9,12 +9,9 @@ import {
   Loader2,
   Ban,
   Palette,
-  AlertTriangle,
-  ShieldAlert,
   ShieldCheck,
-  Eye,
-  Layers,
-  Zap,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
@@ -27,10 +24,6 @@ import {
   type ProhibitedItemData,
 } from "../services/api";
 
-type RiskLevel = "HIGH" | "MEDIUM" | "LOW";
-type ActionRule = "BLOCK" | "WARNING" | "REQUIRE_APPROVAL";
-type DetectionMethod = "IMAGE_AI" | "KEYWORD" | "MANUAL_REVIEW" | "DRIVER_REPORT";
-
 interface FormData {
   name: string;
   icon: string;
@@ -38,10 +31,6 @@ interface FormData {
   bgColor: string;
   description: string;
   sortOrder: number | string;
-  riskLevel: RiskLevel;
-  actionRule: ActionRule;
-  detectionMethod: DetectionMethod;
-  categoryMapping: string;
 }
 
 const initialFormData: FormData = {
@@ -51,29 +40,6 @@ const initialFormData: FormData = {
   bgColor: "#FFF3E0",
   description: "",
   sortOrder: 0,
-  riskLevel: "MEDIUM",
-  actionRule: "BLOCK",
-  detectionMethod: "MANUAL_REVIEW",
-  categoryMapping: "",
-};
-
-const riskTone: Record<RiskLevel, { badge: string; label: string; icon: React.ComponentType<{ className?: string }> }> = {
-  HIGH: { badge: "bg-red-50 text-red-700 border-red-200", label: "High Risk", icon: ShieldAlert },
-  MEDIUM: { badge: "bg-amber-50 text-amber-700 border-amber-200", label: "Medium", icon: AlertTriangle },
-  LOW: { badge: "bg-green-50 text-green-700 border-green-200", label: "Low", icon: ShieldCheck },
-};
-
-const actionTone: Record<ActionRule, { badge: string; label: string }> = {
-  BLOCK: { badge: "bg-red-100 text-red-700", label: "Block" },
-  WARNING: { badge: "bg-amber-100 text-amber-700", label: "Warning" },
-  REQUIRE_APPROVAL: { badge: "bg-blue-100 text-blue-700", label: "Needs Approval" },
-};
-
-const detectionLabel: Record<DetectionMethod, string> = {
-  IMAGE_AI: "Image AI",
-  KEYWORD: "Keyword Match",
-  MANUAL_REVIEW: "Manual Review",
-  DRIVER_REPORT: "Driver Report",
 };
 
 const presetColors = [
@@ -113,42 +79,13 @@ const ProhibitedItemManagement: React.FC = () => {
   const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
   const endIndex = Math.min(page * limit, totalItems);
 
-  // Per-item config (risk, action, detection, category) resolved from the item record
-  const itemMetrics = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        risk: RiskLevel;
-        action: ActionRule;
-        detection: DetectionMethod;
-        category: string;
-      }
-    >();
-    items.forEach((it) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = it as any;
-      map.set(it._id, {
-        risk: (raw.riskLevel as RiskLevel) || "MEDIUM",
-        action: (raw.actionRule as ActionRule) || "BLOCK",
-        detection: (raw.detectionMethod as DetectionMethod) || "MANUAL_REVIEW",
-        category: (raw.categoryMapping as string) || "—",
-      });
-    });
-    return map;
-  }, [items]);
-
   const overviewStats = useMemo(() => {
     let active = 0;
-    let high = 0;
-    let blocked = 0;
     items.forEach((it) => {
       if (it.isActive) active++;
-      const m = itemMetrics.get(it._id);
-      if (m?.risk === "HIGH") high++;
-      if (m?.action === "BLOCK") blocked++;
     });
-    return { total: paginationMeta.total || items.length, active, high, blocked };
-  }, [items, itemMetrics, paginationMeta.total]);
+    return { total: paginationMeta.total || items.length, active };
+  }, [items, paginationMeta.total]);
 
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
@@ -188,9 +125,6 @@ const ProhibitedItemManagement: React.FC = () => {
   };
 
   const handleEdit = (item: ProhibitedItemData) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = item as any;
-    const m = itemMetrics.get(item._id);
     setFormData({
       name: item.name,
       icon: item.icon || "",
@@ -198,10 +132,6 @@ const ProhibitedItemManagement: React.FC = () => {
       bgColor: item.bgColor || "#FFF3E0",
       description: item.description || "",
       sortOrder: item.sortOrder || 0,
-      riskLevel: (raw.riskLevel as RiskLevel) || m?.risk || "MEDIUM",
-      actionRule: (raw.actionRule as ActionRule) || m?.action || "BLOCK",
-      detectionMethod: (raw.detectionMethod as DetectionMethod) || m?.detection || "MANUAL_REVIEW",
-      categoryMapping: (raw.categoryMapping as string) || m?.category || "",
     });
     setIsEditing(true);
     setEditingId(item._id);
@@ -216,8 +146,7 @@ const ProhibitedItemManagement: React.FC = () => {
 
     try {
       setActionLoading("save");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: any = { ...formData, sortOrder: Number(formData.sortOrder) || 0 };
+      const payload = { ...formData, sortOrder: Number(formData.sortOrder) || 0 };
       if (isEditing && editingId) {
         await updateProhibitedItem(editingId, payload);
         showNotification("success", "Prohibited item updated");
@@ -231,6 +160,22 @@ const ProhibitedItemManagement: React.FC = () => {
       showNotification(
         "error",
         error instanceof Error ? error.message : "Failed to save"
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleToggle = async (item: ProhibitedItemData) => {
+    try {
+      setActionLoading(item._id);
+      await updateProhibitedItem(item._id, { isActive: !item.isActive });
+      showNotification("success", `Item ${item.isActive ? "deactivated" : "activated"}`);
+      await loadData(page, limit);
+    } catch (error: unknown) {
+      showNotification(
+        "error",
+        error instanceof Error ? error.message : "Failed to toggle"
       );
     } finally {
       setActionLoading(null);
@@ -307,7 +252,7 @@ const ProhibitedItemManagement: React.FC = () => {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -329,30 +274,6 @@ const ProhibitedItemManagement: React.FC = () => {
             </div>
             <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
               <ShieldCheck className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-red-500 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">High Risk</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{overviewStats.high}</p>
-              <p className="text-xs text-gray-400 mt-1">Safety / compliance critical</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
-              <ShieldAlert className="w-5 h-5 text-red-600" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Hard Blocked</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{overviewStats.blocked}</p>
-              <p className="text-xs text-gray-400 mt-1">Booking auto-rejected</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-amber-600" />
             </div>
           </div>
         </div>
@@ -384,18 +305,6 @@ const ProhibitedItemManagement: React.FC = () => {
                   Item
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  Category
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  Risk Level
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  Action Rule
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  Detection
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                   Status
                 </th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
@@ -405,12 +314,6 @@ const ProhibitedItemManagement: React.FC = () => {
             </thead>
             <tbody className="divide-y">
               {paginatedItems.map((item) => {
-                const m = itemMetrics.get(item._id);
-                const risk = m?.risk || "MEDIUM";
-                const action = m?.action || "BLOCK";
-                const detection = m?.detection || "MANUAL_REVIEW";
-                const category = m?.category || "—";
-                const RiskIcon = riskTone[risk].icon;
                 return (
                 <tr key={item._id} className="hover:bg-gray-50">
                   <td className="px-4 py-4">
@@ -442,33 +345,6 @@ const ProhibitedItemManagement: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-4 py-4">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-50 text-gray-700 text-xs border border-gray-200">
-                      <Layers className="w-3 h-3" />
-                      {category}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${riskTone[risk].badge}`}
-                    >
-                      <RiskIcon className="w-3 h-3" />
-                      {riskTone[risk].label}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span
-                      className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${actionTone[action].badge}`}
-                    >
-                      {actionTone[action].label}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex items-center gap-1 text-xs text-gray-600">
-                      <Eye className="w-3 h-3 text-gray-400" />
-                      {detectionLabel[detection]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-medium ${
                         item.isActive
@@ -481,6 +357,22 @@ const ProhibitedItemManagement: React.FC = () => {
                   </td>
                   <td className="px-4 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => handleToggle(item)}
+                        disabled={actionLoading === item._id}
+                        className={`p-2 rounded-lg transition-colors ${
+                          item.isActive
+                            ? "text-green-600 hover:bg-green-50"
+                            : "text-gray-400 hover:bg-gray-100"
+                        }`}
+                        title={item.isActive ? "Deactivate" : "Activate"}
+                      >
+                        {item.isActive ? (
+                          <ToggleRight className="w-4 h-4" />
+                        ) : (
+                          <ToggleLeft className="w-4 h-4" />
+                        )}
+                      </button>
                       <button
                         onClick={() => handleEdit(item)}
                         className="p-2 rounded-lg hover:bg-blue-50 text-blue-600"
@@ -637,82 +529,6 @@ const ProhibitedItemManagement: React.FC = () => {
                   rows={2}
                   placeholder="Additional description..."
                 />
-              </div>
-
-              {/* Risk & Enforcement */}
-              <div className="border-t pt-4">
-                <p className="text-xs font-semibold uppercase text-gray-500 mb-3 flex items-center gap-1">
-                  <ShieldAlert className="w-3 h-3" />
-                  Risk &amp; Enforcement
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Risk Level
-                    </label>
-                    <select
-                      value={formData.riskLevel}
-                      onChange={(e) =>
-                        setFormData({ ...formData, riskLevel: e.target.value as RiskLevel })
-                      }
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="HIGH">High — safety / compliance critical</option>
-                      <option value="MEDIUM">Medium — advisory</option>
-                      <option value="LOW">Low — informational</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Action Rule
-                    </label>
-                    <select
-                      value={formData.actionRule}
-                      onChange={(e) =>
-                        setFormData({ ...formData, actionRule: e.target.value as ActionRule })
-                      }
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="BLOCK">Block — reject booking</option>
-                      <option value="WARNING">Warning — allow with alert</option>
-                      <option value="REQUIRE_APPROVAL">Requires manual approval</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Detection Method
-                    </label>
-                    <select
-                      value={formData.detectionMethod}
-                      onChange={(e) =>
-                        setFormData({ ...formData, detectionMethod: e.target.value as DetectionMethod })
-                      }
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="MANUAL_REVIEW">Manual Review</option>
-                      <option value="KEYWORD">Keyword Match</option>
-                      <option value="IMAGE_AI">Image AI</option>
-                      <option value="DRIVER_REPORT">Driver Report</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Category Mapping
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.categoryMapping}
-                      onChange={(e) =>
-                        setFormData({ ...formData, categoryMapping: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="e.g. Hazardous"
-                    />
-                  </div>
-                </div>
-                <p className="text-[11px] text-gray-400 mt-2">
-                  Risk level drives enforcement tier; action rule determines how the booking flow responds when this item is detected.
-                </p>
               </div>
 
               {/* Sort Order */}

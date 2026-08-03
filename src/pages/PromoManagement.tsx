@@ -15,11 +15,6 @@ import {
   Gift,
   X,
   Power,
-  AlertTriangle,
-  Target,
-  Users as UsersIcon,
-  Truck,
-  Globe,
   ArrowUpRight,
 } from "lucide-react";
 import {
@@ -34,11 +29,14 @@ import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import { useDialog } from "../components/Layout/Dialog";
 
-type TargetAudience = "all" | "users" | "drivers" | "city";
-
 const PromoManagement: React.FC = () => {
   const dialog = useDialog();
   const [promos, setPromos] = useState<PromoCodeItem[]>([]);
+  const [queryTotals, setQueryTotals] = useState<{
+    totalDiscount: number;
+    totalRevenue: number;
+    totalRedemptions: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
@@ -54,11 +52,6 @@ const PromoManagement: React.FC = () => {
   const [editingPromo, setEditingPromo] = useState<PromoCodeItem | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // Automation state (UI-only, swap to backend when ready)
-  const [autoEnableScheduled, setAutoEnableScheduled] = useState(true);
-  const [autoDisableExpired, setAutoDisableExpired] = useState(true);
-  const [notifyOnLowUsage, setNotifyOnLowUsage] = useState(false);
-
   // Form state
   const [formData, setFormData] = useState<{
     code: string;
@@ -71,8 +64,6 @@ const PromoManagement: React.FC = () => {
     perUserLimit: number | string;
     validFrom: string;
     validTo: string;
-    targetAudience: TargetAudience;
-    targetCity: string;
   }>({
     code: "",
     description: "",
@@ -80,12 +71,11 @@ const PromoManagement: React.FC = () => {
     discountValue: 10,
     minOrderValue: 0,
     maxDiscount: 0,
-    maxUsage: 0,
+    // Blank, matching the field's "blank = unlimited" hint; it is sent as -1.
+    maxUsage: "",
     perUserLimit: 1,
     validFrom: "",
     validTo: "",
-    targetAudience: "all",
-    targetCity: "",
   });
 
   const loadPromos = useCallback(async (p: number, l: number) => {
@@ -98,6 +88,10 @@ const PromoManagement: React.FC = () => {
         total: res.data?.total || 0,
         totalPages: res.data?.totalPages || 0,
       });
+      // Cross-page totals for the same filtered query. Null when an older
+      // backend does not send them, so the cards fall back to per-page sums and
+      // say so, rather than printing a page total under a platform-wide label.
+      setQueryTotals(res.data?.totals ?? null);
     } catch (err) {
       console.error("Failed to load promos", err);
     } finally {
@@ -144,14 +138,43 @@ const PromoManagement: React.FC = () => {
       (sum, p) => sum + (p.usedCount || 0),
       0,
     );
-    const totalDiscount = promos.reduce((sum, p) => {
-      if (p.discountType === "FIXED") {
-        return sum + p.discountValue * (p.usedCount || 0);
-      }
-      return sum + (p.maxDiscount || 50) * (p.usedCount || 0);
-    }, 0);
-    return { active, expired, totalRedemptions, totalDiscount };
-  }, [promos]);
+    // Discount given = the server's Σ PromoUsage.discountAmount per promo
+    // (promo.controller.ts getAllPromos attaches realDiscount). The old estimate
+    // multiplied redemptions by maxDiscount — or by a hardcoded ₹50 when
+    // maxDiscount was 0 — and therefore contradicted the row beneath it.
+    const totalDiscount = promos.reduce((sum, p) => sum + (p.realDiscount ?? 0), 0);
+
+    // Redemptions and discount now come from a cross-page aggregate over the
+    // same filtered query when the backend sends one; the per-page sums remain
+    // as the fallback. Active/expired counts stay per-page — they are counts of
+    // the rows on screen and there is no cross-page equivalent to swap in.
+    return {
+      active,
+      expired,
+      totalRedemptions: queryTotals?.totalRedemptions ?? totalRedemptions,
+      totalDiscount: queryTotals?.totalDiscount ?? totalDiscount,
+      isPlatformWide: queryTotals !== null,
+    };
+  }, [promos, queryTotals]);
+
+  // "0 = unlimited" is only true because the CREATE handler maps a falsy
+  // maxUsage to -1 (promo.controller.ts createPromo). The UPDATE handler writes
+  // req.body straight through, so a literal 0 used to persist — and redemption
+  // checks `maxUsage !== -1 && usedCount >= maxUsage`, i.e. 0 >= 0, which made
+  // the promo permanently unredeemable. Send the -1 sentinel the schema and the
+  // validator actually mean by "unlimited".
+  const normalizeMaxUsage = (value: number | string) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : -1;
+  };
+
+  // perUserLimit 0 is the same trap: validatePromoCode rejects on
+  // `userUsageCount >= perUserLimit`, so 0 means "nobody may ever use it".
+  // createPromo already coerces falsy to 1; match that on update.
+  const normalizePerUserLimit = (value: number | string) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  };
 
   const handleSave = async () => {
     try {
@@ -162,8 +185,8 @@ const PromoManagement: React.FC = () => {
           discountValue: Number(formData.discountValue) || 0,
           minOrderValue: Number(formData.minOrderValue) || 0,
           maxDiscount: Number(formData.maxDiscount) || 0,
-          maxUsage: Number(formData.maxUsage) || 0,
-          perUserLimit: Number(formData.perUserLimit) || 0,
+          maxUsage: normalizeMaxUsage(formData.maxUsage),
+          perUserLimit: normalizePerUserLimit(formData.perUserLimit),
           validFrom: formData.validFrom,
           validTo: formData.validTo,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -176,8 +199,8 @@ const PromoManagement: React.FC = () => {
           discountValue: Number(formData.discountValue) || 0,
           minOrderValue: Number(formData.minOrderValue) || 0,
           maxDiscount: Number(formData.maxDiscount) || 0,
-          maxUsage: Number(formData.maxUsage) || 0,
-          perUserLimit: Number(formData.perUserLimit) || 0,
+          maxUsage: normalizeMaxUsage(formData.maxUsage),
+          perUserLimit: normalizePerUserLimit(formData.perUserLimit),
           validFrom: formData.validFrom,
           validTo: formData.validTo,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -188,6 +211,11 @@ const PromoManagement: React.FC = () => {
       loadPromos(page, limit);
     } catch (err) {
       console.error("Failed to save promo", err);
+      await dialog.alert({
+        title: "Save failed",
+        message: (err as Error).message || "Failed to save promo code",
+        tone: "danger",
+      });
     }
   };
 
@@ -199,6 +227,11 @@ const PromoManagement: React.FC = () => {
       loadPromos(page, limit);
     } catch (err) {
       console.error("Failed to delete promo", err);
+      await dialog.alert({
+        title: "Delete failed",
+        message: (err as Error).message || "Failed to delete promo code",
+        tone: "danger",
+      });
     }
   };
 
@@ -272,8 +305,6 @@ const PromoManagement: React.FC = () => {
       perUserLimit: 1,
       validFrom: "",
       validTo: "",
-      targetAudience: "all",
-      targetCity: "",
     });
     setEditingPromo(null);
   };
@@ -292,12 +323,12 @@ const PromoManagement: React.FC = () => {
       discountValue: promo.discountValue,
       minOrderValue: promo.minOrderValue || 0,
       maxDiscount: promo.maxDiscount || 0,
-      maxUsage: promo.maxUsage || 0,
+      // -1 is the stored "unlimited" sentinel and 0 is a cap nobody sets on
+      // purpose; both show as blank, which the field documents as unlimited.
+      maxUsage: promo.maxUsage > 0 ? promo.maxUsage : "",
       perUserLimit: promo.perUserLimit,
       validFrom: promo.validFrom ? promo.validFrom.split("T")[0] : "",
       validTo: promo.validTo ? promo.validTo.split("T")[0] : "",
-      targetAudience: "all",
-      targetCity: "",
     });
     setShowPanel(true);
   };
@@ -335,7 +366,7 @@ const PromoManagement: React.FC = () => {
             Promo Code Management
           </h2>
           <p className="text-sm text-gray-500">
-            Campaigns, redemptions, and smart automation
+            Campaigns and redemptions
           </p>
         </div>
         <button
@@ -347,14 +378,18 @@ const PromoManagement: React.FC = () => {
         </button>
       </div>
 
-      {/* Performance Strip */}
+      {/* Performance Strip. Redemptions and Discount Given are cross-page
+          aggregates over the same filtered query (getAllPromos `totals`), so
+          they no longer change meaning when an admin pages. Active/Expired are
+          still counts of the rows on screen — there is no cross-page equivalent
+          — and remain labelled that way. */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase">Active Codes</p>
               <p className="mt-1 text-2xl font-bold text-gray-800">{stats.active}</p>
-              <p className="mt-1 text-xs text-green-600">Live campaigns</p>
+              <p className="mt-1 text-xs text-green-600">Live campaigns (this page)</p>
             </div>
             <div className="flex items-center justify-center w-11 h-11 bg-green-50 rounded-xl">
               <Zap className="w-5 h-5 text-green-600" />
@@ -369,7 +404,9 @@ const PromoManagement: React.FC = () => {
               <p className="mt-1 text-2xl font-bold text-gray-800">
                 {stats.totalRedemptions.toLocaleString()}
               </p>
-              <p className="mt-1 text-xs text-blue-600">Across all codes</p>
+              <p className="mt-1 text-xs text-blue-600">
+                {stats.isPlatformWide ? "All codes matching this filter" : "Codes on this page"}
+              </p>
             </div>
             <div className="flex items-center justify-center w-11 h-11 bg-blue-50 rounded-xl">
               <CheckCircle className="w-5 h-5 text-blue-600" />
@@ -384,7 +421,9 @@ const PromoManagement: React.FC = () => {
               <p className="mt-1 text-2xl font-bold text-gray-800">
                 {formatCurrency(stats.totalDiscount)}
               </p>
-              <p className="mt-1 text-xs text-orange-600">Marketing spend</p>
+              <p className="mt-1 text-xs text-orange-600">
+                {stats.isPlatformWide ? "All codes matching this filter" : "Discount recorded, this page"}
+              </p>
             </div>
             <div className="flex items-center justify-center w-11 h-11 bg-orange-50 rounded-xl">
               <Gift className="w-5 h-5 text-orange-600" />
@@ -397,45 +436,14 @@ const PromoManagement: React.FC = () => {
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase">Expired Codes</p>
               <p className="mt-1 text-2xl font-bold text-gray-800">{stats.expired}</p>
-              <p className="mt-1 text-xs text-red-600">Auto-disabled</p>
+              {/* Counts end-dated OR manually deactivated codes — nothing
+                  auto-disables them, so don't say "auto-disabled". */}
+              <p className="mt-1 text-xs text-red-600">Expired or off (this page)</p>
             </div>
             <div className="flex items-center justify-center w-11 h-11 bg-red-50 rounded-xl">
               <XCircle className="w-5 h-5 text-red-600" />
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Automation Rules */}
-      <div className="p-5 bg-white border border-gray-100 shadow-sm rounded-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Zap className="w-5 h-5 text-movezy-500" />
-            <h3 className="text-sm font-semibold text-gray-800">Smart Automation</h3>
-          </div>
-          <span className="px-2 py-0.5 text-xs font-medium text-movezy-700 bg-movezy-50 rounded-full">
-            Always on
-          </span>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <RuleToggle
-            label="Auto-enable scheduled campaigns"
-            description="Promos go live at their start date"
-            checked={autoEnableScheduled}
-            onChange={setAutoEnableScheduled}
-          />
-          <RuleToggle
-            label="Auto-disable expired promos"
-            description="Cut off redemption at end date"
-            checked={autoDisableExpired}
-            onChange={setAutoDisableExpired}
-          />
-          <RuleToggle
-            label="Notify low-usage codes"
-            description="Alert if under 10% used near expiry"
-            checked={notifyOnLowUsage}
-            onChange={setNotifyOnLowUsage}
-          />
         </div>
       </div>
 
@@ -537,7 +545,9 @@ const PromoManagement: React.FC = () => {
                 <th className="px-3 py-3 text-xs font-semibold text-left text-gray-600 uppercase">Type</th>
                 <th className="px-3 py-3 text-xs font-semibold text-left text-gray-600 uppercase">Usage</th>
                 <th className="px-3 py-3 text-xs font-semibold text-left text-gray-600 uppercase">Redemption</th>
-                <th className="px-3 py-3 text-xs font-semibold text-left text-gray-600 uppercase">Revenue</th>
+                {/* Σ finalFare of the bookings that used the code — gross fare
+                    including the customer's GST, not platform revenue. */}
+                <th className="px-3 py-3 text-xs font-semibold text-left text-gray-600 uppercase">Booking Value</th>
                 <th className="px-3 py-3 text-xs font-semibold text-left text-gray-600 uppercase">Expiry</th>
                 <th className="px-3 py-3 text-xs font-semibold text-left text-gray-600 uppercase">Status</th>
                 <th className="px-3 py-3 text-xs font-semibold text-right text-gray-600 uppercase">Actions</th>
@@ -561,15 +571,21 @@ const PromoManagement: React.FC = () => {
                   const isExpired =
                     new Date(promo.validTo) < new Date() || !promo.isActive;
                   const used = promo.usedCount || 0;
-                  const max = promo.maxUsage || 0;
+                  // -1 (or a missing value) is the schema's "unlimited". A stored
+                  // 0 is NOT unlimited — redemption checks `usedCount >= maxUsage`,
+                  // so a 0 cap blocks every redemption. Rendering it as ∞ hid that.
+                  const isUnlimited =
+                    promo.maxUsage === undefined ||
+                    promo.maxUsage === null ||
+                    promo.maxUsage < 0;
+                  const max = isUnlimited ? 0 : promo.maxUsage;
+                  const capReached = !isUnlimited && used >= max;
                   const redemptionRate = max > 0 ? (used / max) * 100 : 0;
-                  // Real figures from the backend (PromoUsage + linked bookings).
-                  // Fall back to an estimate only if the backend didn't send them.
-                  const discount =
-                    promo.realDiscount ??
-                    (promo.discountType === "FIXED"
-                      ? promo.discountValue * used
-                      : (promo.maxDiscount || 50) * used);
+                  // Money figures come from the server only (getAllPromos attaches
+                  // realDiscount = Σ PromoUsage.discountAmount, realRevenue = Σ
+                  // finalFare of the linked bookings). No client-side estimate:
+                  // the previous maxDiscount-or-₹50 fallback invented spend.
+                  const discount = promo.realDiscount ?? 0;
                   const revenue = promo.realRevenue ?? 0;
                   const expiry = getExpiryLabel(promo.validTo);
                   const isSelected = selectedIds.has(promo._id);
@@ -630,13 +646,18 @@ const PromoManagement: React.FC = () => {
                         </p>
                       </td>
                       <td className="px-3 py-3">
-                        <div className="flex flex-col gap-1 w-[120px]">
+                        <div className="flex flex-col gap-1 w-[140px]">
                           <div className="flex items-center justify-between text-xs text-gray-600">
                             <span className="font-medium">{used}</span>
-                            <span className="text-gray-400">
-                              / {max || "∞"}
+                            <span className="text-gray-500">
+                              / {isUnlimited ? "Unlimited" : max}
                             </span>
                           </div>
+                          {!isUnlimited && max === 0 && (
+                            <span className="text-[10px] font-medium text-red-600">
+                              Cap is 0 — cannot be redeemed
+                            </span>
+                          )}
                           {max > 0 && (
                             <div className="w-full h-1.5 overflow-hidden bg-gray-100 rounded-full">
                               <div
@@ -695,19 +716,33 @@ const PromoManagement: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-3 py-3">
+                        {/* A code whose usage cap is spent is rejected at
+                            redemption ("Promo code usage limit reached"), so it
+                            must not read Active just because the dates are in
+                            range and isActive is true. */}
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
                             isExpired
                               ? "bg-gray-100 text-gray-600"
-                              : "bg-green-100 text-green-700"
+                              : capReached
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-green-100 text-green-700"
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
-                              isExpired ? "bg-gray-400" : "bg-green-500"
+                              isExpired
+                                ? "bg-gray-400"
+                                : capReached
+                                  ? "bg-amber-500"
+                                  : "bg-green-500"
                             }`}
                           />
-                          {isExpired ? "Inactive" : "Active"}
+                          {isExpired
+                            ? "Inactive"
+                            : capReached
+                              ? "Limit reached"
+                              : "Active"}
                         </span>
                       </td>
                       <td className="px-3 py-3">
@@ -770,7 +805,7 @@ const PromoManagement: React.FC = () => {
                   {editingPromo ? "Edit Promo Code" : "Create Promo Code"}
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Target audience, pricing rules, and schedule
+                  Pricing rules and schedule
                 </p>
               </div>
               <button
@@ -818,58 +853,6 @@ const PromoManagement: React.FC = () => {
                   placeholder="Get 20% off on your order"
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"
                 />
-              </div>
-
-              {/* Target Audience */}
-              <div>
-                <label className="block mb-2 text-xs font-semibold text-gray-600 uppercase">
-                  <Target className="inline w-3 h-3 mr-1" />
-                  Target Audience
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      { value: "all", label: "Everyone", icon: Globe },
-                      { value: "users", label: "Customers", icon: UsersIcon },
-                      { value: "drivers", label: "Drivers", icon: Truck },
-                      { value: "city", label: "By City", icon: Target },
-                    ] as const
-                  ).map((opt) => {
-                    const Icon = opt.icon;
-                    const active = formData.targetAudience === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() =>
-                          setFormData({
-                            ...formData,
-                            targetAudience: opt.value,
-                          })
-                        }
-                        className={`flex items-center gap-2 px-3 py-2.5 text-sm font-medium rounded-xl border transition-colors ${
-                          active
-                            ? "border-movezy-500 bg-movezy-50 text-movezy-700"
-                            : "border-gray-200 text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {formData.targetAudience === "city" && (
-                  <input
-                    type="text"
-                    value={formData.targetCity}
-                    onChange={(e) =>
-                      setFormData({ ...formData, targetCity: e.target.value })
-                    }
-                    placeholder="Enter city name (e.g., Bengaluru)"
-                    className="w-full px-4 py-2 mt-2 border border-gray-200 rounded-xl text-sm"
-                  />
-                )}
               </div>
 
               {/* Discount Type & Value */}
@@ -967,9 +950,13 @@ const PromoManagement: React.FC = () => {
                           e.target.value === "" ? "" : Number(e.target.value),
                       })
                     }
-                    placeholder="0 = unlimited"
+                    min={0}
+                    placeholder="Blank = unlimited"
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl"
                   />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Leave blank (or 0) for unlimited redemptions.
+                  </p>
                 </div>
                 <div>
                   <label className="block mb-1 text-xs font-semibold text-gray-600 uppercase">
@@ -977,6 +964,7 @@ const PromoManagement: React.FC = () => {
                   </label>
                   <input
                     type="number"
+                    min={1}
                     value={formData.perUserLimit}
                     onChange={(e) =>
                       setFormData({
@@ -1019,17 +1007,6 @@ const PromoManagement: React.FC = () => {
                   />
                 </div>
               </div>
-
-              {autoEnableScheduled && formData.validFrom && (
-                <div className="flex items-start gap-2 p-3 text-xs rounded-xl bg-blue-50 text-blue-700 border border-blue-100">
-                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>
-                    This promo will auto-activate on{" "}
-                    <strong>{formatDate(formData.validFrom)}</strong> and
-                    auto-disable after end date.
-                  </span>
-                </div>
-              )}
             </div>
 
             <div className="sticky bottom-0 flex gap-3 px-6 py-4 bg-white border-t border-gray-200">
@@ -1058,38 +1035,5 @@ const PromoManagement: React.FC = () => {
     </div>
   );
 };
-
-const RuleToggle: React.FC<{
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}> = ({ label, description, checked, onChange }) => (
-  <button
-    type="button"
-    onClick={() => onChange(!checked)}
-    className={`flex items-start gap-3 p-3 text-left border rounded-xl transition-colors ${
-      checked
-        ? "border-movezy-200 bg-movezy-50/50"
-        : "border-gray-200 bg-white hover:bg-gray-50"
-    }`}
-  >
-    <div
-      className={`mt-0.5 flex items-center w-9 h-5 shrink-0 rounded-full transition-colors ${
-        checked ? "bg-movezy-500" : "bg-gray-300"
-      }`}
-    >
-      <span
-        className={`inline-block w-4 h-4 bg-white rounded-full transform transition-transform ${
-          checked ? "translate-x-4" : "translate-x-0.5"
-        }`}
-      />
-    </div>
-    <div className="flex-1">
-      <p className="text-sm font-medium text-gray-800">{label}</p>
-      <p className="mt-0.5 text-xs text-gray-500">{description}</p>
-    </div>
-  </button>
-);
 
 export default PromoManagement;

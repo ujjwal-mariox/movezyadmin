@@ -39,8 +39,6 @@ import {
   CalendarDays,
   ArrowRightLeft,
   CircleDot,
-  Smartphone,
-  BatteryCharging,
   TrendingUp,
   TrendingDown,
   Timer,
@@ -59,7 +57,7 @@ type DriverStatus =
   | "suspended";
 
 type ApprovalFilter = "all" | "approved" | "document_not_complete" | "blocked";
-type AccountFilter = "all" | "active" | "inactive";
+type AccountFilter = "all" | "active" | "inactive" | "deleted";
 
 interface DriverBankDetails {
   accountHolderName?: string;
@@ -147,12 +145,14 @@ interface Driver {
   mobileNumber: string;
   countryCode: string;
   profilePhoto?: string;
-  gender?: string;
-  dob?: string;
-  bloodGroup?: string;
-  languages?: string[];
+  // Removed: gender / dob / bloodGroup / languages. They exist on the Driver
+  // schema but the only writers are PUT /driver/app/profile and
+  // POST /driver/personal-info, and neither is called by anything — the driver
+  // app has no edit-profile screen and the admin has no driver edit form. They
+  // were rendered as permanently blank rows.
   city: string;
-  state: string;
+  // Removed: state. Driver.state is created as "" and no client ever writes it
+  // (only the two dead profile endpoints above accept it).
   status: DriverStatus;
   rejectionReason?: string;
   suspensionReason?: string;
@@ -218,6 +218,49 @@ const maskNumber = (number: string, visibleDigits = 4) => {
   if (!number) return "-";
   const masked = number.slice(0, -visibleDigits).replace(/./g, "•");
   return masked + number.slice(-visibleDigits);
+};
+
+type DocState = "uploaded" | "expiring" | "expired" | "missing";
+
+/**
+ * Document status derived from the driver's real KYC record.
+ *
+ * This used to come from GET /admin/drivers/:id/enhanced, but that helper only
+ * builds entries for documents that carry an expiryDate — and the only KYC path
+ * with one is drivingLicense. So the panel either showed a single Driving
+ * License chip, or fell back to a hard-coded list that labelled Aadhaar/PAN/RC
+ * "missing" even when the driver had uploaded them. Presence is read straight
+ * off the KYC images instead; only the licence has an expiry to grade against.
+ *
+ * "uploaded" means the image is on file — not that an admin has approved it.
+ */
+const buildDocumentStatus = (
+  kyc: DriverKYC | null,
+): { type: string; status: DocState; expiresAt?: string }[] => {
+  const presence = (url?: string): DocState => (url ? "uploaded" : "missing");
+
+  const dl = kyc?.drivingLicense;
+  let dlStatus: DocState = presence(dl?.frontImage);
+  if (dlStatus === "uploaded" && dl?.expiryDate) {
+    const expiry = new Date(dl.expiryDate).getTime();
+    if (!Number.isNaN(expiry)) {
+      const daysLeft = (expiry - Date.now()) / 86400000;
+      if (daysLeft < 0) dlStatus = "expired";
+      else if (daysLeft <= 30) dlStatus = "expiring";
+    }
+  }
+
+  return [
+    {
+      type: "Driving License",
+      status: dlStatus,
+      expiresAt: dl?.expiryDate,
+    },
+    { type: "Aadhaar Card", status: presence(kyc?.aadhaar?.frontImage) },
+    { type: "PAN Card", status: presence(kyc?.pan?.frontImage) },
+    { type: "Vehicle RC", status: presence(kyc?.vehicleRc?.image) },
+    { type: "Selfie", status: presence(kyc?.selfie) },
+  ];
 };
 
 // ==================== STATUS CONFIG ====================
@@ -357,20 +400,24 @@ const DriverManagement: React.FC = () => {
   const [pendingLoading, setPendingLoading] = useState(false);
   const [assigningId, setAssigningId] = useState<string | null>(null);
 
-  // Enhanced driver data
+  // Enhanced driver data.
+  // Removed: reassignmentCount (Booking.reassignedFrom is not a schema path and
+  // nothing ever writes it, so the count was always 0), appVersion /
+  // batteryLevel / lastSeenAt (Driver.deviceInfo is never written — the driver
+  // app has no device_info_plus / battery_plus dependency and reports only
+  // lat/lng over the socket), documentStatus (the /enhanced helper only reads
+  // expiry dates, so it could never describe Aadhaar/PAN/RC — the panel now
+  // derives from the real KYC record), and acceptanceRate / lateDeliveryRate
+  // (never assigned, never rendered).
   const [enhancedData, setEnhancedData] = useState<{
     codBalance: number;
     weeklyEarnings: number;
-    reassignmentCount: number;
-    documentStatus: { type: string; status: "valid" | "expiring" | "expired" | "missing"; expiresAt?: string }[];
     weeklyBreakdown: { day: string; amount: number }[];
-    acceptanceRate?: number;
+    completionRate?: number;
     cancellationRate?: number;
-    lateDeliveryRate?: number;
+    avgRating30d?: number;
+    totalTrips30d?: number;
     daysSinceLastTrip?: number;
-    appVersion?: string;
-    batteryLevel?: number;
-    lastSeenAt?: string;
   } | null>(null);
 
   // Driver intelligence thresholds
@@ -400,7 +447,11 @@ const DriverManagement: React.FC = () => {
         search: search || undefined,
         status: statusFilter !== "all" ? statusFilter : undefined,
         isActive:
-          accountFilter === "all" ? undefined : accountFilter === "active",
+          accountFilter === "all" || accountFilter === "deleted"
+            ? undefined
+            : accountFilter === "active",
+        // Surfaces soft-deleted drivers so Restore is reachable.
+        deleted: accountFilter === "deleted" ? true : undefined,
         isOnline:
           onlineFilter === "all" ? undefined : onlineFilter === "online",
         page,
@@ -443,16 +494,31 @@ const DriverManagement: React.FC = () => {
     setEnhancedData(null);
     setDriverBookings([]);
 
-    // Load the driver's real booking history (for the Bookings tab).
+    // Load the driver's real booking history (for the Bookings tab), and
+    // derive days-since-last-trip from it — no endpoint returns that directly.
     setBookingsLoading(true);
     driversApi
       .getBookings(driver._id, { limit: 20 })
-      .then((res: any) => setDriverBookings(res?.data?.bookings || []))
+      .then((res: any) => {
+        const bookings = res?.data?.bookings || [];
+        setDriverBookings(bookings);
+        const lastCompleted = bookings.find(
+          (b: any) => b.status === "COMPLETED" && (b.completedAt || b.createdAt),
+        );
+        if (lastCompleted) {
+          const at = new Date(lastCompleted.completedAt || lastCompleted.createdAt).getTime();
+          const days = Math.max(0, Math.floor((Date.now() - at) / 86400000));
+          setEnhancedData((prev: any) => ({ ...(prev || {}), daysSinceLastTrip: days }));
+        }
+      })
       .catch(() => setDriverBookings([]))
       .finally(() => setBookingsLoading(false));
 
     try {
-      const [docResponse, vehicleResponse, codResponse, earningsResponse, docStatusResponse, reassignResponse] = await Promise.all([
+      // One call to /enhanced carries everything the panels show. The old code
+      // hit four separate endpoints and read keys none of them returned, so
+      // every figure rendered 0 or "—" for every driver.
+      const [docResponse, vehicleResponse, enhancedResponse] = await Promise.all([
         driversApi
           .getDocuments(driver._id)
           .catch(() => ({ data: { documents: null } })),
@@ -460,37 +526,39 @@ const DriverManagement: React.FC = () => {
           .getVehicles(driver._id)
           .catch(() => ({ data: { vehicles: [] } })),
         enhancedDriverApi
-          .getCODBalance(driver._id)
-          .catch(() => ({ data: { balance: 0 } })),
-        enhancedDriverApi
-          .getWeeklyEarnings(driver._id)
-          .catch(() => ({ data: { total: 0, breakdown: [] } })),
-        enhancedDriverApi
-          .getDocumentStatus(driver._id)
-          .catch(() => ({ data: { documents: [] } })),
-        enhancedDriverApi
-          .getReassignments(driver._id, { limit: 100 })
-          .catch(() => ({ data: { total: 0 } })),
+          .getEnhancedDetails(driver._id)
+          .catch(() => ({ data: null })),
       ]);
       setDriverKYC(docResponse.data?.documents || null);
       setDriverVehicles(vehicleResponse.data?.vehicles || []);
-      const codAny = codResponse.data as any;
-      const earnAny = earningsResponse.data as any;
-      const reassignAny = reassignResponse.data as any;
-      setEnhancedData({
-        codBalance: codAny?.balance || 0,
-        weeklyEarnings: earnAny?.total || 0,
-        reassignmentCount: reassignAny?.total || 0,
-        documentStatus: docStatusResponse.data?.documents || [],
-        weeklyBreakdown: earnAny?.breakdown || [],
-        acceptanceRate: earnAny?.acceptanceRate ?? reassignAny?.acceptanceRate,
-        cancellationRate: earnAny?.cancellationRate ?? reassignAny?.cancellationRate,
-        lateDeliveryRate: earnAny?.lateDeliveryRate,
-        daysSinceLastTrip: earnAny?.daysSinceLastTrip,
-        appVersion: codAny?.appVersion ?? earnAny?.appVersion,
-        batteryLevel: codAny?.batteryLevel ?? earnAny?.batteryLevel,
-        lastSeenAt: codAny?.lastSeenAt ?? earnAny?.lastSeenAt,
-      });
+
+      const enh = (enhancedResponse as any)?.data;
+      if (enh) {
+        const weekly = enh.weeklyEarnings || []; // [0] = most recent week
+        const perf = enh.performanceMetrics || {};
+        const totalTrips30 = Number(perf.totalTrips || 0);
+        const cancelled30 = Number(perf.cancelledTrips || 0);
+        setEnhancedData((prev: any) => ({
+          ...(prev || {}),
+          codBalance: Number(enh.codBalance?.floatingCash || 0),
+          weeklyEarnings: Number(weekly[0]?.totalEarnings || 0),
+          weeklyBreakdown: weekly
+            .slice()
+            .reverse() // oldest → newest, so the chart reads left to right
+            .map((w: any) => ({
+              day: new Date(w.weekStart).toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short",
+              }),
+              amount: Number(w.totalEarnings || 0),
+            })),
+          completionRate: Number(perf.completionRate || 0),
+          cancellationRate:
+            totalTrips30 > 0 ? (cancelled30 / totalTrips30) * 100 : 0,
+          avgRating30d: Number(perf.avgRating || 0),
+          totalTrips30d: totalTrips30,
+        }));
+      }
     } catch (err) {
       console.error("Failed to load driver details", err);
     }
@@ -837,9 +905,51 @@ const DriverManagement: React.FC = () => {
             <RefreshCcw className="w-4 h-4" />
             <span className="text-sm font-medium">Refresh</span>
           </button>
-          <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors bg-white shadow-sm">
+          <button
+            onClick={() => {
+              // CSV of the currently loaded page — honest scope, no fake
+              // full-fleet export (no such endpoint exists).
+              if (!drivers.length) return;
+              const esc = (v: unknown) =>
+                `"${String(v ?? "").replace(/"/g, '""')}"`;
+              // No City column: the list endpoint returns Driver.city, which is
+              // never written, so it exported as blank for every row.
+              const header = [
+                "Name",
+                "Phone",
+                "Email",
+                "Status",
+                "Online",
+                "Trips",
+                "Rating",
+                "Joined",
+              ].join(",");
+              const rows = drivers.map((d: any) =>
+                [
+                  esc(d.fullName),
+                  esc(`${d.countryCode || ""} ${d.mobileNumber || ""}`.trim()),
+                  esc(d.email),
+                  esc(d.status),
+                  esc(d.isOnline ? "online" : "offline"),
+                  esc(d.completedTrips ?? 0),
+                  esc(d.rating ?? 0),
+                  esc(d.createdAt ? new Date(d.createdAt).toISOString().slice(0, 10) : ""),
+                ].join(","),
+              );
+              const blob = new Blob([[header, ...rows].join("\n")], {
+                type: "text/csv;charset=utf-8",
+              });
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = `drivers-page-${page + 1}.csv`;
+              a.click();
+              URL.revokeObjectURL(a.href);
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors bg-white shadow-sm"
+            title="Download the current page as CSV"
+          >
             <Download className="w-4 h-4" />
-            <span className="text-sm font-medium">Export</span>
+            <span className="text-sm font-medium">Export page</span>
           </button>
         </div>
       </div>
@@ -1265,6 +1375,7 @@ const DriverManagement: React.FC = () => {
               <option value="all">All Account Status</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
+              <option value="deleted">Deleted (restorable)</option>
             </select>
           </div>
 
@@ -1365,10 +1476,12 @@ const DriverManagement: React.FC = () => {
                       <Phone className="w-3 h-3" />
                       {driver.countryCode} {driver.mobileNumber}
                     </p>
-                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {driver.city || "—"}, {driver.state || "—"}
-                    </p>
+                    {/* Removed: the "city, state" line. Both live on the Driver
+                        document, which is created with empty strings and is
+                        never updated by any client, so this always rendered
+                        "—, —". The city the driver actually picks during the RC
+                        step lands on DriverKyc/Vehicle, which the list endpoint
+                        does not join — it is shown in the detail modal. */}
                   </div>
                 </div>
 
@@ -1482,9 +1595,9 @@ const DriverManagement: React.FC = () => {
                   <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
                     Contact
                   </th>
-                  <th className="text-left px-6 py-4 text-sm font-semibold text-gray-600">
-                    Location
-                  </th>
+                  {/* Removed: the "Location" column — see the card view above;
+                      Driver.city / Driver.state are never written, so every row
+                      read "-, -". */}
                   <th className="text-center px-6 py-4 text-sm font-semibold text-gray-600">
                     Trips
                   </th>
@@ -1560,14 +1673,6 @@ const DriverManagement: React.FC = () => {
                               {driver.email}
                             </div>
                           )}
-                        </div>
-                      </td>
-
-                      {/* Location */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                          <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                          {driver.city || "-"}, {driver.state || "-"}
                         </div>
                       </td>
 
@@ -1888,6 +1993,12 @@ const DriverManagement: React.FC = () => {
                     <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
                       <User className="w-4 h-4" /> Personal Information
                     </h3>
+                    {/* Only fields onboarding actually captures. Email, Gender,
+                        Date of Birth, Blood Group and Languages were removed:
+                        the driver app has no screen that collects any of them
+                        (the owner-details step submits a name, three ID photos
+                        and a selfie), so every one of those rows was a
+                        permanent blank. */}
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-500">Full Name</span>
@@ -1896,37 +2007,9 @@ const DriverManagement: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Email</span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {selectedDriver.email || "-"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Gender</span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {selectedDriver.gender || "-"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">
-                          Date of Birth
-                        </span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {formatDate(selectedDriver.dob)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">
-                          Blood Group
-                        </span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {selectedDriver.bloodGroup || "-"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Languages</span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {selectedDriver.languages?.join(", ") || "-"}
+                        <span className="text-sm text-gray-500">Mobile</span>
+                        <span className="text-sm font-medium text-gray-900 font-mono">
+                          {selectedDriver.countryCode} {selectedDriver.mobileNumber}
                         </span>
                       </div>
                     </div>
@@ -1941,15 +2024,17 @@ const DriverManagement: React.FC = () => {
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-500">City</span>
                         <span className="text-sm font-medium text-gray-900">
-                          {selectedDriver.city || "-"}
+                          {/* The city IS collected — in the RC step, which
+                              writes DriverKyc.city (and Vehicle.city). Nothing
+                              copies it onto the Driver document, which is
+                              created with city: "" and never updated, so
+                              reading selectedDriver.city alone always showed
+                              "-". Fall back to the KYC record. */}
+                          {selectedDriver.city || driverKYC?.city || "-"}
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">State</span>
-                        <span className="text-sm font-medium text-gray-900">
-                          {selectedDriver.state || "-"}
-                        </span>
-                      </div>
+                      {/* Removed: State. Nothing in onboarding or the profile
+                          API ever sets Driver.state. */}
                     </div>
 
                     {selectedDriver.addresses &&
@@ -1995,11 +2080,27 @@ const DriverManagement: React.FC = () => {
                         </div>
                         <p className="text-xs text-gray-500">Rating</p>
                       </div>
+                      {/* `totalEarnings` is now Σ driverEarnings of the driver's
+                          COMPLETED bookings (getAllDrivers in
+                          admin/driver.controller.ts) — subtotal − commission,
+                          frozen per booking at completion, the same figure
+                          Finance → Payouts settles against. It used to sum
+                          finalFare, which includes the customer's GST and the
+                          platform's commission, so this tile disagreed with
+                          Payouts by roughly a third. The gross is still
+                          available on the same response as
+                          `grossFareCollected`. */}
                       <div className="bg-white rounded-lg p-3 text-center col-span-2">
-                        <p className="text-2xl font-bold text-green-600">
+                        <p className="text-2xl font-bold text-gray-900">
                           {formatCurrency(selectedDriver.totalEarnings || 0)}
                         </p>
-                        <p className="text-xs text-gray-500">Total Earnings</p>
+                        <p className="text-xs text-gray-500">
+                          Driver Earnings (net)
+                        </p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          After commission, excl. customer GST — the basis
+                          Finance → Payouts pays from
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -2038,29 +2139,33 @@ const DriverManagement: React.FC = () => {
                           </div>
                         );
                       })()}
+                      {/* Same basis as the tile above: getWeeklyEarnings
+                          (enhanced-driver.controller.ts) now sums the frozen
+                          driverEarnings the payout system settles against, not
+                          gross finalFare. */}
                       <div className="bg-white rounded-lg p-3 text-center">
-                        <p className="text-2xl font-bold text-blue-600">
+                        <p className="text-2xl font-bold text-gray-900">
                           {formatCurrency(enhancedData?.weeklyEarnings || 0)}
                         </p>
-                        <p className="text-xs text-gray-500">Weekly Earnings</p>
-                        <p className="text-[10px] text-gray-400">Last 7 days</p>
+                        <p className="text-xs text-gray-500">Earnings (7d)</p>
+                        <p className="text-[10px] text-gray-400">
+                          After commission, excl. GST
+                        </p>
                       </div>
-                      <div className="bg-white rounded-lg p-3 text-center col-span-2">
-                        <div className="flex items-center justify-center gap-1">
-                          <ArrowRightLeft className="w-5 h-5 text-purple-500" />
-                          <span className="text-2xl font-bold text-purple-600">
-                            {enhancedData?.reassignmentCount || 0}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500">Reassignments (30d)</p>
-                        <p className="text-[10px] text-gray-400">Orders reassigned from this driver</p>
-                      </div>
+                      {/* Removed: "Reassignments (30d)". The backend counts
+                          bookings by Booking.reassignedFrom, which is not a
+                          path on the Booking schema and is never written by any
+                          reassign/dispatch code — the tile was hard-zero for
+                          every driver. */}
                     </div>
                     {/* Weekly Earnings Breakdown */}
                     {enhancedData?.weeklyBreakdown && enhancedData.weeklyBreakdown.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-gray-200">
+                        {/* Bars are the same driverEarnings series as the tile
+                            above — net weekly earnings, matching Payouts. */}
                         <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
-                          <CalendarDays className="w-3 h-3" /> Weekly Breakdown
+                          <CalendarDays className="w-3 h-3" /> Weekly Breakdown —
+                          net earnings
                         </p>
                         <div className="flex justify-between gap-1">
                           {enhancedData.weeklyBreakdown.map((d, i) => (
@@ -2088,17 +2193,17 @@ const DriverManagement: React.FC = () => {
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {(() => {
-                        const acc = enhancedData?.acceptanceRate;
-                        const accDanger = acc != null && acc < 70;
+                        const comp = enhancedData?.completionRate;
+                        const compDanger = comp != null && comp < 70;
                         return (
-                          <div className={`rounded-lg p-3 text-center border ${accDanger ? "bg-red-50 border-red-200" : "bg-white border-gray-100"}`}>
+                          <div className={`rounded-lg p-3 text-center border ${compDanger ? "bg-red-50 border-red-200" : "bg-white border-gray-100"}`}>
                             <div className="flex items-center justify-center gap-1">
-                              <TrendingUp className={`w-4 h-4 ${accDanger ? "text-red-500" : "text-green-500"}`} />
-                              <span className={`text-2xl font-bold ${accDanger ? "text-red-600" : "text-green-600"}`}>
-                                {acc != null ? `${acc.toFixed(0)}%` : "—"}
+                              <TrendingUp className={`w-4 h-4 ${compDanger ? "text-red-500" : "text-green-500"}`} />
+                              <span className={`text-2xl font-bold ${compDanger ? "text-red-600" : "text-green-600"}`}>
+                                {comp != null ? `${Number(comp).toFixed(0)}%` : "—"}
                               </span>
                             </div>
-                            <p className="text-xs text-gray-500 mt-1">Acceptance Rate</p>
+                            <p className="text-xs text-gray-500 mt-1">Completion Rate (30d)</p>
                           </div>
                         );
                       })()}
@@ -2119,17 +2224,18 @@ const DriverManagement: React.FC = () => {
                         );
                       })()}
                       {(() => {
-                        const late = enhancedData?.lateDeliveryRate;
-                        const lateDanger = late != null && late > 15;
+                        const rating = enhancedData?.avgRating30d;
+                        const trips = enhancedData?.totalTrips30d ?? 0;
+                        const low = rating != null && rating > 0 && rating < 4;
                         return (
-                          <div className={`rounded-lg p-3 text-center border ${lateDanger ? "bg-yellow-50 border-yellow-200" : "bg-white border-gray-100"}`}>
+                          <div className={`rounded-lg p-3 text-center border ${low ? "bg-yellow-50 border-yellow-200" : "bg-white border-gray-100"}`}>
                             <div className="flex items-center justify-center gap-1">
-                              <Clock className={`w-4 h-4 ${lateDanger ? "text-yellow-600" : "text-gray-400"}`} />
-                              <span className={`text-2xl font-bold ${lateDanger ? "text-yellow-700" : "text-gray-700"}`}>
-                                {late != null ? `${late.toFixed(1)}%` : "—"}
+                              <Award className={`w-4 h-4 ${low ? "text-yellow-600" : "text-gray-400"}`} />
+                              <span className={`text-2xl font-bold ${low ? "text-yellow-700" : "text-gray-700"}`}>
+                                {rating ? Number(rating).toFixed(2) : "—"}
                               </span>
                             </div>
-                            <p className="text-xs text-gray-500 mt-1">Late Delivery %</p>
+                            <p className="text-xs text-gray-500 mt-1">Avg Rating (30d · {trips} trips)</p>
                           </div>
                         );
                       })()}
@@ -2151,50 +2257,12 @@ const DriverManagement: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Device Intelligence */}
-                  <div className="bg-gray-50 rounded-xl p-5 col-span-2">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                      <Smartphone className="w-4 h-4" /> Device Intelligence
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      <div className="bg-white rounded-lg p-3 border border-gray-100">
-                        <div className="flex items-center gap-2">
-                          <Smartphone className="w-4 h-4 text-blue-500" />
-                          <p className="text-xs font-semibold text-gray-500 uppercase">App Version</p>
-                        </div>
-                        <p className="text-lg font-bold text-gray-800 mt-1">
-                          {enhancedData?.appVersion || "—"}
-                        </p>
-                      </div>
-                      {(() => {
-                        const bat = enhancedData?.batteryLevel;
-                        const low = bat != null && bat < 20;
-                        return (
-                          <div className={`rounded-lg p-3 border ${low ? "bg-red-50 border-red-200" : "bg-white border-gray-100"}`}>
-                            <div className="flex items-center gap-2">
-                              <BatteryCharging className={`w-4 h-4 ${low ? "text-red-500" : "text-green-500"}`} />
-                              <p className="text-xs font-semibold text-gray-500 uppercase">Battery</p>
-                            </div>
-                            <p className={`text-lg font-bold mt-1 ${low ? "text-red-600" : "text-gray-800"}`}>
-                              {bat != null ? `${bat}%` : "—"}
-                              {low && <span className="ml-2 text-xs text-red-600 font-medium">Low</span>}
-                            </p>
-                          </div>
-                        );
-                      })()}
-                      <div className="bg-white rounded-lg p-3 border border-gray-100">
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-gray-500" />
-                          <p className="text-xs font-semibold text-gray-500 uppercase">Last Seen</p>
-                        </div>
-                        <p className="text-lg font-bold text-gray-800 mt-1">
-                          {enhancedData?.lastSeenAt
-                            ? new Date(enhancedData.lastSeenAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })
-                            : "—"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  {/* Removed: the whole "Device Intelligence" panel (App
+                      Version, Battery, Last Seen). It read Driver.deviceInfo,
+                      which no endpoint, socket handler or job ever writes — the
+                      driver app doesn't even depend on device_info_plus /
+                      battery_plus, and its only background telemetry is a
+                      lat/lng socket emit. All three tiles were permanently "—". */}
 
                   {/* Traffic Light Document Status */}
                   <div className="bg-gray-50 rounded-xl p-5 col-span-2">
@@ -2202,16 +2270,11 @@ const DriverManagement: React.FC = () => {
                       <FileCheck className="w-4 h-4" /> Document Status
                     </h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {(enhancedData?.documentStatus || [
-                        { type: "Driving License", status: "valid" },
-                        { type: "Aadhaar Card", status: "valid" },
-                        { type: "PAN Card", status: "valid" },
-                        { type: "Vehicle RC", status: "valid" },
-                      ]).map((doc, i) => (
+                      {buildDocumentStatus(driverKYC).map((doc, i) => (
                         <div
                           key={i}
                           className={`p-3 rounded-lg border flex items-center gap-2 ${
-                            doc.status === "valid"
+                            doc.status === "uploaded"
                               ? "bg-green-50 border-green-200"
                               : doc.status === "expiring"
                               ? "bg-yellow-50 border-yellow-200"
@@ -2222,7 +2285,7 @@ const DriverManagement: React.FC = () => {
                         >
                           <CircleDot
                             className={`w-4 h-4 ${
-                              doc.status === "valid"
+                              doc.status === "uploaded"
                                 ? "text-green-500"
                                 : doc.status === "expiring"
                                 ? "text-yellow-500"
@@ -2237,7 +2300,7 @@ const DriverManagement: React.FC = () => {
                             </p>
                             <p
                               className={`text-[10px] capitalize ${
-                                doc.status === "valid"
+                                doc.status === "uploaded"
                                   ? "text-green-600"
                                   : doc.status === "expiring"
                                   ? "text-yellow-600"
@@ -2247,11 +2310,13 @@ const DriverManagement: React.FC = () => {
                               }`}
                             >
                               {doc.status}
-                              {doc.expiresAt && doc.status === "expiring" && (
-                                <span className="ml-1">
-                                  ({new Date(doc.expiresAt).toLocaleDateString()})
-                                </span>
-                              )}
+                              {doc.expiresAt &&
+                                (doc.status === "expiring" ||
+                                  doc.status === "expired") && (
+                                  <span className="ml-1">
+                                    ({new Date(doc.expiresAt).toLocaleDateString()})
+                                  </span>
+                                )}
                             </p>
                           </div>
                         </div>
@@ -2259,7 +2324,7 @@ const DriverManagement: React.FC = () => {
                     </div>
                     <div className="mt-3 flex justify-center gap-4 text-[10px]">
                       <span className="flex items-center gap-1">
-                        <CircleDot className="w-3 h-3 text-green-500" /> Valid
+                        <CircleDot className="w-3 h-3 text-green-500" /> Uploaded
                       </span>
                       <span className="flex items-center gap-1">
                         <CircleDot className="w-3 h-3 text-yellow-500" /> Expiring Soon

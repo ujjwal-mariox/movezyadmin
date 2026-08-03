@@ -33,8 +33,16 @@ const ALL_SEARCH_ITEMS: SearchItem[] = [
   { id: "finance", label: "Finance & Insights", path: "/admin/finance", module: "finance", keywords: ["revenue", "payout", "commission", "analytics", "money", "cod"] },
   { id: "audit-logs", label: "Audit Logs", path: "/admin/audit-logs", module: "audit-logs", keywords: ["history", "trail", "accountability", "log"] },
   { id: "automation", label: "Automation Rules", path: "/admin/automation", module: "automation", keywords: ["rules", "triggers", "alerts", "engine"] },
-  { id: "compliance", label: "Document Compliance", path: "/admin/compliance", module: "riders", keywords: ["kyc", "expiry", "documents", "license"] },
-  { id: "cod-management", label: "COD Management", path: "/admin/cod-management", module: "finance", keywords: ["cash", "collection", "settlement"] },
+  // module was "riders", so visibility keyed off the wrong nav entry; the
+  // compliance module id is what the backend/sidebar actually gate this page on.
+  { id: "compliance", label: "Document Compliance", path: "/admin/compliance", module: "compliance", keywords: ["kyc", "expiry", "documents", "license"] },
+  { id: "reports", label: "Reports & BI", path: "/admin/reports", module: "reports", keywords: ["report", "bi", "insights", "export", "analytics"] },
+  { id: "commissions", label: "Commission & Charges", path: "/admin/commissions", module: "commissions", keywords: ["commission", "charges", "fare", "pricing"] },
+  { id: "cms", label: "Content & Policies", path: "/admin/cms", module: "cms", keywords: ["content", "policy", "terms", "privacy", "faq"] },
+  // /admin/cod-management is not a registered route (routes/index.ts) — the
+  // catch-all in App.tsx bounced it to the dashboard. COD is a tab of the
+  // Finance page, which is where this now goes.
+  { id: "cod-management", label: "COD Management", path: "/admin/finance", module: "finance", keywords: ["cash", "collection", "settlement", "cod"] },
 ];
 
 const GlobalSearch: React.FC = () => {

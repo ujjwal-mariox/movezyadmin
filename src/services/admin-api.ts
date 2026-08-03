@@ -119,30 +119,30 @@ export const enterpriseApi = {
   // Approve enterprise
   approve: (id: string, data: { creditLimit: number; billingCycle: string }) =>
     fetchWithAuth(`/admin/enterprises/${id}/approve`, {
-      method: "PUT",
+      method: "POST",
       body: JSON.stringify(data),
     }),
 
   // Reject enterprise
   reject: (id: string, reason: string) =>
     fetchWithAuth(`/admin/enterprises/${id}/reject`, {
-      method: "PUT",
+      method: "POST",
       body: JSON.stringify({ reason }),
     }),
 
   // Suspend enterprise
   suspend: (id: string, reason: string) =>
     fetchWithAuth(`/admin/enterprises/${id}/suspend`, {
-      method: "PUT",
+      method: "POST",
       body: JSON.stringify({ reason }),
     }),
 
-  // Update credit limit
-  updateCreditLimit: (id: string, creditLimit: number) =>
-    fetchWithAuth(`/admin/enterprises/${id}/credit-limit`, {
-      method: "PUT",
-      body: JSON.stringify({ creditLimit }),
-    }),
+  // Removed: a second `updateCreditLimit` that POSTed { creditLimit } to
+  // /admin/enterprises/:id/credit-limit. That route is registered as PUT
+  // (admin.routes.ts), so the call could only ever 404, and its handler wrote
+  // no CreditHistory or audit row. The audited replacement is
+  // enterpriseCreditApi.updateCreditLimit (credit-limit-enhanced). No page
+  // called this one.
 
   // Get enterprise users
   getUsers: (id: string) => fetchWithAuth(`/admin/enterprises/${id}/users`),
@@ -171,12 +171,12 @@ export const sosApi = {
 
   // Respond to SOS
   respond: (id: string) =>
-    fetchWithAuth(`/admin/sos/${id}/respond`, { method: "PUT" }),
+    fetchWithAuth(`/admin/sos/${id}/respond`, { method: "POST" }),
 
   // Resolve SOS
   resolve: (id: string, resolution: string) =>
     fetchWithAuth(`/admin/sos/${id}/resolve`, {
-      method: "PUT",
+      method: "POST",
       body: JSON.stringify({ resolution }),
     }),
 
@@ -434,7 +434,7 @@ export const coinsApi = {
     userId: string,
     data: { amount: number; reason: string; type: "CREDIT" | "DEBIT" },
   ) =>
-    fetchWithAuth(`/admin/coins/users/${userId}/adjust`, {
+    fetchWithAuth(`/admin/users/${userId}/coins/adjust`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -562,6 +562,8 @@ export const driversApi = {
     status?: string;
     isActive?: boolean;
     isOnline?: boolean;
+    /** true → list soft-deleted drivers (so Restore is reachable). */
+    deleted?: boolean;
     search?: string;
     page?: number;
     limit?: number;
@@ -853,7 +855,7 @@ export const usersApi = {
     id: string,
     data: { amount: number; reason: string; type: "CREDIT" | "DEBIT" },
   ) =>
-    fetchWithAuth(`/admin/users/${id}/coins`, {
+    fetchWithAuth(`/admin/users/${id}/coins/adjust`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -1189,7 +1191,9 @@ export const refundApi = {
   // Reject refund
   reject: (id: string, comment: string) => fetchWithAuth(`/admin/refunds/${id}/reject`, {
     method: "PUT",
-    body: JSON.stringify({ comment }),
+    // `reason` is what the controller persists as rejectionReason; `comment`
+    // satisfies the audit middleware. Send both.
+    body: JSON.stringify({ comment, reason: comment }),
   }),
 
   // Process approved refund (trigger actual payment)
@@ -1244,6 +1248,12 @@ export const enhancedFinanceApi = {
     category: string;
     reference?: string;
     notes?: string;
+    // The backend does `new Date(date)` on this, so leaving it out of the type
+    // (and therefore off the request) stored every expense with an Invalid Date.
+    date?: string;
+    subcategory?: string;
+    driverId?: string;
+    paymentMethod?: string;
   }) => fetchWithAuth("/admin/finance/expenses", {
     method: "POST",
     body: JSON.stringify(data),
@@ -1306,8 +1316,15 @@ export const enhancedDriverApi = {
   // Get all drivers COD summary
   getAllCODSummary: () => fetchWithAuth("/admin/drivers/cod-summary"),
 
-  // Settle COD for driver
-  settleCOD: (id: string, data: { amount: number; comment: string; paymentRef?: string }) =>
+  // Settle COD for driver.
+  // Field names match what the controller actually reads (enhanced-driver
+  // .controller.ts settleCOD destructures amount/transactionId/notes) plus the
+  // `comment` the route's mandatory-comment middleware requires. The previous
+  // `paymentRef` key was silently ignored by the server.
+  settleCOD: (
+    id: string,
+    data: { amount: number; comment: string; transactionId?: string; notes?: string },
+  ) =>
     fetchWithAuth(`/admin/drivers/${id}/cod/settle`, {
       method: "PUT",
       body: JSON.stringify(data),
@@ -1341,10 +1358,13 @@ export const enterpriseCreditApi = {
     body: JSON.stringify(data),
   }),
 
-  // Update credit limit
+  // Update credit limit. The keys are what enterprise-credit.controller.ts
+  // destructures — it reads `newLimit` and `reason`, and the CreditHistory row
+  // requires the reason. The old declaration said { creditLimit, comment },
+  // which reached the server as undefined and produced amount: NaN.
   updateCreditLimit: (id: string, data: {
-    creditLimit: number;
-    comment: string;
+    newLimit: number;
+    reason: string;
   }) => fetchWithAuth(`/admin/enterprises/${id}/credit-limit-enhanced`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -1364,10 +1384,11 @@ export const sessionApi = {
 
   // Update session configuration
   updateConfig: (data: {
-    sessionTimeout?: number;
+    sessionTimeoutMinutes?: number;
+    idleTimeoutMinutes?: number;
     maxConcurrentSessions?: number;
-    enforceIpWhitelist?: boolean;
-    enforceTimeRestrictions?: boolean;
+    enforceIPWhitelist?: boolean;
+    enforceTimeRestriction?: boolean;
   }) => fetchWithAuth("/admin/config/session", {
     method: "PUT",
     body: JSON.stringify(data),

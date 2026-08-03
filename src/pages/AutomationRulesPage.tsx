@@ -14,15 +14,12 @@ import {
   Activity,
   X,
   ChevronRight,
-  PlayCircle,
   CheckCircle,
-  XOctagon,
   Eye,
   Workflow,
   FileCheck,
   DollarSign,
   Bell,
-  Power,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
@@ -59,9 +56,53 @@ const OPERATOR_LABELS: Record<string, string> = {
   eq: "=",
 };
 
+// GET /admin/automation/trigger-types returns all 7 trigger types with no
+// indication of which ones the engine can actually act on. Only these three are
+// in IMPLEMENTED_TRIGGERS (backend/src/services/automation-engine.service.ts:31-35);
+// runAllRules() pushes every other type onto `skipped` and continues (line 285-288)
+// and evaluateTrigger() returns [] for them, so a rule built on COD Collection
+// Delay / Order Spike / SOS Spike / Revenue Drop can never fire. They were still
+// offered in the dropdown and the saved rule was badged "Active".
+// The server's own flag is preferred as soon as the endpoint sends one.
+const ENGINE_IMPLEMENTED_TRIGGERS = new Set<string>([
+  "cancellation_rate",
+  "low_rating_consecutive",
+  "driver_idle",
+]);
+
+type TriggerTypeOption = {
+  type?: string;
+  label?: string;
+  // getTriggerTypes sends this; the local set below is the fallback for an
+  // older backend.
+  implemented?: boolean;
+};
+
+const isTriggerTypeEvaluated = (t?: TriggerTypeOption | string | null): boolean => {
+  if (typeof t === "string") return ENGINE_IMPLEMENTED_TRIGGERS.has(t);
+  if (t && typeof t.implemented === "boolean") return t.implemented;
+  return ENGINE_IMPLEMENTED_TRIGGERS.has(String(t?.type ?? ""));
+};
+
+// getTriggerTypes now names driver_idle's metric "idle_minutes", matching what
+// the engine actually compares. Rules saved while the server still advertised
+// "idle_days" keep that metric string, so the alias stays: printing the raw name
+// made an operator read the threshold 1440x wrong.
+const METRIC_LABELS: Record<string, string> = {
+  idle_days: "idle_minutes",
+};
+
+const metricLabel = (m?: string) => (m ? METRIC_LABELS[m] ?? m : "—");
+
 const AutomationRulesPage: React.FC = () => {
   const dialog = useDialog();
   const [rules, setRules] = useState<any[]>([]);
+  const [ruleTotals, setRuleTotals] = useState<{
+    totalRules: number;
+    activeRules: number;
+    activeEvaluated: number;
+    totalTriggerCount: number;
+  } | null>(null);
   const [triggerTypes, setTriggerTypes] = useState<any[]>([]);
   const [actionTypes, setActionTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,8 +124,7 @@ const AutomationRulesPage: React.FC = () => {
   const [limit, setLimit] = useState<PageSize>(10);
   const [paginationMeta, setPaginationMeta] = useState({ total: 0, pages: 0 });
 
-  // Master automation toggle + category filter
-  const [masterOn, setMasterOn] = useState(true);
+  // Category filter
   const [category, setCategory] = useState<"ALL" | "OPERATIONAL" | "COMPLIANCE" | "FINANCE" | "COMMUNICATION">("ALL");
   const [previewRule, setPreviewRule] = useState<any>(null);
 
@@ -106,6 +146,9 @@ const AutomationRulesPage: React.FC = () => {
         fetchApi("/admin/automation/action-types"),
       ]);
       setRules(rulesRes.data?.rules || []);
+      // Cross-page health figures. Null on an older backend, in which case the
+      // tiles fall back to summing the current page and say so.
+      setRuleTotals(rulesRes.data?.totals ?? null);
       if (rulesRes.data?.pagination) {
         setPaginationMeta({
           total: rulesRes.data.pagination.total || 0,
@@ -123,6 +166,31 @@ const AutomationRulesPage: React.FC = () => {
 
   useEffect(() => { loadData(page, limit); }, [page, limit, loadData]);
 
+  // Which trigger types the engine actually evaluates. Prefer the server's flag if
+  // it starts sending one; fall back to the engine list while triggerTypes is still
+  // loading so a rule is never optimistically labelled as evaluated.
+  const evaluatedTriggerTypes = useMemo(() => {
+    const set = new Set<string>();
+    triggerTypes.forEach((t: TriggerTypeOption) => {
+      if (isTriggerTypeEvaluated(t)) set.add(String(t.type));
+    });
+    return set.size ? set : new Set<string>(ENGINE_IMPLEMENTED_TRIGGERS);
+  }, [triggerTypes]);
+
+  const isRuleEvaluated = useCallback(
+    (rule: { trigger?: { type?: string } } | null | undefined) =>
+      evaluatedTriggerTypes.has(String(rule?.trigger?.type)),
+    [evaluatedTriggerTypes],
+  );
+
+  // Whether the trigger currently chosen in the form can actually fire. While
+  // triggerTypes is still loading there is nothing to classify against, so fall
+  // back to the engine list instead of warning about an unknown trigger.
+  const selectedTriggerEvaluated = useMemo(() => {
+    const t = triggerTypes.find((x: TriggerTypeOption) => x.type === formTriggerType);
+    return t ? isTriggerTypeEvaluated(t) : ENGINE_IMPLEMENTED_TRIGGERS.has(formTriggerType);
+  }, [triggerTypes, formTriggerType]);
+
   // Server-side: rules IS the current page, but apply client-side category filter on top
   const filteredByCategory = useMemo(
     () => (category === "ALL" ? rules : rules.filter((r) => categorizeRule(r) === category)),
@@ -135,13 +203,33 @@ const AutomationRulesPage: React.FC = () => {
   const endIndex = Math.min(page * limit, totalItems);
 
   // Derived health metrics
+  // "Active" alone overstated the engine's reach: an isActive rule on an
+  // unimplemented trigger is skipped on every sweep. Count only rules that are both
+  // enabled and evaluated, and report the enabled-but-never-evaluated ones separately.
+  //
+  // getAllRules now sends `totals` computed over every rule matching the filter,
+  // so these are platform-wide. The per-page sums remain as the fallback for an
+  // older backend, and `isPlatformWide` decides which label the tiles carry —
+  // a page total under a platform-wide caption is the failure to avoid.
   const healthMetrics = useMemo(() => {
-    const active = rules.filter((r) => r.isActive).length;
-    const executedToday = rules.reduce((sum, r) => sum + (r.executedToday ?? Math.min(r.triggerCount ?? 0, 6)), 0);
-    const unresolved = rules.reduce((sum, r) => sum + (r.unresolvedCount ?? 0), 0);
-    const errors = rules.reduce((sum, r) => sum + (r.errorCount ?? 0), 0);
-    return { active, executedToday, unresolved, errors };
-  }, [rules]);
+    const enabled = rules.filter((r) => r.isActive);
+    const live = enabled.filter((r) => isRuleEvaluated(r)).length;
+    const enabledNotEvaluated = enabled.length - live;
+    const totalTriggers = rules.reduce((sum, r) => sum + (r.triggerCount ?? 0), 0);
+
+    if (ruleTotals) {
+      return {
+        live: ruleTotals.activeEvaluated,
+        enabledNotEvaluated: Math.max(
+          0,
+          ruleTotals.activeRules - ruleTotals.activeEvaluated,
+        ),
+        totalTriggers: ruleTotals.totalTriggerCount,
+        isPlatformWide: true,
+      };
+    }
+    return { live, enabledNotEvaluated, totalTriggers, isPlatformWide: false };
+  }, [rules, isRuleEvaluated, ruleTotals]);
 
   const categoryCounts = useMemo(() => {
     const map = { OPERATIONAL: 0, COMPLIANCE: 0, FINANCE: 0, COMMUNICATION: 0 } as Record<string, number>;
@@ -167,7 +255,11 @@ const AutomationRulesPage: React.FC = () => {
     setEditingRule(null);
     setFormName("");
     setFormDescription("");
-    setFormTriggerType(triggerTypes[0]?.type || "cancellation_rate");
+    // Never default to a trigger the engine ignores.
+    setFormTriggerType(
+      triggerTypes.find((t: TriggerTypeOption) => isTriggerTypeEvaluated(t))?.type ||
+        "cancellation_rate",
+    );
     setFormOperator("gt");
     setFormThreshold(30);
     setFormTimeWindow(7);
@@ -230,32 +322,10 @@ const AutomationRulesPage: React.FC = () => {
             Automation Rules Engine
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Configure triggers, preview action flows and govern the engine from a single console
+            Configure triggers and preview action flows from a single console
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Master Toggle */}
-          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${masterOn ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
-            <Power className={`w-4 h-4 ${masterOn ? "text-green-600" : "text-gray-400"}`} />
-            <div className="text-xs">
-              <p className={`font-semibold ${masterOn ? "text-green-700" : "text-gray-500"}`}>
-                Master {masterOn ? "ON" : "OFF"}
-              </p>
-              <p className="text-[10px] text-gray-500">Pause all automations</p>
-            </div>
-            <button
-              onClick={() => setMasterOn((v) => !v)}
-              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                masterOn ? "bg-green-500" : "bg-gray-300"
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  masterOn ? "translate-x-4" : "translate-x-0.5"
-                }`}
-              />
-            </button>
-          </div>
           <button onClick={openCreateForm} className="flex items-center gap-2 px-4 py-2 bg-movezy-600 text-white rounded-lg hover:bg-movezy-700 transition-colors text-sm font-medium">
             <Plus className="w-4 h-4" />
             Create Rule
@@ -266,20 +336,21 @@ const AutomationRulesPage: React.FC = () => {
         </div>
       </div>
 
-      {!masterOn && (
-        <div className="p-3 border border-amber-200 bg-amber-50 rounded-lg flex items-center gap-2 text-sm text-amber-800">
-          <AlertTriangle className="w-4 h-4" />
-          Master automation is currently <strong>paused</strong>. No rules will fire until re-enabled.
-        </div>
-      )}
-
       {/* Health Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active Rules</p>
-              <p className="mt-1 text-2xl font-bold text-green-600">{healthMetrics.active}</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Live Rules{healthMetrics.isPlatformWide ? "" : " (this page)"}
+              </p>
+              <p className="mt-1 text-2xl font-bold text-green-600">{healthMetrics.live}</p>
+              {healthMetrics.enabledNotEvaluated > 0 && (
+                <p className="mt-1 text-[11px] text-amber-700">
+                  +{healthMetrics.enabledNotEvaluated} enabled but not evaluated by the
+                  engine
+                </p>
+              )}
             </div>
             <div className="flex items-center justify-center w-10 h-10 bg-green-50 rounded-lg">
               <CheckCircle className="w-5 h-5 text-green-600" />
@@ -289,33 +360,13 @@ const AutomationRulesPage: React.FC = () => {
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Executed Today</p>
-              <p className="mt-1 text-2xl font-bold text-blue-600">{healthMetrics.executedToday}</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Total Triggers{healthMetrics.isPlatformWide ? "" : " (this page)"}
+              </p>
+              <p className="mt-1 text-2xl font-bold text-blue-600">{healthMetrics.totalTriggers}</p>
             </div>
             <div className="flex items-center justify-center w-10 h-10 bg-blue-50 rounded-lg">
-              <PlayCircle className="w-5 h-5 text-blue-600" />
-            </div>
-          </div>
-        </div>
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-amber-500 shadow-sm rounded-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Unresolved Triggers</p>
-              <p className="mt-1 text-2xl font-bold text-amber-600">{healthMetrics.unresolved}</p>
-            </div>
-            <div className="flex items-center justify-center w-10 h-10 bg-amber-50 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
-            </div>
-          </div>
-        </div>
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-red-500 shadow-sm rounded-xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Errors</p>
-              <p className="mt-1 text-2xl font-bold text-red-600">{healthMetrics.errors}</p>
-            </div>
-            <div className="flex items-center justify-center w-10 h-10 bg-red-50 rounded-lg">
-              <XOctagon className="w-5 h-5 text-red-600" />
+              <Activity className="w-5 h-5 text-blue-600" />
             </div>
           </div>
         </div>
@@ -355,12 +406,22 @@ const AutomationRulesPage: React.FC = () => {
       {/* Preset Templates */}
       <div className="bg-gradient-to-r from-movezy-50 to-blue-50 rounded-xl p-5 border border-movezy-100">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Preset Templates</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Presets only cover triggers the engine evaluates. "COD Delay Warning" was
+            removed: cod_collection_delay is not in IMPLEMENTED_TRIGGERS, so that
+            one-click rule could never fire.
+            "Idle Driver Nudge" now says MINUTES with a threshold of 60, because the
+            engine compares `now - threshold * 60 * 1000` against the driver's last GPS
+            update (automation-engine.service.ts:136-148). The old preset said
+            "> 7 days" and saved threshold 7, i.e. 7 minutes — a 1440x error that
+            nudged every online driver whose app had been backgrounded for 8 minutes. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
-            { label: "High Cancellation Alert", trigger: "cancellation_rate", threshold: 30, op: "gt", action: "flag_driver", desc: "If cancellation rate > 30% in a week → auto-flag driver" },
-            { label: "COD Delay Warning", trigger: "cod_collection_delay", threshold: 48, op: "gt", action: "warn_driver", desc: "If COD collection delay > 48h → auto-warning" },
-            { label: "Low Rating Escalation", trigger: "low_rating_consecutive", threshold: 3, op: "lt", action: "escalate_to_admin", desc: "If rating < 3 stars for 5 consecutive rides → escalate" },
-            { label: "Idle Driver Nudge", trigger: "driver_idle", threshold: 7, op: "gt", action: "send_push_notification", desc: "If idle > 7 days and online → send push notification" },
+            // Each preset carries its own window/count. They used to share a
+            // hardcoded 7-day / 5-ride pair, so the form a preset opened did
+            // not match the sentence on the card that opened it.
+            { label: "High Cancellation Alert", trigger: "cancellation_rate", threshold: 30, op: "gt", action: "flag_driver", windowDays: 7, consecutive: 5, desc: "If cancellation rate > 30% in a week → auto-flag driver" },
+            { label: "Low Rating Escalation", trigger: "low_rating_consecutive", threshold: 3, op: "lt", action: "escalate_to_admin", windowDays: 30, consecutive: 5, desc: "If rating < 3 stars for 5 consecutive rides in 30 days → escalate" },
+            { label: "Idle Driver Nudge", trigger: "driver_idle", threshold: 60, op: "gt", action: "send_push_notification", windowDays: 1, consecutive: 5, desc: "If no GPS update for > 60 minutes while online → send push notification" },
           ].map((preset, i) => (
             <button
               key={i}
@@ -372,8 +433,8 @@ const AutomationRulesPage: React.FC = () => {
                 setFormOperator(preset.op);
                 setFormThreshold(preset.threshold);
                 setFormActionType(preset.action);
-                setFormTimeWindow(7);
-                setFormConsecutive(5);
+                setFormTimeWindow(preset.windowDays);
+                setFormConsecutive(preset.consecutive);
                 setShowForm(true);
               }}
               className="text-left p-3 bg-white rounded-lg border border-gray-200 hover:border-movezy-300 hover:shadow-sm transition-all"
@@ -400,24 +461,37 @@ const AutomationRulesPage: React.FC = () => {
         <div className="space-y-3">
           {paginatedRules.map((rule: any) => {
             const TriggerIcon = TRIGGER_ICONS[rule.trigger?.type] || Zap;
+            // Enabled is not the same as running: the engine skips rules whose trigger
+            // type it does not implement, so those must not read as "Active".
+            const evaluated = isRuleEvaluated(rule);
+            const live = !!rule.isActive && evaluated;
             return (
               <div key={rule._id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${rule.isActive ? "bg-green-100" : "bg-gray-100"}`}>
-                      <TriggerIcon className={`w-5 h-5 ${rule.isActive ? "text-green-600" : "text-gray-400"}`} />
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${live ? "bg-green-100" : "bg-gray-100"}`}>
+                      <TriggerIcon className={`w-5 h-5 ${live ? "text-green-600" : "text-gray-400"}`} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-gray-800">{rule.name}</h4>
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${rule.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                          {rule.isActive ? "Active" : "Inactive"}
-                        </span>
+                        {!evaluated ? (
+                          <span
+                            className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800"
+                            title="The automation engine does not evaluate this trigger type, so this rule never fires"
+                          >
+                            Not evaluated
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${rule.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}>
+                            {rule.isActive ? "Active" : "Inactive"}
+                          </span>
+                        )}
                       </div>
                       {rule.description && <p className="text-sm text-gray-500 mt-0.5">{rule.description}</p>}
                       <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                         <span>
-                          <strong>IF</strong> {rule.trigger?.metric} {OPERATOR_LABELS[rule.trigger?.operator] || rule.trigger?.operator} {rule.trigger?.threshold}
+                          <strong>IF</strong> {metricLabel(rule.trigger?.metric)} {OPERATOR_LABELS[rule.trigger?.operator] || rule.trigger?.operator} {rule.trigger?.threshold}
                           {rule.trigger?.timeWindowDays && ` (${rule.trigger.timeWindowDays}d window)`}
                         </span>
                         <ChevronRight className="w-3 h-3" />
@@ -496,9 +570,15 @@ const AutomationRulesPage: React.FC = () => {
                     <label className="block text-xs text-gray-500 mb-1">Trigger Type</label>
                     <select value={formTriggerType} onChange={(e) => setFormTriggerType(e.target.value)}
                       className="w-full px-3 py-2 border rounded-lg text-sm">
-                      {triggerTypes.map((t: any) => (
-                        <option key={t.type} value={t.type}>{t.label}</option>
-                      ))}
+                      {triggerTypes.map((t: TriggerTypeOption) => {
+                        const evaluated = isTriggerTypeEvaluated(t);
+                        return (
+                          <option key={t.type} value={t.type} disabled={!evaluated}>
+                            {t.label}
+                            {evaluated ? "" : " — not evaluated yet"}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                   <div>
@@ -513,7 +593,9 @@ const AutomationRulesPage: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Threshold</label>
+                    <label className="block text-xs text-gray-500 mb-1">
+                      Threshold{formTriggerType === "driver_idle" ? " (minutes)" : ""}
+                    </label>
                     <input type="number" value={formThreshold} onChange={(e) => setFormThreshold(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full px-3 py-2 border rounded-lg text-sm" />
                   </div>
@@ -530,6 +612,35 @@ const AutomationRulesPage: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Editing an existing rule can still land on an unimplemented trigger
+                    (the option stays selectable as the current value), so warn here too. */}
+                {!!formTriggerType && !selectedTriggerEvaluated && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                    <p className="text-xs font-semibold text-red-800">
+                      This trigger is not evaluated by the automation engine
+                    </p>
+                    <p className="mt-1 text-[11px] text-red-700">
+                      The rule will be saved and listed, but it can never fire. Pick a
+                      trigger without the "not evaluated yet" marker.
+                    </p>
+                  </div>
+                )}
+
+                {formTriggerType === "driver_idle" && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-semibold text-amber-800">
+                      Threshold is in MINUTES for this trigger
+                    </p>
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      The engine matches drivers who are marked online and whose last GPS
+                      update is older than <strong>threshold minutes</strong> — not days,
+                      despite the trigger description. Enter 60 for one hour of GPS
+                      silence. The operator is also ignored for this trigger: it always
+                      matches drivers idle for longer than the threshold.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="bg-blue-50 rounded-lg p-4">
@@ -568,12 +679,27 @@ const AutomationRulesPage: React.FC = () => {
               </button>
             </div>
             <p className="text-sm font-semibold text-gray-800 mb-4">{previewRule.name}</p>
+            {!isRuleEvaluated(previewRule) && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-800">This flow never runs</p>
+                <p className="mt-1 text-[11px] text-amber-700">
+                  The automation engine does not evaluate the{" "}
+                  <strong>{previewRule.trigger?.type}</strong> trigger, so the action below
+                  is never taken.
+                </p>
+              </div>
+            )}
             <div className="space-y-3">
               <div className="p-4 border border-blue-200 bg-blue-50 rounded-lg">
                 <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wide mb-1">When (Trigger)</p>
                 <p className="text-sm font-medium text-gray-800">
-                  {previewRule.trigger?.metric} {OPERATOR_LABELS[previewRule.trigger?.operator]} {previewRule.trigger?.threshold}
+                  {metricLabel(previewRule.trigger?.metric)} {OPERATOR_LABELS[previewRule.trigger?.operator]} {previewRule.trigger?.threshold}
                 </p>
+                {previewRule.trigger?.type === "driver_idle" && (
+                  <p className="mt-1 text-xs text-blue-800">
+                    Minutes since the driver's last GPS update, while marked online.
+                  </p>
+                )}
                 {previewRule.trigger?.timeWindowDays && (
                   <p className="text-xs text-gray-500 mt-1">Over {previewRule.trigger.timeWindowDays} day window</p>
                 )}

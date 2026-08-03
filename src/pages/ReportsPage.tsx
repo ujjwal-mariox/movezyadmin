@@ -297,11 +297,19 @@ const ReportsPage: React.FC = () => {
 
   const handleRunSchedule = useCallback(
     async (id: string) => {
-      const res = await runReportScheduleNow(id);
-      await dialog.alert({
-        title: res?.success ? "Report run" : "Run failed",
-        message: res?.data?.message || res?.message || "Done",
-      });
+      try {
+        const res = await runReportScheduleNow(id);
+        await dialog.alert({
+          title: res?.success ? "Report run" : "Run failed",
+          message: res?.data?.message || res?.message || "Done",
+        });
+      } catch (e) {
+        await dialog.alert({
+          title: "Run failed",
+          message: e instanceof Error ? e.message : "Run failed",
+          tone: "danger",
+        });
+      }
       loadSchedules();
     },
     [dialog, loadSchedules],
@@ -316,7 +324,15 @@ const ReportsPage: React.FC = () => {
         confirmLabel: "Delete",
       });
       if (!ok) return;
-      await deleteReportSchedule(id);
+      try {
+        await deleteReportSchedule(id);
+      } catch (e) {
+        await dialog.alert({
+          title: "Delete failed",
+          message: e instanceof Error ? e.message : "Failed to delete schedule",
+          tone: "danger",
+        });
+      }
       loadSchedules();
     },
     [dialog, loadSchedules],

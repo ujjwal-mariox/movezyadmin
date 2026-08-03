@@ -203,7 +203,7 @@ export default function WalletManagement() {
               <p className="mt-1 text-2xl font-bold text-gray-800">
                 ₹{walletStats.totalBalance.toLocaleString("en-IN")}
               </p>
-              <p className="mt-1 text-xs text-green-600">Across loaded wallets</p>
+              <p className="mt-1 text-xs text-green-600">Across loaded wallets (this page)</p>
             </div>
             <div className="flex items-center justify-center bg-green-50 w-11 h-11 rounded-xl">
               <Wallet className="w-5 h-5 text-green-600" />
@@ -218,7 +218,7 @@ export default function WalletManagement() {
               <p className="mt-1 text-2xl font-bold text-gray-800">
                 ₹{walletStats.pending.toLocaleString("en-IN")}
               </p>
-              <p className="mt-1 text-xs text-amber-600">Awaiting settlement</p>
+              <p className="mt-1 text-xs text-amber-600">Awaiting settlement (this page)</p>
             </div>
             <div className="flex items-center justify-center bg-amber-50 w-11 h-11 rounded-xl">
               <Clock className="w-5 h-5 text-amber-600" />
@@ -233,7 +233,7 @@ export default function WalletManagement() {
               <p className="mt-1 text-2xl font-bold text-gray-800">
                 ₹{walletStats.available.toLocaleString("en-IN")}
               </p>
-              <p className="mt-1 text-xs text-blue-600">Ready to use</p>
+              <p className="mt-1 text-xs text-blue-600">Ready to use (this page)</p>
             </div>
             <div className="flex items-center justify-center bg-blue-50 w-11 h-11 rounded-xl">
               <CircleDollarSign className="w-5 h-5 text-blue-600" />

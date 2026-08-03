@@ -26,6 +26,8 @@ type PaymentRow = {
   id: string;
   bookingId: string;
   user: string;
+  userId?: string;
+  refundAmount?: number;
   amount: number;
   method: string;
   status: BookingPaymentStatus;
@@ -47,11 +49,19 @@ const personName = (p: BookingRow["userId"]): string => {
   return p.fullName || "—";
 };
 
+const personId = (p: BookingRow["userId"]): string => {
+  if (!p) return "";
+  if (typeof p === "string") return p;
+  return (p as any)._id || "";
+};
+
 const bookingToPayment = (b: BookingRow): PaymentRow => ({
   id: b._id,
   bookingId: b.bookingNumber || b._id.slice(-6).toUpperCase(),
   user: personName(b.userId),
+  userId: personId(b.userId),
   amount: b.finalFare ?? 0,
+  refundAmount: (b as any).refundAmount ?? undefined,
   method: b.paymentMethod || "—",
   status: b.paymentStatus,
   date: b.createdAt ? new Date(b.createdAt).toISOString().split("T")[0] : "",
@@ -127,7 +137,12 @@ const Payments: React.FC = () => {
     (p) => p.status === "REFUNDED" || p.status === "PARTIALLY_REFUNDED",
   );
   const refundedCount = refundedRows.length;
-  const refundedAmount = refundedRows.reduce((s, p) => s + p.amount, 0);
+  // refundAmount is what actually left the platform; a ₹100 partial refund on
+  // a ₹1,000 booking used to show as ₹1,000 refunded here.
+  const refundedAmount = refundedRows.reduce(
+    (s, p) => s + (p.refundAmount ?? p.amount),
+    0,
+  );
 
   const failedPayments = filtered.filter((p) => p.status === "FAILED").slice(0, 3);
 
@@ -168,6 +183,14 @@ const Payments: React.FC = () => {
     const amt = Number(refundAmount);
     if (!amt || amt <= 0) {
       await dialog.alert({ title: "Invalid amount", message: "Enter a valid refund amount.", tone: "warning" });
+      return;
+    }
+    if (amt > refundFor.amount) {
+      await dialog.alert({
+        title: "Amount exceeds payment",
+        message: `Refund cannot exceed the paid amount of ₹${refundFor.amount.toLocaleString()}.`,
+        tone: "warning",
+      });
       return;
     }
     setSubmittingRefund(true);
@@ -254,6 +277,17 @@ const Payments: React.FC = () => {
                 body: message,
                 type: "PAYMENT",
                 audience: "USERS",
+                // Target ONLY the affected customers — the backend honors
+                // userIds now; without it this pinged every active user.
+                // Type predicate, not filter(Boolean): the latter doesn't
+                // narrow `string | undefined` away, so this was (string|undefined)[].
+                userIds: Array.from(
+                  new Set(
+                    failedPayments
+                      .map((p) => p.userId)
+                      .filter((id): id is string => Boolean(id)),
+                  ),
+                ),
                 data: {
                   targetType: "FAILED_PAYMENTS",
                   bookingIds: failedPayments.map((p) => p.bookingId).join(","),
@@ -279,28 +313,28 @@ const Payments: React.FC = () => {
         <StatCard
           label="Total Amount"
           value={`₹${totalAmount.toLocaleString()}`}
-          sub={`${filtered.length} transactions`}
+          sub={`${filtered.length} transactions (this page)`}
           Icon={DollarSign}
           tone="blue"
         />
         <StatCard
           label="Completed"
           value={`${completedCount}`}
-          sub={`${filtered.length > 0 ? Math.round((completedCount / filtered.length) * 100) : 0}% success`}
+          sub={`${filtered.length > 0 ? Math.round((completedCount / filtered.length) * 100) : 0}% success (this page)`}
           Icon={CheckCircle}
           tone="green"
         />
         <StatCard
           label="Pending"
           value={`${pendingCount}`}
-          sub="Awaiting confirmation"
+          sub="Awaiting confirmation (this page)"
           Icon={Clock}
           tone="amber"
         />
         <StatCard
           label="Failed"
           value={`${failedCount}`}
-          sub="Needs retry / review"
+          sub="Needs retry / review (this page)"
           Icon={XCircle}
           tone="red"
           pulse={failedCount > 0}
@@ -308,7 +342,7 @@ const Payments: React.FC = () => {
         <StatCard
           label="Refunded"
           value={`₹${refundedAmount.toLocaleString()}`}
-          sub={`${refundedCount} refund${refundedCount === 1 ? "" : "s"}`}
+          sub={`${refundedCount} refund${refundedCount === 1 ? "" : "s"} (this page)`}
           Icon={RotateCcw}
           tone="purple"
         />

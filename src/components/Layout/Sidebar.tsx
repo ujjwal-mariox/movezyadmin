@@ -91,6 +91,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: "reports", label: "Reports & BI", icon: BarChart3 },
         { id: "payments", label: "Payments", icon: Wallet },
         { id: "wallet", label: "Wallet", icon: Wallet },
+        { id: "refunds", label: "Refund Approval", icon: Wallet },
+        { id: "commissions", label: "Commission & Charges", icon: DollarSign },
       ],
     },
     {
@@ -108,6 +110,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: "prohibited-items", label: "Prohibited Items", icon: Ban },
         { id: "master-data", label: "Master Data", icon: Database },
         { id: "driver-instructions", label: "Driver Instructions", icon: FileText },
+        { id: "cms", label: "Content & Policies", icon: FileText },
       ],
     },
     {

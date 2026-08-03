@@ -1,5 +1,5 @@
 // src/pages/EnterpriseManagement.tsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Building2,
   Search,
@@ -46,6 +46,7 @@ import {
   type EnterpriseFaqData,
   type EnterpriseClientData,
 } from "../services/api";
+import { enterpriseCreditApi } from "../services/admin-api";
 import { useDialog } from "../components/Layout/Dialog";
 
 // ─── Tab definitions ───
@@ -201,14 +202,15 @@ const AccountsTab: React.FC = () => {
     const used = e.usedCredit || 0;
     return used / e.creditLimit > 0.85;
   });
-  const revenueContribution = enterprises.reduce(
+  // usedCredit is credit drawn and NOT yet repaid (CREDIT_REPAID reduces it,
+  // enterprise-credit.controller.ts adjustCredit), so summing it gives money
+  // owed — not revenue earned. The card used to print this same sum as "Revenue
+  // Contribution"; there is no revenue figure on this endpoint to print instead.
+  const approvedOnPage = enterprises.filter((e) => e.status === "APPROVED");
+  const outstandingTotal = approvedOnPage.reduce(
     (sum, e) => sum + (e.usedCredit || 0),
     0,
   );
-  const outstandingTotal = enterprises.reduce((sum, e) => {
-    if (e.status !== "APPROVED") return sum;
-    return sum + (e.usedCredit || 0);
-  }, 0);
 
   // ── Handlers ──
   const openCreate = () => {
@@ -323,13 +325,15 @@ const AccountsTab: React.FC = () => {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
                 <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                Active
+                Active (this page)
               </p>
               <p className="text-3xl font-bold text-green-600 mt-1">
                 {stats.approved}
               </p>
-              <p className="text-xs text-gray-400 mt-1">
-                {stats.pending} pending approval
+              {/* Both counts come from the loaded page only — the list endpoint
+                  sends no status breakdown for the full set. */}
+              <p className="text-xs text-gray-500 mt-1">
+                {stats.pending} pending approval on this page
               </p>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
@@ -348,8 +352,8 @@ const AccountsTab: React.FC = () => {
               <p className="text-3xl font-bold text-red-600 mt-1">
                 {creditRiskEnterprises.length}
               </p>
-              <p className="text-xs text-red-400 mt-1">
-                Above 85% credit usage
+              <p className="text-xs text-red-500 mt-1">
+                Above 85% credit usage, this page
               </p>
             </div>
             <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
@@ -363,13 +367,14 @@ const AccountsTab: React.FC = () => {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
                 <TrendingUp className="w-3.5 h-3.5 text-orange-600" />
-                Revenue Contribution
+                Credit Outstanding
               </p>
               <p className="text-3xl font-bold text-orange-600 mt-1">
-                {fmt(revenueContribution)}
+                {fmt(outstandingTotal)}
               </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Outstanding {fmt(outstandingTotal)}
+              <p className="text-xs text-gray-500 mt-1">
+                {approvedOnPage.length} approved account
+                {approvedOnPage.length === 1 ? "" : "s"} on this page
               </p>
             </div>
             <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
@@ -712,6 +717,9 @@ const AccountsTab: React.FC = () => {
             setShowDetailModal(false);
             setShowSuspendModal(true);
           }}
+          // The drawer holds a snapshot of the row, so a credit-limit change has
+          // to refetch the list rather than mutate the copy.
+          onUpdated={() => loadEnterprises(page, limit)}
           fmt={fmt}
           getStatusBadge={getStatusBadge}
         />
@@ -721,22 +729,67 @@ const AccountsTab: React.FC = () => {
 };
 
 // ────────────────────────────────────────────────────────────
-// Enterprise Profile Panel (right-side drawer with payment history + credit graph)
+// Enterprise Profile Panel (right-side drawer, credit ledger from the server)
 // ────────────────────────────────────────────────────────────
 interface EnterpriseProfilePanelProps {
   enterprise: Enterprise;
   onClose: () => void;
   onEdit: () => void;
   onBlock: () => void;
+  onUpdated: () => void | Promise<void>;
   fmt: (n: number) => string;
   getStatusBadge: (status: string) => string;
 }
+
+// Row shape of GET /admin/enterprises/:id/credit-history (CreditHistory model,
+// `performedBy` populated with fullName/email and `bookingId` with bookingNumber).
+interface CreditHistoryRow {
+  _id: string;
+  type:
+    | "CREDIT_USED"
+    | "CREDIT_REPAID"
+    | "LIMIT_INCREASED"
+    | "LIMIT_DECREASED"
+    | "ADJUSTMENT";
+  amount: number;
+  balanceAfter?: number;
+  limitBefore?: number;
+  limitAfter?: number;
+  reason?: string;
+  createdAt: string;
+  performedBy?: { fullName?: string; email?: string } | string | null;
+  performedByType?: "ADMIN" | "CUSTOMER" | "SYSTEM";
+  bookingId?: { bookingNumber?: string } | string | null;
+}
+
+const LEDGER_TYPE_LABEL: Record<CreditHistoryRow["type"], string> = {
+  CREDIT_USED: "Credit used",
+  CREDIT_REPAID: "Repayment",
+  LIMIT_INCREASED: "Limit increased",
+  LIMIT_DECREASED: "Limit decreased",
+  ADJUSTMENT: "Adjustment",
+};
+
+const LEDGER_TYPE_TONE: Record<CreditHistoryRow["type"], string> = {
+  CREDIT_USED: "bg-orange-100 text-orange-800",
+  CREDIT_REPAID: "bg-green-100 text-green-800",
+  LIMIT_INCREASED: "bg-blue-100 text-blue-800",
+  LIMIT_DECREASED: "bg-amber-100 text-amber-800",
+  ADJUSTMENT: "bg-gray-200 text-gray-700",
+};
+
+// One read covers both the trend and the list. 6 months of bars are only drawn
+// when this fetch demonstrably reached back past the start of that window.
+const LEDGER_FETCH_LIMIT = 500;
+const TREND_MONTHS = 6;
+const LEDGER_ROWS_SHOWN = 10;
 
 const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
   enterprise,
   onClose,
   onEdit,
   onBlock,
+  onUpdated,
   fmt,
   getStatusBadge,
 }) => {
@@ -751,22 +804,96 @@ const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
         ? { bar: "bg-yellow-500", text: "text-yellow-700", bg: "bg-yellow-50" }
         : { bar: "bg-green-500", text: "text-green-700", bg: "bg-green-50" };
 
-  // Mock payment history — swap with /admin/enterprises/:id/payments when wired
-  const paymentHistory = [
-    { date: "2026-04-12", amount: Math.round(usedCredit * 0.4), status: "paid" as const, invoice: "INV-4218" },
-    { date: "2026-03-28", amount: Math.round(usedCredit * 0.25), status: "paid" as const, invoice: "INV-4079" },
-    { date: "2026-03-15", amount: Math.round(usedCredit * 0.2), status: "pending" as const, invoice: "INV-3912" },
-    { date: "2026-02-28", amount: Math.round(usedCredit * 0.15), status: "paid" as const, invoice: "INV-3780" },
-  ].filter((p) => p.amount > 0);
+  // The drawer used to render a hardcoded "Payment History" (INV-4218 …, dated
+  // Feb–Apr 2026, amounts derived as fractions of usedCredit) and a 6-month
+  // "Credit Usage Trend" built from fixed weights × usedCredit. None of it
+  // existed in the database. Both now come from the real credit ledger:
+  // GET /admin/enterprises/:id/credit-history (CreditHistory rows). There is
+  // still NO invoice/payments endpoint, so no invoice numbers are shown.
+  const [ledger, setLedger] = useState<CreditHistoryRow[] | null>(null);
+  const [ledgerTotal, setLedgerTotal] = useState(0);
+  const [ledgerLoading, setLedgerLoading] = useState(true);
+  const [ledgerError, setLedgerError] = useState<string | null>(null);
+  const [savingLimit, setSavingLimit] = useState(false);
 
-  // Monthly credit usage (mock trend for graph) — deterministic so renders are stable
-  const months = ["Nov", "Dec", "Jan", "Feb", "Mar", "Apr"];
-  const monthWeights = [0.45, 0.55, 0.62, 0.78, 0.85, 1.0];
-  const usageSeries = months.map((m, i) => ({
-    month: m,
-    value: Math.round(usedCredit * monthWeights[i]),
-  }));
-  const maxSeries = Math.max(1, ...usageSeries.map((s) => s.value));
+  const loadLedger = useCallback(async () => {
+    setLedgerLoading(true);
+    setLedgerError(null);
+    try {
+      const res = await enterpriseCreditApi.getCreditHistory(enterprise._id, {
+        limit: LEDGER_FETCH_LIMIT,
+      });
+      const rows: CreditHistoryRow[] = res?.data?.history ?? [];
+      setLedger(rows);
+      setLedgerTotal(Number(res?.data?.total ?? rows.length) || 0);
+    } catch (err) {
+      setLedger(null);
+      setLedgerError(
+        (err as Error)?.message || "Could not load the credit ledger.",
+      );
+    } finally {
+      setLedgerLoading(false);
+    }
+  }, [enterprise._id]);
+
+  useEffect(() => {
+    void loadLedger();
+  }, [loadLedger]);
+
+  // Monthly credit drawn, summed from the CREDIT_USED rows themselves.
+  const trend = useMemo(() => {
+    if (!ledger) return null;
+    const now = new Date();
+    const buckets = Array.from({ length: TREND_MONTHS }, (_, idx) => {
+      const d = new Date(
+        now.getFullYear(),
+        now.getMonth() - (TREND_MONTHS - 1 - idx),
+        1,
+      );
+      return {
+        key: `${d.getFullYear()}-${d.getMonth()}`,
+        label: d.toLocaleDateString("en-IN", { month: "short" }),
+        value: 0,
+      };
+    });
+    const byKey = new Map(buckets.map((b) => [b.key, b]));
+    const windowStart = new Date(
+      now.getFullYear(),
+      now.getMonth() - (TREND_MONTHS - 1),
+      1,
+    );
+    let rowsInWindow = 0;
+    for (const row of ledger) {
+      if (row.type !== "CREDIT_USED") continue;
+      const d = new Date(row.createdAt);
+      const bucket = byKey.get(`${d.getFullYear()}-${d.getMonth()}`);
+      if (bucket) {
+        bucket.value += Number(row.amount) || 0;
+        rowsInWindow += 1;
+      }
+    }
+    // Rows arrive newest-first. The bars are only exact if this page of the
+    // ledger either holds everything or reaches back past the window start —
+    // otherwise older months would be silently understated, so say so instead.
+    const oldestFetched = ledger.length
+      ? new Date(ledger[ledger.length - 1].createdAt)
+      : null;
+    const windowFullyCovered =
+      ledgerTotal <= ledger.length ||
+      (oldestFetched !== null && oldestFetched < windowStart);
+    return { buckets, rowsInWindow, windowFullyCovered };
+  }, [ledger, ledgerTotal]);
+
+  const trendMax = Math.max(1, ...(trend?.buckets ?? []).map((b) => b.value));
+
+  const actorOf = (row: CreditHistoryRow) => {
+    if (row.performedBy && typeof row.performedBy === "object") {
+      return row.performedBy.fullName || row.performedBy.email || "Admin";
+    }
+    if (row.performedByType === "CUSTOMER") return "Customer";
+    if (row.performedByType === "SYSTEM") return "System";
+    return "Admin";
+  };
 
   const handleAdjustCredit = async () => {
     const newLimit = await dialog.prompt({
@@ -777,19 +904,70 @@ const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
       defaultValue: String(creditLimit),
       placeholder: "e.g. 500000",
       required: true,
-      confirmLabel: "Update limit",
+      confirmLabel: "Continue",
       validate: (v) => {
         const n = Number(v);
         if (!Number.isFinite(n) || n < 0) return "Enter a non-negative number.";
+        // Same rule the server enforces, surfaced before the round-trip.
+        if (n < usedCredit)
+          return `Cannot go below the credit already used (${fmt(usedCredit)}).`;
         return null;
       },
     });
-    if (!newLimit) return;
-    await dialog.alert({
-      title: "Limit queued",
-      message: `Credit limit will be updated to ${fmt(Number(newLimit))} once the API is wired.`,
-      tone: "info",
+    // Cancel resolves null. A truthiness check would also swallow "0", which is
+    // a legitimate new limit for an account with nothing drawn.
+    if (newLimit === null || newLimit.trim() === "") return;
+    const parsedLimit = Number(newLimit);
+    if (!Number.isFinite(parsedLimit) || parsedLimit < 0) return;
+
+    // The route requires a comment/reason of at least 10 characters
+    // (requireCommentAndAudit("credit:update_limit", …)) and the handler stores
+    // it as the CreditHistory row's `reason`, which the schema requires.
+    const reason = await dialog.prompt({
+      title: "Why is the limit changing?",
+      message:
+        "This is recorded on the credit ledger and the audit log. At least 10 characters.",
+      tone: "warning",
+      inputType: "text",
+      placeholder: "e.g. Quarterly review approved by finance",
+      required: true,
+      confirmLabel: "Update limit",
+      validate: (v) =>
+        v.trim().length < 10 ? "Please write at least 10 characters." : null,
     });
+    // The dialog's own validator enforces this, but the imperative fallback used
+    // when no DialogProvider is mounted is a plain window.prompt with none.
+    if (reason === null || reason.trim().length < 10) return;
+
+    try {
+      setSavingLimit(true);
+      // Keys are what enterprise-credit.controller.ts updateCreditLimit reads.
+      const res = await enterpriseCreditApi.updateCreditLimit(enterprise._id, {
+        newLimit: parsedLimit,
+        reason: reason.trim(),
+      });
+      if (res?.success === false) {
+        throw new Error(res?.message || "Could not update the credit limit.");
+      }
+      const limitAfter = Number(res?.data?.limitAfter);
+      await dialog.alert({
+        title: "Credit limit updated",
+        message: Number.isFinite(limitAfter)
+          ? `New limit: ${fmt(limitAfter)}.`
+          : "The credit limit was updated.",
+        tone: "success",
+      });
+      await onUpdated();
+      onClose();
+    } catch (err) {
+      await dialog.alert({
+        title: "Update failed",
+        message: (err as Error)?.message || "Could not update the credit limit.",
+        tone: "danger",
+      });
+    } finally {
+      setSavingLimit(false);
+    }
   };
 
   const handleContact = () => {
@@ -929,84 +1107,149 @@ const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
             </p>
           </div>
 
-          {/* Credit usage graph (last 6 months) */}
+          {/* Credit drawn per month — summed from the CREDIT_USED ledger rows */}
           <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-orange-500" />
-                Credit Usage Trend
+                Credit Drawn per Month
               </p>
-              <span className="text-xs text-gray-500">Last 6 months</span>
+              <span className="text-xs text-gray-500">Last {TREND_MONTHS} months</span>
             </div>
-            <div className="flex items-end gap-2 h-28">
-              {usageSeries.map((s) => {
-                const h = (s.value / maxSeries) * 100;
-                return (
+            {ledgerLoading ? (
+              <p className="text-xs text-gray-500">Loading credit ledger…</p>
+            ) : ledgerError ? (
+              <div className="flex items-start gap-2">
+                <p className="text-xs text-red-600">{ledgerError}</p>
+                <button
+                  onClick={() => void loadLedger()}
+                  className="text-xs font-semibold text-orange-600 hover:underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : !trend || trend.rowsInWindow === 0 ? (
+              <p className="text-xs text-gray-500">
+                No credit drawn in the last {TREND_MONTHS} months.
+              </p>
+            ) : !trend.windowFullyCovered ? (
+              <p className="text-xs text-gray-500">
+                This account has {ledgerTotal.toLocaleString()} ledger entries — more
+                than this view loads, so a monthly total here would be incomplete.
+              </p>
+            ) : (
+              <div className="flex items-end gap-2 h-28">
+                {trend.buckets.map((b) => (
                   <div
-                    key={s.month}
+                    key={b.key}
                     className="flex-1 flex flex-col items-center gap-1"
                   >
                     <div className="w-full bg-gray-100 rounded-md relative h-full flex items-end">
                       <div
                         className="w-full rounded-md bg-gradient-to-t from-orange-500 to-orange-300"
-                        style={{ height: `${h}%` }}
-                        title={fmt(s.value)}
+                        style={{ height: `${(b.value / trendMax) * 100}%` }}
+                        title={fmt(b.value)}
                       />
                     </div>
-                    <span className="text-[10px] text-gray-500">
-                      {s.month}
-                    </span>
+                    <span className="text-[10px] text-gray-500">{b.label}</span>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Payment history */}
+          {/* Credit ledger. Replaces the invented invoice list: these are the
+              actual CreditHistory rows. No invoice numbers — the platform has no
+              enterprise invoice/payments endpoint. */}
           <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
-            <p className="text-sm font-semibold text-gray-800 flex items-center gap-2 mb-3">
-              <IndianRupee className="w-4 h-4 text-green-600" />
-              Payment History
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <IndianRupee className="w-4 h-4 text-green-600" />
+                Credit Ledger
+              </p>
+              {!ledgerLoading && !ledgerError && ledgerTotal > 0 && (
+                <span className="text-xs text-gray-500">
+                  {Math.min(LEDGER_ROWS_SHOWN, ledger?.length ?? 0)} of{" "}
+                  {ledgerTotal.toLocaleString()} entries
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Credit used, repayments and limit changes recorded for this account.
             </p>
             <div className="space-y-2">
-              {paymentHistory.length === 0 && (
-                <p className="text-xs text-gray-400 italic">
-                  No payment history yet.
+              {ledgerLoading && (
+                <p className="text-xs text-gray-500">Loading credit ledger…</p>
+              )}
+              {!ledgerLoading && ledgerError && (
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-red-600">{ledgerError}</p>
+                  <button
+                    onClick={() => void loadLedger()}
+                    className="text-xs font-semibold text-orange-600 hover:underline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+              {!ledgerLoading && !ledgerError && (ledger?.length ?? 0) === 0 && (
+                <p className="text-xs text-gray-500">
+                  No credit activity recorded yet.
                 </p>
               )}
-              {paymentHistory.map((p) => (
-                <div
-                  key={p.invoice}
-                  className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-xl"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      {p.invoice}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {new Date(p.date).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </p>
+              {!ledgerLoading &&
+                !ledgerError &&
+                (ledger ?? []).slice(0, LEDGER_ROWS_SHOWN).map((row) => (
+                  <div
+                    key={row._id}
+                    className="flex items-start justify-between gap-3 px-3 py-2 bg-gray-50 rounded-xl"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${LEDGER_TYPE_TONE[row.type]}`}
+                        >
+                          {LEDGER_TYPE_LABEL[row.type] || row.type}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(row.createdAt).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </div>
+                      {row.reason && (
+                        <p className="mt-1 text-xs text-gray-600 truncate">
+                          {row.reason}
+                        </p>
+                      )}
+                      <p className="mt-0.5 text-[11px] text-gray-500">
+                        {actorOf(row)}
+                        {row.bookingId &&
+                          typeof row.bookingId === "object" &&
+                          row.bookingId.bookingNumber &&
+                          ` · ${row.bookingId.bookingNumber}`}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-gray-800">
+                        {fmt(Number(row.amount) || 0)}
+                      </p>
+                      {(row.type === "LIMIT_INCREASED" ||
+                        row.type === "LIMIT_DECREASED") &&
+                      row.limitAfter !== undefined ? (
+                        <p className="text-[11px] text-gray-500">
+                          Limit → {fmt(Number(row.limitAfter) || 0)}
+                        </p>
+                      ) : row.balanceAfter !== undefined ? (
+                        <p className="text-[11px] text-gray-500">
+                          Outstanding {fmt(Number(row.balanceAfter) || 0)}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-gray-800">
-                      {fmt(p.amount)}
-                    </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                        p.status === "paid"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {p.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
 
@@ -1031,10 +1274,11 @@ const EnterpriseProfilePanel: React.FC<EnterpriseProfilePanelProps> = ({
         <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 flex items-center gap-2">
           <button
             onClick={handleAdjustCredit}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-colors"
+            disabled={savingLimit}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 transition-colors disabled:opacity-50"
           >
             <Sliders className="w-4 h-4" />
-            Adjust Credit
+            {savingLimit ? "Saving…" : "Adjust Credit Limit"}
           </button>
           <button
             onClick={handleContact}

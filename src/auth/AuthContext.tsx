@@ -28,8 +28,11 @@ export const PERMISSIONS = {
   PROMOS_CREATE: "promos:create",
   PROMOS_UPDATE: "promos:update",
   PROMOS_DELETE: "promos:delete",
-  CONFIG_VIEW: "config:view",
-  CONFIG_UPDATE: "config:update",
+  // Backend permission strings live in role.model.ts PERMISSIONS. These were
+  // "config:view"/"config:update", which no backend permission uses, so any
+  // module gated on them could never match a real admin's permission list.
+  SETTINGS_VIEW: "settings:view",
+  SETTINGS_UPDATE: "settings:update",
   STAFF_VIEW: "staff:view",
   STAFF_CREATE: "staff:create",
   STAFF_UPDATE: "staff:update",
@@ -43,10 +46,11 @@ export const PERMISSIONS = {
   SOS_VIEW: "sos:view",
   SOS_RESPOND: "sos:respond",
   SOS_RESOLVE: "sos:resolve",
-  ENTERPRISE_VIEW: "enterprise:view",
-  ENTERPRISE_APPROVE: "enterprise:approve",
-  ENTERPRISE_UPDATE: "enterprise:update",
-  ENTERPRISE_SUSPEND: "enterprise:suspend",
+  // Backend uses the plural "enterprises:*" (role.model.ts).
+  ENTERPRISES_VIEW: "enterprises:view",
+  ENTERPRISES_APPROVE: "enterprises:approve",
+  ENTERPRISES_UPDATE: "enterprises:update",
+  ENTERPRISES_SUSPEND: "enterprises:suspend",
   SUPPORT_VIEW: "support:view",
   SUPPORT_REPLY: "support:reply",
   SUPPORT_ASSIGN: "support:assign",
@@ -62,21 +66,36 @@ export const PERMISSIONS = {
   AUDIT_VIEW: "audit:view",
   FINANCE_VIEW: "finance:view",
   FINANCE_EXPORT: "finance:export",
+  DRIVER_INSTRUCTIONS_VIEW: "driver-instructions:view",
+  BADGES_VIEW: "badges:view",
+  TRAINING_VIEW: "training:view",
+  REFUNDS_VIEW: "refunds:view",
 } as const;
 
-// Map sidebar items to required permissions
+// Fallback map of sidebar item id -> permissions that grant it.
+//
+// The authoritative list is the backend's SIDEBAR_MODULES (role.model.ts), which
+// login and /auth/me turn into `accessibleModules`. This map is only consulted
+// when that list does not already grant the module, so every id the sidebar can
+// render must appear here with the SAME permission the backend gates it on —
+// otherwise an id missing from the backend list disappears from the nav
+// entirely, which is exactly what happened to ten items.
 export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   dashboard: [PERMISSIONS.DASHBOARD_VIEW],
   "vehicle-management": [PERMISSIONS.VEHICLES_VIEW],
-  categories: [PERMISSIONS.CONFIG_VIEW],
-  "addon-services": [PERMISSIONS.CONFIG_VIEW],
-  "cancellation-reasons": [PERMISSIONS.CONFIG_VIEW],
-  "prohibited-items": [PERMISSIONS.CONFIG_VIEW],
+  categories: [PERMISSIONS.SETTINGS_VIEW],
+  "addon-services": [PERMISSIONS.SETTINGS_VIEW],
+  "cancellation-reasons": [PERMISSIONS.SETTINGS_VIEW],
+  "prohibited-items": [PERMISSIONS.SETTINGS_VIEW],
+  "master-data": [PERMISSIONS.SETTINGS_VIEW],
+  "driver-instructions": [PERMISSIONS.DRIVER_INSTRUCTIONS_VIEW],
+  cms: [PERMISSIONS.SETTINGS_VIEW],
+  commissions: [PERMISSIONS.SETTINGS_VIEW],
   "app-users": [PERMISSIONS.USERS_VIEW],
   riders: [PERMISSIONS.DRIVERS_VIEW],
   orders: [PERMISSIONS.BOOKINGS_VIEW],
   payments: [PERMISSIONS.PAYMENTS_VIEW],
-  enterprises: [PERMISSIONS.ENTERPRISE_VIEW],
+  enterprises: [PERMISSIONS.ENTERPRISES_VIEW],
   sos: [PERMISSIONS.SOS_VIEW],
   tracking: [PERMISSIONS.TRACKING_VIEW],
   notifications: [
@@ -87,10 +106,13 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   support: [PERMISSIONS.SUPPORT_VIEW],
   staff: [PERMISSIONS.STAFF_VIEW, PERMISSIONS.ROLES_VIEW],
   wallet: [PERMISSIONS.PAYMENTS_VIEW],
-  settings: [PERMISSIONS.CONFIG_VIEW],
-  // New modules
+  settings: [PERMISSIONS.SETTINGS_VIEW],
+  badges: [PERMISSIONS.BADGES_VIEW],
+  training: [PERMISSIONS.TRAINING_VIEW],
+  refunds: [PERMISSIONS.REFUNDS_VIEW],
   finance: [PERMISSIONS.FINANCE_VIEW],
-  reports: [PERMISSIONS.FINANCE_VIEW],
+  // GET /admin/reports/* is gated on reports:view, not finance:view.
+  reports: [PERMISSIONS.REPORTS_VIEW],
   "audit-logs": [PERMISSIONS.AUDIT_VIEW],
   automation: [PERMISSIONS.AUTOMATION_VIEW],
   compliance: [PERMISSIONS.DRIVERS_VIEW],
@@ -230,12 +252,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     // Super Admin can access all modules
     if (user.roleName === "Super Admin") return true;
 
-    // Check if user has accessible modules from backend
-    if (user.accessibleModules && user.accessibleModules.length > 0) {
-      return user.accessibleModules.includes(moduleId);
-    }
+    // Union of the two sources, not a short-circuit. Returning early on a
+    // non-empty accessibleModules made the permission map below unreachable for
+    // every staff admin, so any sidebar id the backend's SIDEBAR_MODULES did not
+    // list was hidden even when the admin held the permission the page needs.
+    // A missing id now degrades to the permission check instead of vanishing.
+    const grantedByBackend = user.accessibleModules?.includes(moduleId) ?? false;
+    if (grantedByBackend) return true;
 
-    // Fallback to permission check
     const requiredPermissions = SIDEBAR_PERMISSION_MAP[moduleId];
     if (!requiredPermissions) return false;
 

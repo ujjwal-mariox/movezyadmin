@@ -11,6 +11,15 @@ const getHeaders = () => {
   };
 };
 
+/** Throws a readable Error on non-2xx instead of letting error envelopes masquerade as success. */
+const ensureOk = async (res: Response) => {
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Request failed (${res.status})`);
+  }
+  return res.json();
+};
+
 export const fetchCustomers = async () => {
   const response = await fetch(`${API_URL}/customers`, {
     headers: getHeaders(),
@@ -122,7 +131,7 @@ export const creditUserWallet = async (
     headers: getHeaders(),
     body: JSON.stringify({ amount, reason: description }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const debitUserWallet = async (
@@ -135,7 +144,7 @@ export const debitUserWallet = async (
     headers: getHeaders(),
     body: JSON.stringify({ amount, description }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const fetchAllTransactions = async (
@@ -252,28 +261,28 @@ export const createGoodsType = async (data: Partial<GoodsTypeItem>) => {
   const res = await fetch(`${API_URL}/admin/config/goods-types`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateGoodsType = async (id: string, data: Partial<GoodsTypeItem>) => {
   const res = await fetch(`${API_URL}/admin/config/goods-types/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const toggleGoodsType = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/config/goods-types/${id}/toggle`, {
     method: "PUT", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteGoodsType = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/config/goods-types/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // Addon Services
@@ -291,28 +300,28 @@ export const createAddonService = async (data: Partial<AddonServiceItem>) => {
   const res = await fetch(`${API_URL}/admin/config/addon-services`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateAddonService = async (id: string, data: Partial<AddonServiceItem>) => {
   const res = await fetch(`${API_URL}/admin/config/addon-services/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const toggleAddonService = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/config/addon-services/${id}/toggle`, {
     method: "PUT", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteAddonService = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/config/addon-services/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // Promo Codes
@@ -328,28 +337,28 @@ export const createPromo = async (data: Partial<PromoCodeItem>) => {
   const res = await fetch(`${API_URL}/admin/promos`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updatePromo = async (id: string, data: Partial<PromoCodeItem>) => {
   const res = await fetch(`${API_URL}/admin/promos/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const togglePromo = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/promos/${id}/toggle`, {
     method: "PUT", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deletePromo = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/promos/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── CANCELLATION REASONS ───
@@ -384,21 +393,21 @@ export const createCancellationReason = async (data: Partial<CancellationReasonI
   const res = await fetch(`${API_URL}/admin/config/cancellation-reasons`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateCancellationReason = async (id: string, data: Partial<CancellationReasonItem>) => {
   const res = await fetch(`${API_URL}/admin/config/cancellation-reasons/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteCancellationReason = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/config/cancellation-reasons/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── PROHIBITED ITEMS ───
@@ -430,21 +439,21 @@ export const createProhibitedItem = async (data: Partial<ProhibitedItemData>) =>
   const res = await fetch(`${API_URL}/admin/config/prohibited-items`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateProhibitedItem = async (id: string, data: Partial<ProhibitedItemData>) => {
   const res = await fetch(`${API_URL}/admin/config/prohibited-items/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteProhibitedItem = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/config/prohibited-items/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── ENTERPRISE ACCOUNTS ───
@@ -461,42 +470,42 @@ export const createEnterprise = async (data: Partial<Enterprise>) => {
   const res = await fetch(`${API_URL}/admin/enterprises`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateEnterprise = async (enterpriseId: string, data: Partial<Enterprise>) => {
   const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteEnterprise = async (enterpriseId: string) => {
   const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const approveEnterprise = async (enterpriseId: string, data: { creditLimit: number; discountPercentage: number; paymentTerms: number }) => {
   const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}/approve`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const rejectEnterprise = async (enterpriseId: string, data: { reason: string }) => {
   const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}/reject`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const suspendEnterprise = async (enterpriseId: string, data: { reason: string }) => {
   const res = await fetch(`${API_URL}/admin/enterprises/${enterpriseId}/suspend`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── ENTERPRISE INQUIRIES ───
@@ -528,14 +537,14 @@ export const updateEnterpriseInquiry = async (id: string, data: { status?: strin
   const res = await fetch(`${API_URL}/admin/enterprises/inquiries/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteEnterpriseInquiry = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/enterprises/inquiries/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── ENTERPRISE PAGE CONTENT ───
@@ -586,7 +595,7 @@ export const updateEnterpriseContent = async (data: Partial<EnterpriseContentDat
   const res = await fetch(`${API_URL}/admin/enterprises/content`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // Driver Instructions
@@ -614,28 +623,28 @@ export const createDriverInstruction = async (data: Partial<DriverInstructionIte
   const res = await fetch(`${API_URL}/admin/driver-instructions`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateDriverInstruction = async (id: string, data: Partial<DriverInstructionItem>) => {
   const res = await fetch(`${API_URL}/admin/driver-instructions/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const toggleDriverInstruction = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/driver-instructions/${id}/toggle`, {
     method: "PUT", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteDriverInstruction = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/driver-instructions/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // Badges
@@ -667,28 +676,28 @@ export const createBadge = async (data: Partial<BadgeItem>) => {
   const res = await fetch(`${API_URL}/admin/badges`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateBadge = async (id: string, data: Partial<BadgeItem>) => {
   const res = await fetch(`${API_URL}/admin/badges/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const toggleBadge = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/badges/${id}/toggle`, {
     method: "PUT", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteBadge = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/badges/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── SUPPORT ADMIN APIs ───
@@ -740,7 +749,7 @@ export const assignSupportTicket = async (
   const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/assign`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateSupportTicketStatus = async (
@@ -750,7 +759,7 @@ export const updateSupportTicketStatus = async (
   const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/status`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const replySupportTicket = async (
@@ -760,14 +769,14 @@ export const replySupportTicket = async (
   const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/reply`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const escalateSupportTicket = async (ticketId: string, reason: string) => {
   const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/escalate`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify({ reason }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // Quick replies
@@ -802,28 +811,28 @@ export const createQuickReply = async (data: Partial<QuickReplyItem>) => {
   const res = await fetch(`${API_URL}/admin/support/quick-replies`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateQuickReply = async (id: string, data: Partial<QuickReplyItem>) => {
   const res = await fetch(`${API_URL}/admin/support/quick-replies/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteQuickReply = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/support/quick-replies/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const markQuickReplyUsed = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/support/quick-replies/${id}/use`, {
     method: "POST", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── NOTIFICATIONS ADMIN APIs ───
@@ -861,6 +870,12 @@ export interface NotificationCampaign {
   audience: NotificationAudience;
   templateId?: string;
   targetedCount: number;
+  /**
+   * Of the targeted accounts, how many had a push token to send to. A campaign
+   * with targetedCount 5000 and pushTargetedCount 0 reached nobody — the
+   * accounts exist but no device is registered.
+   */
+  pushTargetedCount?: number;
   sentCount: number;
   readCount: number;
   failedCount: number;
@@ -889,21 +904,21 @@ export const createNotificationTemplate = async (data: Partial<NotificationTempl
   const res = await fetch(`${API_URL}/admin/notifications/templates`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateNotificationTemplate = async (id: string, data: Partial<NotificationTemplate>) => {
   const res = await fetch(`${API_URL}/admin/notifications/templates/${id}`, {
     method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteNotificationTemplate = async (id: string) => {
   const res = await fetch(`${API_URL}/admin/notifications/templates/${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const sendNotificationBroadcast = async (data: {
@@ -912,12 +927,15 @@ export const sendNotificationBroadcast = async (data: {
   type: NotificationType;
   audience: NotificationAudience;
   templateId?: string;
+  /** Restrict the send to these recipients; omit for a true broadcast. */
+  driverIds?: string[];
+  userIds?: string[];
   data?: Record<string, unknown>;
 }) => {
   const res = await fetch(`${API_URL}/admin/notifications/broadcast`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const fetchNotificationHistory = async (filters?: {
@@ -1022,7 +1040,7 @@ export const revertAuditLog = async (id: string, reason?: string) => {
     headers: getHeaders(),
     body: JSON.stringify({ reason }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── REPORTS ADMIN APIs ───
@@ -1168,7 +1186,7 @@ export const createReportSchedule = async (data: ScheduledReportInput) => {
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateReportSchedule = async (
@@ -1180,7 +1198,7 @@ export const updateReportSchedule = async (
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteReportSchedule = async (id: string) => {
@@ -1188,7 +1206,7 @@ export const deleteReportSchedule = async (id: string) => {
     method: "DELETE",
     headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const runReportScheduleNow = async (id: string) => {
@@ -1196,7 +1214,7 @@ export const runReportScheduleNow = async (id: string) => {
     method: "POST",
     headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── MANUAL DRIVER PAYOUTS ───
@@ -1210,6 +1228,15 @@ export interface PayoutItem {
   notes?: string;
   rejectionReason?: string;
   createdAt: string;
+  /**
+   * Separation of duties: the API refuses to let one admin both request and
+   * approve a payout, or both approve and pay it. getPayouts returns the whole
+   * document, so these are already in the payload — the UI needs them to hide
+   * the actions that would come back as a 400.
+   */
+  requestedBy?: string;
+  requestedByType?: "Admin" | "Driver";
+  approvedBy?: string;
 }
 
 export const fetchPayouts = async (status?: string) => {
@@ -1231,7 +1258,7 @@ export const createPayout = async (data: {
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const approvePayout = async (id: string) => {
@@ -1239,7 +1266,7 @@ export const approvePayout = async (id: string) => {
     method: "PUT",
     headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const markPayoutPaid = async (id: string, reference?: string) => {
@@ -1248,7 +1275,7 @@ export const markPayoutPaid = async (id: string, reference?: string) => {
     headers: getHeaders(),
     body: JSON.stringify({ reference }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const rejectPayout = async (id: string, reason?: string) => {
@@ -1257,7 +1284,57 @@ export const rejectPayout = async (id: string, reason?: string) => {
     headers: getHeaders(),
     body: JSON.stringify({ reason }),
   });
+  return ensureOk(res);
+};
+
+// ─── CUSTOMER COIN → BANK PAYOUTS ───
+// Requested by customers from the app, settled manually by an operator. Same
+// lifecycle as driver payouts; rejecting one refunds the customer's coins.
+export interface CoinPayoutItem {
+  _id: string;
+  userId: { _id: string; name?: string; phone?: string; email?: string } | string;
+  coins: number;
+  amount: number;
+  rateApplied: number;
+  status: "PENDING" | "APPROVED" | "PAID" | "REJECTED";
+  bankSnapshot: { accountName: string; accountNumber: string; ifsc: string };
+  reference?: string;
+  rejectionReason?: string;
+  createdAt: string;
+}
+
+export const fetchCoinPayouts = async (status?: string) => {
+  const q = status ? `?status=${status}` : "";
+  const res = await fetch(`${API_URL}/admin/finance/coin-payouts${q}`, {
+    headers: getHeaders(),
+  });
   return res.json();
+};
+
+export const approveCoinPayout = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/finance/coin-payouts/${id}/approve`, {
+    method: "PUT",
+    headers: getHeaders(),
+  });
+  return ensureOk(res);
+};
+
+export const markCoinPayoutPaid = async (id: string, reference: string) => {
+  const res = await fetch(`${API_URL}/admin/finance/coin-payouts/${id}/pay`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify({ reference }),
+  });
+  return ensureOk(res);
+};
+
+export const rejectCoinPayout = async (id: string, reason: string) => {
+  const res = await fetch(`${API_URL}/admin/finance/coin-payouts/${id}/reject`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify({ reason }),
+  });
+  return ensureOk(res);
 };
 
 export const fetchDriverReports = async (range?: ReportRange) => {
@@ -1427,7 +1504,7 @@ export const updateAdminUser = async (id: string, data: Record<string, unknown>)
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const updateAdminUserStatus = async (id: string, isActive: boolean, reason?: string) => {
@@ -1436,7 +1513,7 @@ export const updateAdminUserStatus = async (id: string, isActive: boolean, reaso
     headers: getHeaders(),
     body: JSON.stringify({ isActive, reason }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const blockAdminUser = async (id: string, reason?: string) => {
@@ -1445,7 +1522,7 @@ export const blockAdminUser = async (id: string, reason?: string) => {
     headers: getHeaders(),
     body: JSON.stringify({ reason }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const unblockAdminUser = async (id: string) => {
@@ -1453,7 +1530,7 @@ export const unblockAdminUser = async (id: string) => {
     method: "PUT",
     headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const deleteAdminUser = async (id: string) => {
@@ -1461,7 +1538,7 @@ export const deleteAdminUser = async (id: string) => {
     method: "DELETE",
     headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const restoreAdminUser = async (id: string) => {
@@ -1469,7 +1546,7 @@ export const restoreAdminUser = async (id: string) => {
     method: "PUT",
     headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const adjustAdminUserCoins = async (id: string, data: { type: "CREDIT" | "DEBIT"; amount: number; reason: string }) => {
@@ -1478,7 +1555,7 @@ export const adjustAdminUserCoins = async (id: string, data: { type: "CREDIT" | 
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ─── SOS ADMIN APIs ───
@@ -1548,7 +1625,7 @@ export const respondToSOSAlert = async (id: string) => {
     method: "POST",
     headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const resolveSOSAlert = async (id: string, data: { resolutionNotes?: string; isFalseAlarm?: boolean }) => {
@@ -1558,7 +1635,7 @@ export const resolveSOSAlert = async (id: string, data: { resolutionNotes?: stri
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const notifyPoliceForSOS = async (id: string) => {
@@ -1568,7 +1645,7 @@ export const notifyPoliceForSOS = async (id: string) => {
     method: "POST",
     headers: getHeaders(),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // ============ ACTION CENTER ============
@@ -1611,7 +1688,10 @@ export const fetchActionCenter = async (signal?: AbortSignal) => {
     headers: getHeaders(),
     signal,
   });
-  return res.json();
+  // Was `res.json()` with no status check, so a 401 resolved to
+  // { success: false, message: "Session expired or invalid" } and the caller
+  // treated an auth failure as an empty-but-valid action centre.
+  return ensureOk(res);
 };
 
 // ============ BOOKINGS ADMIN APIs ============
@@ -1669,6 +1749,13 @@ export interface BookingRow {
   liveLocation?: { lat?: number; lng?: number; updatedAt?: string };
   rating?: number;
   cancellationReason?: string;
+  /**
+   * Fare raised mid-trip (an added stop) on an already-prepaid booking: cash
+   * the driver still has to collect. Present in the getAllBookings payload —
+   * it just was not declared here, so the admin showed the raised fare as
+   * fully PAID.
+   */
+  pendingCashTopUp?: number;
 }
 
 export interface BookingsListResponse {
@@ -1716,7 +1803,7 @@ export const cancelAdminBooking = async (id: string, body: { reason?: string; re
     headers: getHeaders(),
     body: JSON.stringify(body),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const refundAdminBooking = async (id: string, body: { amount: number; reason?: string }) => {
@@ -1725,7 +1812,7 @@ export const refundAdminBooking = async (id: string, body: { amount: number; rea
     headers: getHeaders(),
     body: JSON.stringify(body),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const assignAdminDriver = async (id: string, driverId: string) => {
@@ -1734,7 +1821,7 @@ export const assignAdminDriver = async (id: string, driverId: string) => {
     headers: getHeaders(),
     body: JSON.stringify({ driverId }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 // Driver list helper (for assign-driver picker)
@@ -1746,6 +1833,10 @@ export interface DriverOption {
   rating?: number;
   isOnline?: boolean;
   status?: string;
+  /** Deactivated drivers must not be assignable. */
+  isActive?: boolean;
+  /** Non-null means the driver is already mid-trip on another booking. */
+  currentBookingId?: string | null;
 }
 
 export const fetchAvailableDrivers = async (params?: { search?: string; limit?: number }) => {
@@ -1753,6 +1844,10 @@ export const fetchAvailableDrivers = async (params?: { search?: string; limit?: 
   if (params?.search) q.set("search", params.search);
   if (params?.limit) q.set("limit", String(params.limit));
   q.set("status", "approved");
+  // getAllDrivers honours both filters, so offline and deactivated drivers are
+  // excluded server-side rather than being listed and then labelled.
+  q.set("isOnline", "true");
+  q.set("isActive", "true");
   const res = await fetch(`${API_URL}/admin/drivers?${q.toString()}`, { headers: getHeaders() });
   return res.json();
 };
@@ -1775,9 +1870,16 @@ export interface FareConfigItem {
   _id: string;
   name: string;
   gstPercentage: number;
-  platformFeePercentage: number;
+  driverCommissionPercent: number;
   insuranceFee: number;
   minimumFare: number;
+  // Cancellation refund ceilings, as a % of finalFare, by how far the trip got
+  // (booking.controller.ts refundCeilingForStage). They are stored on the same
+  // FareConfig document and were previously absent from this type, so the only
+  // editor of that document could not read or write them.
+  refundBeforeAssignPercent: number;
+  refundAfterAssignPercent: number;
+  refundAfterPickupPercent: number;
   waitingChargePerMin: number;
   freeWaitingMinutes: number;
   nightSurgeMultiplier: number;
@@ -1789,6 +1891,68 @@ export interface FareConfigItem {
   peakHourEnd: number;
   isActive: boolean;
 }
+
+// ── Legal / informational content (Terms, Privacy, About, Refund, Cancellation) ──
+export interface ContentItem {
+  _id: string;
+  type: "TERMS" | "PRIVACY" | "ABOUT" | "REFUND" | "CANCELLATION";
+  title: string;
+  content: string;
+  version: number;
+  isActive: boolean;
+  publishedAt?: string;
+  updatedAt?: string;
+  updatedBy?: { name?: string; email?: string } | null;
+}
+
+export const fetchContentList = async () => {
+  const res = await fetch(`${API_URL}/admin/content`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(`Failed to load content (${res.status})`);
+  return res.json();
+};
+
+export const fetchContentByType = async (type: string) => {
+  const res = await fetch(`${API_URL}/admin/content/${type}`, { headers: getHeaders() });
+  if (!res.ok) throw new Error(`Failed to load content (${res.status})`);
+  return res.json();
+};
+
+export const updateContentByType = async (
+  type: string,
+  data: { title: string; content: string },
+) => {
+  const res = await fetch(`${API_URL}/admin/content/${type}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Failed to save content (${res.status})`);
+  }
+  return res.json();
+};
+
+// ── Admin password reset (real endpoints; the old UI was a mock) ──
+export const adminForgotPassword = async (email: string) => {
+  const res = await fetch(`${API_URL}/admin/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return res.json();
+};
+
+export const adminResetPassword = async (token: string, newPassword: string) => {
+  const res = await fetch(`${API_URL}/admin/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newPassword }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Reset failed");
+  }
+  return res.json();
+};
 
 export const fetchAppSettings = async (category?: string) => {
   const q = new URLSearchParams();
@@ -1806,7 +1970,7 @@ export const updateAppSetting = async (key: string, value: unknown) => {
     headers: getHeaders(),
     body: JSON.stringify({ value }),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const createAppSetting = async (data: {
@@ -1821,7 +1985,7 @@ export const createAppSetting = async (data: {
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 
 export const upsertAppSetting = async (data: {
@@ -1831,12 +1995,12 @@ export const upsertAppSetting = async (data: {
   category: string;
   description?: string;
 }) => {
-  const updateRes = await updateAppSetting(data.key, data.value);
-  if (updateRes?.success === false || updateRes?.data?.setting == null) {
-    // Setting doesn't exist yet — create it.
+  try {
+    return await updateAppSetting(data.key, data.value);
+  } catch {
+    // Setting doesn't exist yet (update 404s) — create it.
     return createAppSetting(data);
   }
-  return updateRes;
 };
 
 export const fetchFareConfig = async () => {
@@ -1850,6 +2014,6 @@ export const updateFareConfig = async (data: Partial<FareConfigItem>) => {
     headers: getHeaders(),
     body: JSON.stringify(data),
   });
-  return res.json();
+  return ensureOk(res);
 };
 

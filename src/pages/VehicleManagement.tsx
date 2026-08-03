@@ -352,7 +352,7 @@ const VehicleManagement: React.FC = () => {
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase">Active</p>
               <h3 className="mt-1 text-2xl font-bold text-gray-800">{activeVehicles}</h3>
-              <p className="mt-1 text-xs text-green-600">Accepting orders</p>
+              <p className="mt-1 text-xs text-green-600">Accepting orders (this page)</p>
             </div>
             <div className="flex items-center justify-center bg-green-50 w-11 h-11 rounded-xl">
               <CheckCircle className="w-5 h-5 text-green-600" />
@@ -364,7 +364,7 @@ const VehicleManagement: React.FC = () => {
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase">Inactive</p>
               <h3 className="mt-1 text-2xl font-bold text-gray-800">{inactiveVehicles}</h3>
-              <p className="mt-1 text-xs text-amber-600">Paused</p>
+              <p className="mt-1 text-xs text-amber-600">Paused (this page)</p>
             </div>
             <div className="flex items-center justify-center bg-amber-50 w-11 h-11 rounded-xl">
               <AlertCircle className="w-5 h-5 text-amber-600" />
@@ -376,7 +376,7 @@ const VehicleManagement: React.FC = () => {
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase">Intercity Ready</p>
               <h3 className="mt-1 text-2xl font-bold text-gray-800">{intercityVehicles}</h3>
-              <p className="mt-1 text-xs text-purple-600">Long-haul enabled</p>
+              <p className="mt-1 text-xs text-purple-600">Long-haul enabled (this page)</p>
             </div>
             <div className="flex items-center justify-center bg-purple-50 w-11 h-11 rounded-xl">
               <Activity className="w-5 h-5 text-purple-600" />

@@ -1,5 +1,6 @@
 // src/pages/SOSDashboard.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
 import {
   AlertTriangle,
   Phone,
@@ -133,6 +134,45 @@ const SOSDashboard: React.FC = () => {
     void load();
   }, [load]);
 
+  // Live SOS alerts. A panic press is safety-critical and this page previously
+  // loaded once and never refreshed — a new alert only appeared if someone
+  // happened to reload. The backend emits `sos:new` to the "admin" room, which
+  // admin sockets now join.
+  useEffect(() => {
+    const token = localStorage.getItem("adminToken");
+    if (!token) return;
+
+    // Socket origin = API URL minus the /v1/api path.
+    const apiUrl = import.meta.env.VITE_API_URL || "";
+    const origin = apiUrl.replace(/\/v1\/api\/?$/, "");
+
+    let socket: Socket | null = null;
+    try {
+      socket = io(origin, {
+        transports: ["websocket", "polling"],
+        auth: { token },
+        forceNew: true,
+        reconnection: true,
+      });
+
+      socket.on("sos:new", () => {
+        // Refetch rather than splice the payload in: `load` already selects and
+        // flies to the newest ACTIVE alert, which is the behaviour we want.
+        void load();
+      });
+      socket.on("connect_error", (err) =>
+        console.warn("[SOS] socket connect error:", err?.message),
+      );
+    } catch (e) {
+      console.warn("[SOS] socket init failed", e);
+    }
+
+    return () => {
+      socket?.off("sos:new");
+      socket?.disconnect();
+    };
+  }, [load]);
+
   useEffect(() => {
     timerRef.current = window.setInterval(() => setNow(Date.now()), 1000);
     return () => {
@@ -221,12 +261,27 @@ const SOSDashboard: React.FC = () => {
     }
   };
 
+  // The platform has NO emergency-services integration: the endpoint only
+  // timestamps the operator's own action. This was labelled "Notify Police" and
+  // then displayed "Police has been notified.", so in a live emergency an
+  // operator could believe help was dispatched when nobody had been called.
   const handleNotifyPolice = async (alert: SOSAlertRow) => {
+    const confirmed = await dialog.confirm({
+      title: "Have you contacted the police?",
+      message:
+        "Movezy does not contact emergency services automatically. Only confirm " +
+        "once you have called them yourself \u2014 this records the time and your " +
+        "name against this alert.",
+      tone: "danger",
+      confirmLabel: "Yes, I have called",
+    });
+    if (!confirmed) return;
+
     setActioningId(alert._id);
     try {
       const res = await notifyPoliceForSOS(alert._id);
       if (res?.success === false) {
-        await dialog.alert({ title: "Action failed", message: res.message || "Failed to notify police", tone: "danger" });
+        await dialog.alert({ title: "Action failed", message: res.message || "Failed to record the police call", tone: "danger" });
       } else {
         const updated: SOSAlertRow | undefined = res?.data;
         setAlerts((list) =>
@@ -238,7 +293,7 @@ const SOSDashboard: React.FC = () => {
         );
       }
     } catch (e) {
-      await dialog.alert({ title: "Action failed", message: e instanceof Error ? e.message : "Failed to notify police", tone: "danger" });
+      await dialog.alert({ title: "Action failed", message: e instanceof Error ? e.message : "Failed to record the police call", tone: "danger" });
     } finally {
       setActioningId(null);
     }
@@ -342,7 +397,7 @@ const SOSDashboard: React.FC = () => {
                         disabled={actioningId === alert._id}
                         className="flex items-center gap-1.5 px-3 py-2 bg-red-800 text-white text-sm font-semibold rounded-lg hover:bg-red-900 disabled:opacity-50"
                       >
-                        <Shield className="w-4 h-4" /> Notify Police
+                        <Shield className="w-4 h-4" /> Log police call
                       </button>
                     )}
                     <button
@@ -659,7 +714,7 @@ const SOSDashboard: React.FC = () => {
 
           {selectedAlert.policeNotified && (
             <div className="mt-3 flex items-center gap-2 text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-lg">
-              <Shield className="w-4 h-4" /> Police has been notified.
+              <Shield className="w-4 h-4" /> Police call logged by an operator.
             </div>
           )}
 

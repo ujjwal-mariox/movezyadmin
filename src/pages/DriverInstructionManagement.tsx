@@ -10,10 +10,6 @@ import {
   FileText,
   ToggleLeft,
   ToggleRight,
-  ShieldAlert,
-  ShieldCheck,
-  AlertTriangle,
-  GitBranch,
   CheckCircle2,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
@@ -28,72 +24,16 @@ import {
   type DriverInstructionItem,
 } from "../services/api";
 
-type InstructionType = "MANDATORY" | "ADVISORY" | "CONDITIONAL";
-type TriggerCondition =
-  | "ALWAYS"
-  | "ON_LOGIN"
-  | "BEFORE_PICKUP"
-  | "BEFORE_DELIVERY"
-  | "RAIN_WEATHER"
-  | "NIGHT_SHIFT"
-  | "NEW_DRIVER";
-type EnforcementMethod = "ACKNOWLEDGEMENT" | "OTP_CONFIRM" | "SIGNATURE" | "PHOTO_PROOF" | "PASSIVE";
-type ViolationAction = "NONE" | "WARNING" | "PENALTY" | "SUSPEND" | "DEACTIVATE";
-
 interface FormData {
   text: string;
   icon: string;
   sortOrder: number | string;
-  type: InstructionType;
-  trigger: TriggerCondition;
-  enforcement: EnforcementMethod;
-  violationAction: ViolationAction;
-  complianceImpact: number; // 0-100
-  version: string;
 }
 
 const initialFormData: FormData = {
   text: "",
   icon: "📋",
   sortOrder: 0,
-  type: "MANDATORY",
-  trigger: "ALWAYS",
-  enforcement: "ACKNOWLEDGEMENT",
-  violationAction: "WARNING",
-  complianceImpact: 20,
-  version: "v1.0",
-};
-
-const typeTone: Record<InstructionType, { badge: string; label: string; icon: React.ComponentType<{ className?: string }> }> = {
-  MANDATORY: { badge: "bg-red-50 text-red-700 border-red-200", label: "Mandatory", icon: ShieldAlert },
-  ADVISORY: { badge: "bg-blue-50 text-blue-700 border-blue-200", label: "Advisory", icon: FileText },
-  CONDITIONAL: { badge: "bg-amber-50 text-amber-700 border-amber-200", label: "Conditional", icon: AlertTriangle },
-};
-
-const triggerLabel: Record<TriggerCondition, string> = {
-  ALWAYS: "Always",
-  ON_LOGIN: "On login",
-  BEFORE_PICKUP: "Before pickup",
-  BEFORE_DELIVERY: "Before delivery",
-  RAIN_WEATHER: "Rain / bad weather",
-  NIGHT_SHIFT: "Night shift",
-  NEW_DRIVER: "New drivers only",
-};
-
-const enforcementLabel: Record<EnforcementMethod, string> = {
-  ACKNOWLEDGEMENT: "Acknowledge",
-  OTP_CONFIRM: "OTP confirm",
-  SIGNATURE: "Signature",
-  PHOTO_PROOF: "Photo proof",
-  PASSIVE: "Passive (no gate)",
-};
-
-const violationTone: Record<ViolationAction, { badge: string; label: string }> = {
-  NONE: { badge: "bg-gray-100 text-gray-600", label: "No action" },
-  WARNING: { badge: "bg-amber-100 text-amber-700", label: "Warning" },
-  PENALTY: { badge: "bg-orange-100 text-orange-700", label: "Penalty" },
-  SUSPEND: { badge: "bg-red-100 text-red-700", label: "Suspend" },
-  DEACTIVATE: { badge: "bg-red-200 text-red-900", label: "Deactivate" },
 };
 
 const DriverInstructionManagement: React.FC = () => {
@@ -122,43 +62,13 @@ const DriverInstructionManagement: React.FC = () => {
   const startIndex = totalItems === 0 ? 0 : (page - 1) * limit + 1;
   const endIndex = Math.min(page * limit, totalItems);
 
-  // Per-instruction config (policy & enforcement) resolved from the instruction record
-  const instructionMetrics = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        type: InstructionType;
-        trigger: TriggerCondition;
-        enforcement: EnforcementMethod;
-        violation: ViolationAction;
-        version: string;
-      }
-    >();
-    items.forEach((it) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const raw = it as any;
-      const type = (raw.type as InstructionType) || "MANDATORY";
-      map.set(it._id, {
-        type,
-        trigger: (raw.trigger as TriggerCondition) || "ALWAYS",
-        enforcement: (raw.enforcement as EnforcementMethod) || "ACKNOWLEDGEMENT",
-        violation: (raw.violationAction as ViolationAction) || "WARNING",
-        version: (raw.version as string) || "v1.0",
-      });
-    });
-    return map;
-  }, [items]);
-
   const overviewStats = useMemo(() => {
     let active = 0;
-    let mandatory = 0;
     items.forEach((it) => {
       if (it.isActive) active++;
-      const m = instructionMetrics.get(it._id);
-      if (m?.type === "MANDATORY") mandatory++;
     });
-    return { total: paginationMeta.total || items.length, active, mandatory };
-  }, [items, instructionMetrics, paginationMeta.total]);
+    return { total: paginationMeta.total || items.length, active };
+  }, [items, paginationMeta.total]);
 
   const showNotification = (type: "success" | "error", message: string) => {
     setNotification({ type, message });
@@ -206,19 +116,10 @@ const DriverInstructionManagement: React.FC = () => {
   };
 
   const handleEdit = (item: DriverInstructionItem) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = item as any;
-    const m = instructionMetrics.get(item._id);
     setFormData({
       text: item.text,
       icon: item.icon || "📋",
       sortOrder: item.sortOrder || 0,
-      type: (raw.type as InstructionType) || m?.type || "MANDATORY",
-      trigger: (raw.trigger as TriggerCondition) || m?.trigger || "ALWAYS",
-      enforcement: (raw.enforcement as EnforcementMethod) || m?.enforcement || "ACKNOWLEDGEMENT",
-      violationAction: (raw.violationAction as ViolationAction) || m?.violation || "WARNING",
-      complianceImpact: raw.complianceImpact ?? 20,
-      version: (raw.version as string) || m?.version || "v1.0",
     });
     setIsEditing(true);
     setEditingId(item._id);
@@ -233,8 +134,7 @@ const DriverInstructionManagement: React.FC = () => {
 
     try {
       setActionLoading("save");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: any = { ...formData, sortOrder: Number(formData.sortOrder) || 0 };
+      const payload = { ...formData, sortOrder: Number(formData.sortOrder) || 0 };
       if (isEditing && editingId) {
         await updateDriverInstruction(editingId, payload);
         showNotification("success", "Instruction updated");
@@ -338,7 +238,7 @@ const DriverInstructionManagement: React.FC = () => {
       </div>
 
       {/* KPI strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -360,18 +260,6 @@ const DriverInstructionManagement: React.FC = () => {
             </div>
             <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
               <CheckCircle2 className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 border-l-4 !border-l-red-500 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Mandatory</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{overviewStats.mandatory}</p>
-              <p className="text-xs text-gray-400 mt-1">Must be acknowledged</p>
-            </div>
-            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
-              <ShieldAlert className="w-5 h-5 text-red-600" />
             </div>
           </div>
         </div>
@@ -403,21 +291,6 @@ const DriverInstructionManagement: React.FC = () => {
                     Instruction
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    Type
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    Trigger
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    Enforcement
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    Violation
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                    Version
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                     Status
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
@@ -427,9 +300,6 @@ const DriverInstructionManagement: React.FC = () => {
               </thead>
               <tbody className="divide-y">
                 {paginatedItems.map((item) => {
-                  const m = instructionMetrics.get(item._id);
-                  const type = m?.type || "MANDATORY";
-                  const TypeIcon = typeTone[type].icon;
                   return (
                   <tr key={item._id} className="hover:bg-gray-50">
                     <td className="px-4 py-4">
@@ -442,31 +312,6 @@ const DriverInstructionManagement: React.FC = () => {
                           <div className="text-[11px] text-gray-400 mt-0.5">Sort #{item.sortOrder || 0}</div>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${typeTone[type].badge}`}>
-                        <TypeIcon className="w-3 h-3" />
-                        {typeTone[type].label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="text-xs text-gray-700">{triggerLabel[m?.trigger || "ALWAYS"]}</span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="inline-block px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 text-xs border border-indigo-100">
-                        {enforcementLabel[m?.enforcement || "ACKNOWLEDGEMENT"]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${violationTone[m?.violation || "WARNING"].badge}`}>
-                        {violationTone[m?.violation || "WARNING"].label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="inline-flex items-center gap-1 text-xs text-gray-600">
-                        <GitBranch className="w-3 h-3 text-gray-400" />
-                        {m?.version || "v1.0"}
-                      </span>
                     </td>
                     <td className="px-4 py-4">
                       <button
@@ -586,97 +431,6 @@ const DriverInstructionManagement: React.FC = () => {
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g. Be on time for every pickup"
                 />
-              </div>
-
-              {/* Policy & Enforcement */}
-              <div className="border-t pt-4">
-                <p className="text-xs font-semibold uppercase text-gray-500 mb-3 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" />
-                  Policy &amp; Enforcement
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
-                    <select
-                      value={formData.type}
-                      onChange={(e) => setFormData({ ...formData, type: e.target.value as InstructionType })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="MANDATORY">Mandatory — must acknowledge</option>
-                      <option value="ADVISORY">Advisory — best practice</option>
-                      <option value="CONDITIONAL">Conditional — situational</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Trigger Condition</label>
-                    <select
-                      value={formData.trigger}
-                      onChange={(e) => setFormData({ ...formData, trigger: e.target.value as TriggerCondition })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="ALWAYS">Always</option>
-                      <option value="ON_LOGIN">On login</option>
-                      <option value="BEFORE_PICKUP">Before pickup</option>
-                      <option value="BEFORE_DELIVERY">Before delivery</option>
-                      <option value="RAIN_WEATHER">Rain / bad weather</option>
-                      <option value="NIGHT_SHIFT">Night shift</option>
-                      <option value="NEW_DRIVER">New drivers only</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Enforcement Method</label>
-                    <select
-                      value={formData.enforcement}
-                      onChange={(e) => setFormData({ ...formData, enforcement: e.target.value as EnforcementMethod })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="ACKNOWLEDGEMENT">Acknowledge (tap)</option>
-                      <option value="OTP_CONFIRM">OTP confirm</option>
-                      <option value="SIGNATURE">Signature</option>
-                      <option value="PHOTO_PROOF">Photo proof</option>
-                      <option value="PASSIVE">Passive — no gate</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Violation Action</label>
-                    <select
-                      value={formData.violationAction}
-                      onChange={(e) => setFormData({ ...formData, violationAction: e.target.value as ViolationAction })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="NONE">No action</option>
-                      <option value="WARNING">Warning</option>
-                      <option value="PENALTY">Penalty</option>
-                      <option value="SUSPEND">Temporary suspend</option>
-                      <option value="DEACTIVATE">Deactivate</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Compliance Impact: <span className="text-blue-600 font-semibold">{formData.complianceImpact}%</span>
-                    </label>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={formData.complianceImpact}
-                      onChange={(e) => setFormData({ ...formData, complianceImpact: Number(e.target.value) })}
-                      className="w-full"
-                    />
-                    <p className="text-[11px] text-gray-400 mt-0.5">Weight in driver compliance score</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Version</label>
-                    <input
-                      type="text"
-                      value={formData.version}
-                      onChange={(e) => setFormData({ ...formData, version: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="v1.0"
-                    />
-                    <p className="text-[11px] text-gray-400 mt-0.5">Bump to re-prompt drivers</p>
-                  </div>
-                </div>
               </div>
 
               {/* Sort Order */}

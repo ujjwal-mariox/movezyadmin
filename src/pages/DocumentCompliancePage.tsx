@@ -41,7 +41,17 @@ const fetchApi = async (endpoint: string, options: RequestInit = {}) => {
   return res.json();
 };
 
-type DocStatus = "valid" | "expiring" | "expired" | "missing" | "pending";
+// "rejected" is a distinct state, not a flavour of pending: the backend stores
+// a per-document verdict (kyc.documentStatus[slot].status === "REJECTED") and a
+// rejectionReason, and buildDriverDocuments emits verificationStatus
+// "rejected". Without this member every rejection rendered as "Pending Review".
+type DocStatus =
+  | "valid"
+  | "expiring"
+  | "expired"
+  | "missing"
+  | "pending"
+  | "rejected";
 
 interface DocumentEntry {
   type: string;
@@ -51,6 +61,8 @@ interface DocumentEntry {
   uploadedAt?: string;
   url?: string;
   verifiedAt?: string;
+  /** Reason the reviewing admin gave when rejecting this document. */
+  rejectionReason?: string;
 }
 
 interface DriverDoc {
@@ -107,6 +119,16 @@ const STATUS_CONFIG: Record<
     label: "Pending Review",
     dot: "bg-blue-500",
   },
+  // Deliberately a different red-family treatment to "expired" (rose + Ban vs
+  // red + XCircle) so an admin can tell an active rejection from a lapsed doc.
+  rejected: {
+    color: "text-rose-700",
+    bg: "bg-rose-100",
+    border: "border-rose-300",
+    icon: Ban,
+    label: "Rejected",
+    dot: "bg-rose-600",
+  },
 };
 
 // Only the document types the driver KYC/onboarding flow actually captures.
@@ -126,18 +148,39 @@ const URGENT_THRESHOLD = 7;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const classifyDocStatus = (doc: any): DocStatus => {
   if (!doc || !doc.url) return "missing";
-  if (doc.verificationStatus === "pending" || doc.isVerified === false) return "pending";
-  if (!doc.expiryDate) return "valid";
-  const expiry = new Date(doc.expiryDate);
-  const now = new Date();
-  const diffDays = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return "expired";
+
+  // Expiry is evaluated BEFORE review state, and rejection before pending.
+  //
+  // The old order tested `verificationStatus === "pending" || isVerified ===
+  // false` first and returned "pending", which swallowed both of the states
+  // below it:
+  //  - an expired licence that had never been individually reviewed was graded
+  //    "Pending Review" — it scored 0.5 instead of 0, never reached the Expired
+  //    health card or action block, and was offered a one-click green Approve
+  //    with no expiry warning at all;
+  //  - a rejected document (isVerified false) came back as "Pending Review"
+  //    too, so it reappeared in "Pending Verification" with an Approve button
+  //    and its rejection reason was never shown.
+  const expiryTime = doc.expiryDate ? new Date(doc.expiryDate).getTime() : NaN;
+  const diffDays = Number.isNaN(expiryTime)
+    ? null
+    : Math.ceil((expiryTime - Date.now()) / (1000 * 60 * 60 * 24));
+
+  // A lapsed document can never be reported as merely awaiting review.
+  if (diffDays !== null && diffDays < 0) return "expired";
+  if (doc.verificationStatus === "rejected") return "rejected";
+  if (doc.verificationStatus === "pending" || doc.isVerified === false)
+    return "pending";
+  if (diffDays === null) return "valid";
   if (diffDays <= DAYS_THRESHOLD) return "expiring";
   return "valid";
 };
 
 const getOverallStatus = (docs: DocumentEntry[]): DocStatus => {
   if (docs.some((d) => d.status === "expired")) return "expired";
+  // Without this branch a driver whose only problem is a rejected document
+  // fell through every test and the row reported "Verified" in green.
+  if (docs.some((d) => d.status === "rejected")) return "rejected";
   if (docs.some((d) => d.status === "missing")) return "missing";
   if (docs.some((d) => d.status === "pending")) return "pending";
   if (docs.some((d) => d.status === "expiring")) return "expiring";
@@ -151,6 +194,9 @@ const computeScore = (docs: DocumentEntry[]): number => {
     expiring: 0.6,
     pending: 0.5,
     expired: 0,
+    // A document an admin has rejected contributes nothing to compliance —
+    // the driver has to re-upload before it can count.
+    rejected: 0,
     missing: 0,
   };
   const total = docs.reduce((sum, d) => sum + weight[d.status], 0);
@@ -221,6 +267,10 @@ const DocumentCompliancePage: React.FC = () => {
             uploadedAt: doc?.uploadedAt || doc?.createdAt,
             verifiedAt: doc?.verifiedAt,
             url: doc?.url || doc?.frontImage || doc?.backImage,
+            // Carried through so the reason an admin gave when rejecting is
+            // actually visible; the backend has always sent it
+            // (buildDriverDocuments) and nothing read it.
+            rejectionReason: doc?.rejectionReason,
           };
         });
 
@@ -259,6 +309,7 @@ const DocumentCompliancePage: React.FC = () => {
     let expired = 0;
     let pending = 0;
     let missing = 0;
+    let rejected = 0;
     drivers.forEach((d) => {
       d.documents.forEach((doc) => {
         totalDocs++;
@@ -266,10 +317,11 @@ const DocumentCompliancePage: React.FC = () => {
         else if (doc.status === "expiring") expiring++;
         else if (doc.status === "expired") expired++;
         else if (doc.status === "pending") pending++;
+        else if (doc.status === "rejected") rejected++;
         else if (doc.status === "missing") missing++;
       });
     });
-    return { totalDocs, verified, expiring, expired, pending, missing };
+    return { totalDocs, verified, expiring, expired, pending, missing, rejected };
   }, [drivers]);
 
   // ─── Urgent action lists ───
@@ -518,6 +570,100 @@ const DocumentCompliancePage: React.FC = () => {
     [dialog, loadDrivers],
   );
 
+  // Approve/reject ONE document.
+  //
+  // These rows are per-document, but they used to call the driver-level
+  // /verify endpoint because no per-document write path existed — so approving
+  // a licence also marked the Aadhaar, PAN, selfie and RC verified. The backend
+  // now stores a verdict per document; this writes only the one named.
+  const reviewDocument = useCallback(
+    async (
+      driverId: string,
+      driverName: string,
+      docType: string,
+      docLabel: string,
+      action: "approve" | "reject",
+    ) => {
+      let reason: string | null = null;
+      if (action === "reject") {
+        reason = await dialog.prompt({
+          title: `Reject ${docLabel}?`,
+          message: `Only this document is rejected — ${driverName}'s other documents keep their current status. The driver sees this reason.`,
+          tone: "danger",
+          required: true,
+          multiline: true,
+          confirmLabel: "Reject document",
+        });
+        if (reason === null) return;
+      } else {
+        const ok = await dialog.confirm({
+          title: `Approve ${docLabel}?`,
+          message: `Approves this document only. ${driverName}'s account is activated separately, once every document passes.`,
+          tone: "success",
+          confirmLabel: "Approve document",
+        });
+        if (!ok) return;
+      }
+
+      const res = await fetchApi(
+        `/admin/drivers/${driverId}/documents/${docType}/verify`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ action, reason }),
+        },
+      ).catch(() => null);
+
+      if (res) {
+        const all = (res as any)?.data?.allDocumentsVerified;
+        setBulkNotice(
+          action === "approve"
+            ? all
+              ? `${docLabel} approved — all of ${driverName}'s documents are now verified. Approve the driver to activate their account.`
+              : `${docLabel} approved for ${driverName}.`
+            : `${docLabel} rejected for ${driverName}.`,
+        );
+        loadDrivers();
+      } else {
+        await dialog.alert({
+          title: `${action === "approve" ? "Approve" : "Reject"} failed`,
+          message: "Could not update the document. Try again.",
+          tone: "danger",
+        });
+      }
+    },
+    [dialog, loadDrivers],
+  );
+
+  // Block is distinct from reject: it suspends an already-active driver (e.g.
+  // expired documents) and forces them offline, and is reversible from the
+  // Drivers page. Reject instead sends them back through onboarding.
+  const blockDriver = useCallback(
+    async (driverId: string, driverName: string) => {
+      const reason = await dialog.prompt({
+        title: `Block ${driverName}?`,
+        message:
+          "They'll be taken offline and stop receiving bookings until unblocked. The driver sees this reason.",
+        tone: "danger",
+        defaultValue: "Documents expired. Please upload valid documents.",
+        required: true,
+        multiline: true,
+        confirmLabel: "Block",
+      });
+      if (reason === null) return;
+      const res = await fetchApi(`/admin/drivers/${driverId}/block`, {
+        method: "PUT",
+        body: JSON.stringify({ action: "block", reason }),
+      }).catch(() => null);
+      if (res) {
+        setBulkNotice(`Blocked ${driverName}.`);
+        loadDrivers();
+      } else {
+        await dialog.alert({ title: "Block failed", message: "Could not block. Try again.", tone: "danger" });
+      }
+    },
+    [dialog, loadDrivers],
+  );
+
   const rejectDriver = useCallback(
     async (driverId: string, driverName: string) => {
       const reason = await dialog.prompt({
@@ -545,30 +691,60 @@ const DocumentCompliancePage: React.FC = () => {
   );
 
   // "Request re-upload" — notify a single driver to re-submit documents.
+  // `docLabel` narrows the message to one document when the caller knows which.
   const requestReupload = useCallback(
-    async (driverId: string, driverName: string) => {
+    async (driverId: string, driverName: string, docLabel?: string) => {
       const message = await dialog.prompt({
-        title: `Request re-upload from ${driverName}`,
+        title: docLabel
+          ? `Request ${docLabel} re-upload from ${driverName}`
+          : `Request re-upload from ${driverName}`,
         message: "This is sent to the driver as a notification.",
         tone: "info",
-        defaultValue: "Please re-upload your documents — some were unclear or expired.",
+        defaultValue: docLabel
+          ? `Please re-upload your ${docLabel} so we can verify it.`
+          : "Please re-upload your documents — some were unclear or expired.",
         required: true,
         multiline: true,
         confirmLabel: "Send request",
       });
       if (!message) return;
-      const res = await fetchApi(`/admin/notifications/broadcast`, {
+      // MUST be the per-driver endpoint. This used to POST /notifications/broadcast
+      // with audience:"DRIVERS" and the id tucked in `data` — but sendBroadcast
+      // ignores that id and targets EVERY active driver, so one driver's re-upload
+      // request went to the whole fleet.
+      const res = await fetchApi(`/admin/drivers/${driverId}/notify`, {
         method: "POST",
         body: JSON.stringify({
           title: "Document Re-upload Requested",
           body: message,
-          type: "SYSTEM",
-          audience: "DRIVERS",
-          data: { targetType: "COMPLIANCE", driverIds: driverId },
         }),
       }).catch(() => null);
       setBulkNotice(
         res ? `Re-upload request sent to ${driverName}.` : "Could not send request.",
+      );
+    },
+    [dialog],
+  );
+
+  /** Nudge one driver about an expiring document. */
+  const notifyDriver = useCallback(
+    async (driverId: string, driverName: string, docLabel: string) => {
+      const message = await dialog.prompt({
+        title: `Notify ${driverName}`,
+        message: "Sent to this driver only, as an in-app notification.",
+        tone: "info",
+        defaultValue: `Your ${docLabel} is expiring soon. Please upload a valid copy to keep receiving bookings.`,
+        required: true,
+        multiline: true,
+        confirmLabel: "Send",
+      });
+      if (!message) return;
+      const res = await fetchApi(`/admin/drivers/${driverId}/notify`, {
+        method: "POST",
+        body: JSON.stringify({ title: "Document Expiring Soon", body: message }),
+      }).catch(() => null);
+      setBulkNotice(
+        res ? `Notified ${driverName}.` : "Could not send notification.",
       );
     },
     [dialog],
@@ -626,7 +802,7 @@ const DocumentCompliancePage: React.FC = () => {
       </div>
 
       {/* Compliance Health Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <HealthCard
           label="Total Documents"
           value={counts.totalDocs}
@@ -656,6 +832,15 @@ const DocumentCompliancePage: React.FC = () => {
           tone="red"
           pulse={counts.expired > 0}
         />
+        {/* Rejected documents used to be counted as "Pending Review", so the
+            strip showed no trace of them at all. */}
+        <HealthCard
+          label="Rejected"
+          value={counts.rejected}
+          sub="Awaiting re-upload"
+          icon={Ban}
+          tone="rose"
+        />
         <HealthCard
           label="Pending Review"
           value={counts.pending}
@@ -682,7 +867,7 @@ const DocumentCompliancePage: React.FC = () => {
             secondary: `${doc.label} • ${days === 0 ? "today" : `${days}d`}`,
             ctaLabel: "Notify",
             ctaIcon: Bell,
-            onCta: () => dialog.alert({ title: "Notify driver", message: `Notify ${driver.driverName} about ${doc.label}.`, tone: "info" }),
+            onCta: () => notifyDriver(driver.driverId, driver.driverName, doc.label),
           }))}
         />
 
@@ -701,11 +886,11 @@ const DocumentCompliancePage: React.FC = () => {
             secondary: `${doc.label} • ${friendlyDate(doc.expiryDate)}`,
             ctaLabel: "Block",
             ctaIcon: Ban,
-            onCta: () => dialog.alert({ title: "Block driver", message: `Block ${driver.driverName}.`, tone: "danger" }),
+            onCta: () => blockDriver(driver.driverId, driver.driverName),
             secondaryAction: {
               label: "Request Update",
               icon: Send,
-              onClick: () => dialog.alert({ title: "Request update", message: `Request update from ${driver.driverName}.`, tone: "info" }),
+              onClick: () => requestReupload(driver.driverId, driver.driverName),
             },
           }))}
         />
@@ -725,11 +910,26 @@ const DocumentCompliancePage: React.FC = () => {
             secondary: doc.label,
             ctaLabel: "Approve",
             ctaIcon: CheckCircle,
-            onCta: () => dialog.alert({ title: "Approve document", message: `Approve ${doc.label} for ${driver.driverName}.`, tone: "success" }),
+            // Scoped to this one document — see reviewDocument.
+            onCta: () =>
+              reviewDocument(
+                driver.driverId,
+                driver.driverName,
+                doc.type,
+                doc.label,
+                "approve",
+              ),
             secondaryAction: {
               label: "Reject",
               icon: X,
-              onClick: () => dialog.alert({ title: "Reject document", message: `Reject ${doc.label} for ${driver.driverName}.`, tone: "danger" }),
+              onClick: () =>
+                reviewDocument(
+                  driver.driverId,
+                  driver.driverName,
+                  doc.type,
+                  doc.label,
+                  "reject",
+                ),
             },
           }))}
         />
@@ -759,6 +959,7 @@ const DocumentCompliancePage: React.FC = () => {
               <option value="valid">Verified</option>
               <option value="expiring">Expiring Soon</option>
               <option value="expired">Expired</option>
+              <option value="rejected">Rejected</option>
               <option value="pending">Pending Review</option>
               <option value="missing">Missing</option>
             </select>
@@ -891,9 +1092,11 @@ const DocumentCompliancePage: React.FC = () => {
                   const rowTone =
                     driver.overallStatus === "expired"
                       ? "bg-red-50/40"
-                      : driver.overallStatus === "expiring"
-                        ? "bg-amber-50/30"
-                        : "";
+                      : driver.overallStatus === "rejected"
+                        ? "bg-rose-50/40"
+                        : driver.overallStatus === "expiring"
+                          ? "bg-amber-50/30"
+                          : "";
                   return (
                     <tr
                       key={driver.driverId}
@@ -946,7 +1149,13 @@ const DocumentCompliancePage: React.FC = () => {
                           {driver.documents.map((doc) => (
                             <div
                               key={doc.type}
-                              title={`${doc.label}: ${STATUS_CONFIG[doc.status].label}`}
+                              // Surfaces the stored rejection reason on the row
+                              // itself — previously it was never read anywhere.
+                              title={`${doc.label}: ${STATUS_CONFIG[doc.status].label}${
+                                doc.status === "rejected" && doc.rejectionReason
+                                  ? ` — ${doc.rejectionReason}`
+                                  : ""
+                              }`}
                               className={`w-2.5 h-2.5 rounded-full ${STATUS_CONFIG[doc.status].dot}`}
                             />
                           ))}
@@ -1092,8 +1301,16 @@ const DocumentCompliancePage: React.FC = () => {
       {/* Compliance Profile Panel */}
       {profileDriver && (
         <CompliancePanel
-          driver={profileDriver}
+          // Re-read from the live list: approving a document inside the panel
+          // reloads `drivers`, and rendering the captured snapshot would leave
+          // the row showing its pre-approval status until the panel was closed.
+          driver={
+            drivers.find((d) => d.driverId === profileDriver.driverId) ??
+            profileDriver
+          }
           onClose={() => setProfileDriver(null)}
+          onRequestUpdate={requestReupload}
+          onReviewDocument={reviewDocument}
         />
       )}
     </div>
@@ -1141,6 +1358,13 @@ const toneMap: Record<
     text: "text-red-600",
     border: "border-gray-100 !border-l-red-500",
   },
+  rose: {
+    bg: "bg-white",
+    iconBg: "bg-rose-100",
+    iconColor: "text-rose-600",
+    text: "text-rose-700",
+    border: "border-gray-100 !border-l-rose-500",
+  },
 };
 
 const HealthCard: React.FC<{
@@ -1148,7 +1372,7 @@ const HealthCard: React.FC<{
   value: number;
   sub: string;
   icon: React.ElementType;
-  tone: "blue" | "blueLight" | "green" | "amber" | "red";
+  tone: "blue" | "blueLight" | "green" | "amber" | "red" | "rose";
   pulse?: boolean;
 }> = ({ label, value, sub, icon: Icon, tone, pulse }) => {
   const t = toneMap[tone];
@@ -1335,11 +1559,33 @@ const RuleToggle: React.FC<{
 const CompliancePanel: React.FC<{
   driver: DriverDoc;
   onClose: () => void;
-}> = ({ driver, onClose }) => {
+  /** Sends the driver a real re-upload request for one document. */
+  onRequestUpdate: (
+    driverId: string,
+    driverName: string,
+    docLabel: string,
+  ) => void;
+  /**
+   * Approves or rejects ONE document. The Pending Verification list only
+   * carries `pending` documents, so without this a document rejected by
+   * mistake could not be approved again until the driver re-uploaded it.
+   */
+  onReviewDocument: (
+    driverId: string,
+    driverName: string,
+    docType: string,
+    docLabel: string,
+    action: "approve" | "reject",
+  ) => void;
+}> = ({ driver, onClose, onRequestUpdate, onReviewDocument }) => {
   const dialog = useDialog();
   const missing = driver.documents.filter((d) => d.status === "missing");
   const nonCompliant = driver.documents.filter(
-    (d) => d.status === "expired" || d.status === "expiring" || d.status === "pending",
+    (d) =>
+      d.status === "expired" ||
+      d.status === "expiring" ||
+      d.status === "pending" ||
+      d.status === "rejected",
   );
   const compliant = driver.documents.filter((d) => d.status === "valid");
 
@@ -1463,10 +1709,56 @@ const CompliancePanel: React.FC<{
                                 <Eye className="w-3.5 h-3.5" />
                               </a>
                             )}
-                            {doc.status !== "valid" && (
+                            {/* Any uploaded document can be judged from here.
+                                The Pending Verification list only carries
+                                `pending` rows, so this is the sole place a
+                                rejected or expired document can be approved —
+                                e.g. after a rejection made in error. */}
+                            {doc.url && doc.status !== "valid" && (
                               <button
                                 onClick={() =>
-                                  dialog.alert({ title: "Request update", message: `Request ${doc.label} update.`, tone: "info" })
+                                  onReviewDocument(
+                                    driver.driverId,
+                                    driver.driverName,
+                                    doc.type,
+                                    doc.label,
+                                    "approve",
+                                  )
+                                }
+                                className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white text-[11px] font-semibold rounded-lg hover:bg-green-700"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Approve
+                              </button>
+                            )}
+                            {doc.url && doc.status !== "rejected" && (
+                              <button
+                                onClick={() =>
+                                  onReviewDocument(
+                                    driver.driverId,
+                                    driver.driverName,
+                                    doc.type,
+                                    doc.label,
+                                    "reject",
+                                  )
+                                }
+                                className="flex items-center gap-1 px-2 py-1 bg-rose-50 text-rose-700 text-[11px] font-semibold rounded-lg hover:bg-rose-100"
+                              >
+                                <XCircle className="w-3 h-3" />
+                                Reject
+                              </button>
+                            )}
+                            {doc.status !== "valid" && (
+                              // Was alert-only ("Request <doc> update.") and sent
+                              // nothing. Now hits the same per-driver notify
+                              // endpoint the table row uses.
+                              <button
+                                onClick={() =>
+                                  onRequestUpdate(
+                                    driver.driverId,
+                                    driver.driverName,
+                                    doc.label,
+                                  )
                                 }
                                 className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-[11px] font-semibold rounded-lg hover:bg-blue-700"
                               >
@@ -1476,6 +1768,16 @@ const CompliancePanel: React.FC<{
                             )}
                           </div>
                         </div>
+                        {/* The reviewing admin's reason. The backend has always
+                            stored and returned it; nothing ever displayed it,
+                            so a rejection was indistinguishable from an
+                            untouched document. */}
+                        {doc.status === "rejected" && (
+                          <p className="text-xs text-rose-700 mt-2 border-t border-rose-200 pt-2">
+                            <span className="font-semibold">Rejection reason:</span>{" "}
+                            {doc.rejectionReason || "No reason was recorded."}
+                          </p>
+                        )}
                       </div>
                     );
                   })}

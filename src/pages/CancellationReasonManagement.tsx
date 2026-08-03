@@ -15,8 +15,6 @@ import {
   Ban,
   Users,
   Car,
-  Zap,
-  Flame,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
@@ -29,30 +27,35 @@ import {
   type CancellationReasonItem,
 } from "../services/api";
 
+// penaltyType/penaltyValue are live again: booking.controller.ts cancelBooking
+// now withholds the fee from the refund (cancellationFeeFor), records it on
+// booking.cancellationFee, and getCancellationPreview quotes the same number so
+// the customer is told before they confirm. They were removed from this form
+// while nothing read them, because editing them presented dead config as live
+// policy.
+//
+// The fee is capped at the refundable amount: it comes out of a refund, and
+// there is no mechanism to collect from a customer who has not paid.
 interface FormData {
   reason: string;
   code: string;
   applicableTo: "USER" | "DRIVER" | "BOTH";
-  penaltyType: "NONE" | "FIXED" | "PERCENTAGE";
-  penaltyValue: number | string;
   isRefundable: boolean;
   refundPercentage: number | string;
+  penaltyType: "NONE" | "FIXED" | "PERCENTAGE";
+  penaltyValue: number | string;
   sortOrder: number | string;
-  stage: "BEFORE" | "DURING" | "AFTER";
-  autoAction: "NONE" | "NOTIFY_OPS" | "BLOCK_REBOOK" | "FLAG_DRIVER" | "ISSUE_REFUND";
 }
 
 const initialFormData: FormData = {
   reason: "",
   code: "",
   applicableTo: "BOTH",
-  penaltyType: "NONE",
-  penaltyValue: 0,
   isRefundable: true,
   refundPercentage: 100,
+  penaltyType: "NONE",
+  penaltyValue: 0,
   sortOrder: 0,
-  stage: "BEFORE",
-  autoAction: "NONE",
 };
 
 const CancellationReasonManagement: React.FC = () => {
@@ -128,15 +131,11 @@ const CancellationReasonManagement: React.FC = () => {
       reason: item.reason,
       code: item.code,
       applicableTo: item.applicableTo,
-      penaltyType: item.penaltyType,
-      penaltyValue: item.penaltyValue || 0,
       isRefundable: item.isRefundable,
       refundPercentage: item.refundPercentage ?? 100,
+      penaltyType: item.penaltyType ?? "NONE",
+      penaltyValue: item.penaltyValue ?? 0,
       sortOrder: item.sortOrder || 0,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      stage: ((item as any).stage as FormData["stage"]) ?? "BEFORE",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      autoAction: ((item as any).autoAction as FormData["autoAction"]) ?? "NONE",
     });
     setIsEditing(true);
     setEditingId(item._id);
@@ -147,7 +146,21 @@ const CancellationReasonManagement: React.FC = () => {
     e.preventDefault();
     try {
       setActionLoading("submit");
-      const payload = { ...formData, penaltyValue: Number(formData.penaltyValue) || 0, refundPercentage: Number(formData.refundPercentage) || 0, sortOrder: Number(formData.sortOrder) || 0 };
+      // "Refundable OFF" is persisted AS 0% as well as via the flag. The backend
+      // now honours isRefundable directly, but older rows were saved before it
+      // did, so keeping both in sync means an existing reason cannot refund at
+      // whatever percentage was last stored (100 by default).
+      //
+      // A NONE penalty stores 0, so switching a reason back to "no fee" cannot
+      // leave a stale amount behind that the refund path would still withhold.
+      const payload = {
+        ...formData,
+        refundPercentage: formData.isRefundable ? Number(formData.refundPercentage) || 0 : 0,
+        penaltyType: formData.penaltyType,
+        penaltyValue:
+          formData.penaltyType === "NONE" ? 0 : Number(formData.penaltyValue) || 0,
+        sortOrder: Number(formData.sortOrder) || 0,
+      };
       if (isEditing && editingId) {
         const res = await updateCancellationReason(editingId, payload);
         if (res.success === false) throw new Error(res.message || "Update failed");
@@ -194,32 +207,10 @@ const CancellationReasonManagement: React.FC = () => {
     }
   };
 
-  // Compute impact level from penalty
-  const impactOf = (item: CancellationReasonItem): "HIGH" | "MEDIUM" | "LOW" => {
-    if (item.penaltyType === "FIXED" && (item.penaltyValue || 0) >= 100)
-      return "HIGH";
-    if (item.penaltyType === "PERCENTAGE" && (item.penaltyValue || 0) >= 50)
-      return "HIGH";
-    if (item.penaltyType !== "NONE") return "MEDIUM";
-    return "LOW";
-  };
-
-  // Per-reason config (stage & auto-action) resolved from the reason record
-  const reasonMetrics = React.useMemo(() => {
-    return reasons.map((r) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const stage = ((r as any).stage as FormData["stage"]) ?? "BEFORE";
-      const autoAction =
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ((r as any).autoAction as FormData["autoAction"]) ?? "NONE";
-      return { id: r._id, stage, autoAction };
-    });
-  }, [reasons]);
-
-  // Stats
+  // Stats. `activeReasons` can only count the rows currently loaded, so it is
+  // labelled as a page figure — the server sends no active/inactive breakdown.
   const totalReasons = paginationMeta.total;
   const activeReasons = reasons.filter((r) => r.isActive).length;
-  const highImpactCount = reasons.filter((r) => impactOf(r) === "HIGH").length;
 
   // Server-side: data is already filtered and paginated
   const paginatedFiltered = reasons;
@@ -246,13 +237,6 @@ const CancellationReasonManagement: React.FC = () => {
     }
   };
 
-  const penaltyLabel = (item: CancellationReasonItem) => {
-    if (item.penaltyType === "NONE") return "No penalty";
-    if (item.penaltyType === "FIXED") return `₹${item.penaltyValue} penalty`;
-    if (item.penaltyType === "PERCENTAGE") return `${item.penaltyValue}% penalty`;
-    return "—";
-  };
-
   return (
     <div className="min-h-screen p-6 bg-gray-50">
       {notification && (
@@ -273,14 +257,16 @@ const CancellationReasonManagement: React.FC = () => {
         </button>
       </div>
 
-      {/* KPI Strip */}
-      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-3">
+      {/* KPI Strip. The old third card ("High Impact / Penalty-heavy") ranked
+          rows by penaltyType/penaltyValue — config that no cancellation path
+          reads — so it presented a policy the platform never applies. Removed. */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase">Total Reasons</p>
               <h3 className="mt-1 text-2xl font-bold text-gray-800">{totalReasons}</h3>
-              <p className="mt-1 text-xs text-blue-600">{activeReasons} active</p>
+              <p className="mt-1 text-xs text-blue-600">All reasons on record</p>
             </div>
             <div className="flex items-center justify-center bg-blue-50 w-11 h-11 rounded-xl">
               <Ban className="w-5 h-5 text-blue-600" />
@@ -290,24 +276,12 @@ const CancellationReasonManagement: React.FC = () => {
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Active</p>
+              <p className="text-xs font-medium text-gray-500 uppercase">Active (this page)</p>
               <h3 className="mt-1 text-2xl font-bold text-gray-800">{activeReasons}</h3>
-              <p className="mt-1 text-xs text-green-600">Shown in app</p>
+              <p className="mt-1 text-xs text-green-600">Of {reasons.length} shown below</p>
             </div>
             <div className="flex items-center justify-center bg-green-50 w-11 h-11 rounded-xl">
               <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-        </div>
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-red-500 shadow-sm rounded-2xl">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">High Impact</p>
-              <h3 className="mt-1 text-2xl font-bold text-gray-800">{highImpactCount}</h3>
-              <p className="mt-1 text-xs text-red-600">Penalty-heavy</p>
-            </div>
-            <div className="flex items-center justify-center bg-red-50 w-11 h-11 rounded-xl">
-              <Flame className="w-5 h-5 text-red-600" />
             </div>
           </div>
         </div>
@@ -347,50 +321,19 @@ const CancellationReasonManagement: React.FC = () => {
               <tr>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Reason</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">For</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Impact</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Stage</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Auto Action</th>
-                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Penalty / Refund</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Refund</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-right text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {paginatedFiltered.map((item) => {
-                const impact = impactOf(item);
-                const metrics = reasonMetrics.find((m) => m.id === item._id) || {
-                  stage: "BEFORE" as FormData["stage"],
-                  autoAction: "NONE" as FormData["autoAction"],
-                };
-                const impactConfig = {
-                  HIGH: {
-                    bg: "bg-red-100",
-                    text: "text-red-700",
-                    icon: <Flame className="w-3 h-3" />,
-                  },
-                  MEDIUM: {
-                    bg: "bg-amber-100",
-                    text: "text-amber-700",
-                    icon: <AlertCircle className="w-3 h-3" />,
-                  },
-                  LOW: {
-                    bg: "bg-gray-100",
-                    text: "text-gray-600",
-                    icon: <CheckCircle className="w-3 h-3" />,
-                  },
-                }[impact];
-                const stageConfig: Record<string, { bg: string; text: string; label: string }> = {
-                  BEFORE: { bg: "bg-blue-50", text: "text-blue-700", label: "Before Pickup" },
-                  DURING: { bg: "bg-amber-50", text: "text-amber-700", label: "During Trip" },
-                  AFTER: { bg: "bg-purple-50", text: "text-purple-700", label: "After Delivery" },
-                };
-                const actionLabel: Record<string, string> = {
-                  NONE: "None",
-                  NOTIFY_OPS: "Notify Ops",
-                  BLOCK_REBOOK: "Block Rebook",
-                  FLAG_DRIVER: "Flag Driver",
-                  ISSUE_REFUND: "Issue Refund",
-                };
+                // Rows saved before the form was corrected can hold
+                // isRefundable:false together with a non-zero percentage. Only
+                // the percentage is enforced, so flag the contradiction instead
+                // of implying the flag is doing something.
+                const staleNonRefundable =
+                  item.isRefundable === false && (item.refundPercentage ?? 0) > 0;
                 return (
                 <tr key={item._id} className={`hover:bg-gray-50 transition-colors ${!item.isActive ? "bg-yellow-50/50" : ""}`}>
                   <td className="px-4 py-3">
@@ -412,30 +355,30 @@ const CancellationReasonManagement: React.FC = () => {
                       {applicableLabel(item.applicableTo)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${impactConfig.bg} ${impactConfig.text}`}>
-                      {impactConfig.icon}
-                      {impact}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${stageConfig[metrics.stage].bg} ${stageConfig[metrics.stage].text}`}>
-                      {stageConfig[metrics.stage].label}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium ${metrics.autoAction === "NONE" ? "text-gray-400" : "text-movezy-700"}`}>
-                      {metrics.autoAction !== "NONE" && <Zap className="w-3 h-3" />}
-                      {actionLabel[metrics.autoAction]}
-                    </span>
-                  </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
-                    <div>{penaltyLabel(item)}</div>
                     <div
-                      className={`text-xs ${item.refundPercentage === 100 ? "text-green-600" : item.refundPercentage === 0 ? "text-red-600" : "text-orange-600"}`}
+                      className={`font-medium ${item.refundPercentage === 100 ? "text-green-700" : item.refundPercentage === 0 ? "text-red-700" : "text-orange-700"}`}
                     >
-                      Refund: {item.refundPercentage}%
+                      {item.refundPercentage}% refunded
                     </div>
+                    {staleNonRefundable && (
+                      <div className="flex items-start gap-1 mt-1 text-[11px] text-amber-700">
+                        <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                        <span>Marked non-refundable, but {item.refundPercentage}% is what gets refunded. Re-save to apply 0%.</span>
+                      </div>
+                    )}
+                    {/* The fee is live policy now, so it belongs in the list —
+                        otherwise an admin cannot tell which reasons charge one
+                        without opening every row. */}
+                    {item.penaltyType && item.penaltyType !== "NONE" && (item.penaltyValue ?? 0) > 0 && (
+                      <div className="mt-1 text-[11px] font-medium text-rose-700">
+                        Fee withheld:{" "}
+                        {item.penaltyType === "PERCENTAGE"
+                          ? `${item.penaltyValue}% of fare`
+                          : `₹${item.penaltyValue}`}
+                      </div>
+                    )}
+                    <div className="mt-1 text-[10px] text-gray-400">Capped by the trip-stage ceiling in Fare Config</div>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${item.isActive ? "text-green-700 bg-green-100" : "text-yellow-700 bg-yellow-100"}`}>
@@ -448,7 +391,7 @@ const CancellationReasonManagement: React.FC = () => {
                         <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
                       ) : (
                         <>
-                          <button onClick={() => handleToggle(item)} className={`p-1.5 rounded-lg transition-colors ${item.isActive ? "text-green-600 bg-green-100 hover:bg-green-200" : "text-gray-400 bg-gray-100 hover:bg-gray-200"}`} title={item.isActive ? "Deactivate" : "Activate"}>
+                          <button onClick={() => handleToggle(item)} className={`p-1.5 rounded-lg transition-colors ${item.isActive ? "text-green-600 bg-green-100 hover:bg-green-200" : "text-gray-600 bg-gray-100 hover:bg-gray-200"}`} title={item.isActive ? "Deactivate" : "Activate"}>
                             {item.isActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
                           </button>
                           <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 bg-blue-100 rounded-lg hover:bg-blue-200" title="Edit"><Edit2 className="w-4 h-4" /></button>
@@ -526,75 +469,19 @@ const CancellationReasonManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* Stage & Auto Action */}
+              {/* Refund Section. The refund percentage is the ONLY cancellation
+                  setting the platform acts on, so it is always visible: when
+                  Refundable is off it is shown disabled at 0 — which is exactly
+                  what gets saved — instead of being hidden while the previous
+                  value silently stayed in force. */}
               <div className="pt-4 border-t border-gray-100">
-                <h3 className="mb-3 text-sm font-semibold text-gray-700 flex items-center gap-1">
-                  <Zap className="w-4 h-4 text-amber-500" /> Trip Stage & Auto Action
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block mb-1 text-sm font-medium text-gray-700">Stage</label>
-                    <select
-                      value={formData.stage}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          stage: e.target.value as FormData["stage"],
-                        })
-                      }
-                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="BEFORE">Before Pickup</option>
-                      <option value="DURING">During Trip</option>
-                      <option value="AFTER">After Delivery</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block mb-1 text-sm font-medium text-gray-700">Auto Action Trigger</label>
-                    <select
-                      value={formData.autoAction}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          autoAction: e.target.value as FormData["autoAction"],
-                        })
-                      }
-                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="NONE">No Action</option>
-                      <option value="NOTIFY_OPS">Notify Operations</option>
-                      <option value="BLOCK_REBOOK">Block Rebooking</option>
-                      <option value="FLAG_DRIVER">Flag Driver</option>
-                      <option value="ISSUE_REFUND">Auto-issue Refund</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Penalty Section */}
-              <div className="pt-4 border-t border-gray-100">
-                <h3 className="mb-3 text-sm font-semibold text-gray-700">Penalty & Refund Settings</h3>
+                <h3 className="mb-1 text-sm font-semibold text-gray-700">Refund Settings</h3>
+                <p className="mb-3 text-xs text-gray-500">
+                  Applied when a customer cancels with this reason, then capped by the
+                  stage ceiling in Fare Config (after pickup can refund less).
+                </p>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block mb-1 text-sm font-medium text-gray-700">Penalty Type</label>
-                    <select value={formData.penaltyType} onChange={(e) => setFormData({ ...formData, penaltyType: e.target.value as any })} className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="NONE">No Penalty</option>
-                      <option value="FIXED">Fixed Amount (₹)</option>
-                      <option value="PERCENTAGE">Percentage (%)</option>
-                    </select>
-                  </div>
-                  {formData.penaltyType !== "NONE" && (
-                    <div>
-                      <label className="block mb-1 text-sm font-medium text-gray-700">
-                        Penalty Value {formData.penaltyType === "FIXED" ? "(₹)" : "(%)"}
-                      </label>
-                      <input type="number" min="0" max={formData.penaltyType === "PERCENTAGE" ? 100 : undefined} value={formData.penaltyValue} onChange={(e) => setFormData({ ...formData, penaltyValue: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mt-4">
                   <div className="flex items-center gap-3">
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" checked={formData.isRefundable} onChange={(e) => setFormData({ ...formData, isRefundable: e.target.checked })} className="sr-only peer" />
@@ -602,13 +489,61 @@ const CancellationReasonManagement: React.FC = () => {
                     </label>
                     <span className="text-sm font-medium text-gray-700">Refundable</span>
                   </div>
-                  {formData.isRefundable && (
-                    <div>
-                      <label className="block mb-1 text-sm font-medium text-gray-700">Refund Percentage</label>
-                      <input type="number" min="0" max="100" value={formData.refundPercentage} onChange={(e) => setFormData({ ...formData, refundPercentage: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  )}
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">Refund Percentage</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      disabled={!formData.isRefundable}
+                      value={formData.isRefundable ? formData.refundPercentage : 0}
+                      onChange={(e) => setFormData({ ...formData, refundPercentage: e.target.value === '' ? '' : Number(e.target.value) })}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                    />
+                    {!formData.isRefundable && (
+                      <p className="mt-1 text-xs text-gray-500">Saved as 0% — nothing is refunded.</p>
+                    )}
+                  </div>
                 </div>
+
+                {/* Cancellation fee. Withheld from the refund, never charged on
+                    top of it: a customer who has not paid cannot be billed, so
+                    the fee is capped at whatever the refund would have been. */}
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">Cancellation Fee</label>
+                    <select
+                      value={formData.penaltyType}
+                      onChange={(e) => setFormData({ ...formData, penaltyType: e.target.value as FormData["penaltyType"] })}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="NONE">No fee</option>
+                      <option value="FIXED">Fixed amount (₹)</option>
+                      <option value="PERCENTAGE">Percentage of fare</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      {formData.penaltyType === "PERCENTAGE" ? "Fee (% of fare)" : "Fee amount (₹)"}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={formData.penaltyType === "PERCENTAGE" ? 100 : undefined}
+                      disabled={formData.penaltyType === "NONE"}
+                      value={formData.penaltyType === "NONE" ? 0 : formData.penaltyValue}
+                      onChange={(e) => setFormData({ ...formData, penaltyValue: e.target.value === '' ? '' : Number(e.target.value) })}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                    />
+                  </div>
+                </div>
+                {formData.penaltyType !== "NONE" && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Deducted from the refund and shown to the customer before they
+                    confirm. If the fee exceeds the refund, only the refund amount is
+                    withheld — the remainder is not billed.
+                  </p>
+                )}
               </div>
 
               {/* Actions */}

@@ -194,6 +194,17 @@ const SupportTickets: React.FC = () => {
     }
   }, []);
 
+  // Open each ticket on the channel its messages actually live on. A driver's
+  // thread is always on DRIVER, so defaulting to CUSTOMER showed staff an empty
+  // thread and — worse — posted their reply to a channel the driver never reads.
+  // Key off driverId, NOT type: inferTicketType checks category first, so a
+  // driver's "payment" ticket is type PAYMENT but still uses the DRIVER channel.
+  useEffect(() => {
+    if (selectedTicket) {
+      setChannel(selectedTicket.driverId ? "DRIVER" : "CUSTOMER");
+    }
+  }, [selectedTicket]);
+
   useEffect(() => {
     if (selectedTicket) {
       loadMessages(selectedTicket.ticketId, channel);

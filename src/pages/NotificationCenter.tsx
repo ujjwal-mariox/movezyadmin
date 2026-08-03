@@ -6,20 +6,16 @@ import {
   Users,
   FileText,
   Clock,
-  AlertCircle,
   Plus,
   Trash2,
   Edit2,
   Megaphone,
   BellRing,
   Siren,
-  Zap,
   Filter,
   Bike,
   UserCircle,
-  Calendar,
   TrendingUp,
-  Sparkles,
   X,
   Building2,
 } from "lucide-react";
@@ -88,17 +84,6 @@ const NotificationCenter: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<"ALL" | "SENT" | "SENDING" | "FAILED">(
     "ALL",
   );
-
-  // Automation toggle state (UI-only for now)
-  const [automations, setAutomations] = useState({
-    expiryReminder: true,
-    delayAlert: true,
-    dailySummary: false,
-  });
-
-  const toggleAutomation = (key: keyof typeof automations) => {
-    setAutomations((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
 
   // Data state
   const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
@@ -183,7 +168,20 @@ const NotificationCenter: React.FC = () => {
         setSelectedTemplateId(undefined);
         loadAnalytics();
         loadHistory();
-        await dialog.alert({ title: "Broadcast sent", message: `Broadcast dispatched to ${res.data?.targetedCount ?? 0} recipients.`, tone: "success" });
+        // "Targeted" counts matching accounts; "with a device" counts the ones
+        // that actually had a push token. Reporting only the first made a
+        // broadcast that reached nobody read as a full delivery.
+        const targeted = Number(res.data?.targetedCount ?? 0);
+        const withDevice = Number(res.data?.pushTargetedCount ?? 0);
+        const sent = Number(res.data?.sentCount ?? 0);
+        await dialog.alert({
+          title: withDevice === 0 ? "Nobody could be reached" : "Broadcast sent",
+          message:
+            withDevice === 0
+              ? `${targeted.toLocaleString()} recipients matched, but none has a registered device, so no push was delivered.`
+              : `Delivered ${sent.toLocaleString()} of ${withDevice.toLocaleString()} recipients with a registered device (${targeted.toLocaleString()} matched in total).`,
+          tone: withDevice === 0 ? "danger" : "success",
+        });
       } else {
         await dialog.alert({ title: "Send failed", message: res?.message || "Failed to send notification", tone: "danger" });
       }
@@ -251,6 +249,8 @@ const NotificationCenter: React.FC = () => {
       } else {
         await dialog.alert({ title: "Save failed", message: res?.message || "Failed to save template", tone: "danger" });
       }
+    } catch (err) {
+      await dialog.alert({ title: "Save failed", message: (err as Error).message || "Failed to save template", tone: "danger" });
     } finally {
       setTemplateSaving(false);
     }
@@ -264,9 +264,13 @@ const NotificationCenter: React.FC = () => {
       confirmLabel: "Delete",
     });
     if (!ok) return;
-    const res = await deleteNotificationTemplate(id);
-    if (res?.success) loadTemplates();
-    else await dialog.alert({ title: "Delete failed", message: res?.message || "Failed to delete template", tone: "danger" });
+    try {
+      const res = await deleteNotificationTemplate(id);
+      if (res?.success) loadTemplates();
+      else await dialog.alert({ title: "Delete failed", message: res?.message || "Failed to delete template", tone: "danger" });
+    } catch (err) {
+      await dialog.alert({ title: "Delete failed", message: (err as Error).message || "Failed to delete template", tone: "danger" });
+    }
   };
 
   const formatDate = (dateString?: string) => {
@@ -314,7 +318,7 @@ const NotificationCenter: React.FC = () => {
             Notification Center
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Send push notifications, manage templates and automate outbound messaging
+            Send push notifications and manage templates
           </p>
         </div>
       </div>
@@ -468,80 +472,6 @@ const NotificationCenter: React.FC = () => {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Automation Layer */}
-      <div className="p-5 bg-white border border-gray-100 shadow-sm rounded-xl">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-500" />
-            <span className="text-sm font-semibold text-gray-700">Automation Layer</span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-amber-700 bg-amber-50 rounded-full uppercase tracking-wide">
-              <Sparkles className="w-3 h-3" />
-              Auto-send
-            </span>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {[
-            {
-              key: "expiryReminder" as const,
-              icon: Calendar,
-              tone: "blue",
-              title: "Document expiry reminder",
-              desc: "Send reminder 3 days before a driver document expires",
-            },
-            {
-              key: "delayAlert" as const,
-              icon: AlertCircle,
-              tone: "red",
-              title: "Delay alert",
-              desc: "Auto-notify customer & ops when an order is delayed",
-            },
-            {
-              key: "dailySummary" as const,
-              icon: TrendingUp,
-              tone: "green",
-              title: "Daily performance summary",
-              desc: "Send enterprise partners a daily KPI rollup",
-            },
-          ].map((rule) => {
-            const active = automations[rule.key];
-            const toneMap: Record<string, string> = {
-              blue: "bg-blue-50 text-blue-600",
-              red: "bg-red-50 text-red-600",
-              green: "bg-green-50 text-green-600",
-            };
-            return (
-              <div
-                key={rule.key}
-                className={`p-4 border rounded-xl transition-all ${
-                  active ? "border-movezy-300 bg-movezy-50/30" : "border-gray-200 bg-white"
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className={`flex items-center justify-center w-9 h-9 rounded-lg ${toneMap[rule.tone]}`}>
-                    <rule.icon className="w-4 h-4" />
-                  </div>
-                  <button
-                    onClick={() => toggleAutomation(rule.key)}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                      active ? "bg-movezy-500" : "bg-gray-300"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        active ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                </div>
-                <p className="text-sm font-semibold text-gray-800">{rule.title}</p>
-                <p className="mt-1 text-xs text-gray-500">{rule.desc}</p>
-              </div>
-            );
-          })}
-        </div>
       </div>
 
       {/* Tabs */}
@@ -854,14 +784,17 @@ const NotificationCenter: React.FC = () => {
                       <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                         Targeted
                       </th>
+                      {/* Recipients that actually had a push token. Without it,
+                          "5,000 targeted / 0 sent" looked like a delivery
+                          failure rather than nobody having a device. */}
+                      <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
+                        With device
+                      </th>
                       <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                         Sent
                       </th>
                       <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                         Failed
-                      </th>
-                      <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
-                        Read
                       </th>
                       <th className="px-4 py-3 text-sm font-semibold text-left text-gray-600">
                         Status
@@ -889,6 +822,18 @@ const NotificationCenter: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-4">
+                          <span
+                            className={`text-sm ${(item.pushTargetedCount ?? 0) === 0 ? "text-amber-600" : "text-gray-600"}`}
+                            title={
+                              (item.pushTargetedCount ?? 0) === 0
+                                ? "None of these recipients had a registered device, so no push could be delivered."
+                                : undefined
+                            }
+                          >
+                            {(item.pushTargetedCount ?? 0).toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
                           <span className="text-sm text-green-600">
                             {(item.sentCount ?? 0).toLocaleString()}
                           </span>
@@ -896,11 +841,6 @@ const NotificationCenter: React.FC = () => {
                         <td className="px-4 py-4">
                           <span className="text-sm text-red-600">
                             {(item.failedCount ?? 0).toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className="text-sm text-blue-600">
-                            {(item.readCount ?? 0).toLocaleString()}
                           </span>
                         </td>
                         <td className="px-4 py-4">

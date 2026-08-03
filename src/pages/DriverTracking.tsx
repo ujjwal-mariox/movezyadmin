@@ -67,18 +67,24 @@ const DriverTracking: React.FC = () => {
         const driversData = data.data?.drivers || data.data || [];
         // Transform API response to match DriverLocation interface
         const transformed = driversData.map((d: any) => ({
-          driverId: d._id || d.driverId,
-          driverName: d.fullName || d.driverName || d.name,
-          phone: d.mobileNumber || d.phone,
-          lat: d.location?.lat || d.lat,
-          lng: d.location?.lng || d.lng,
+          driverId: d.driverId || d._id,
+          driverName: d.name || d.fullName || d.driverName || "Driver",
+          phone: d.mobileNumber || d.phone || "",
+          lat: d.location?.lat ?? d.lat,
+          lng: d.location?.lng ?? d.lng,
           heading: d.heading || 0,
           speed: d.speed || 0,
-          status: d.isOnline ? (d.currentBookingId || d.hasActiveBooking ? "BUSY" : "ONLINE") : "OFFLINE",
+          // Everyone on this feed pinged within the last 10 minutes — they are
+          // online by definition; busy when the backend says they have a trip.
+          status: d.hasActiveBooking
+            ? "BUSY"
+            : d.isAvailable !== false
+            ? "ONLINE"
+            : "BUSY",
           currentBookingId: d.currentBookingId,
           vehicleType: d.vehicleType || "Unknown",
           vehicleNumber: d.vehicleNumber || "-",
-          lastUpdated: d.lastLocationUpdate || d.lastUpdated || d.updatedAt || new Date().toISOString(),
+          lastUpdated: d.lastUpdated || d.lastLocationUpdate || d.updatedAt || new Date().toISOString(),
           deviceInfo: d.deviceInfo || null,
         }));
         setDrivers(transformed);
@@ -149,9 +155,9 @@ const DriverTracking: React.FC = () => {
 
   const filteredDrivers = drivers.filter((driver) => {
     const matchesSearch =
-      driver.driverName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      driver.vehicleNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      driver.phone.includes(searchQuery);
+      (driver.driverName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (driver.vehicleNumber || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (driver.phone || "").includes(searchQuery);
     const matchesStatus =
       statusFilter === "ALL" || driver.status === statusFilter;
     return matchesSearch && matchesStatus;

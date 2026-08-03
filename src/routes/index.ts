@@ -40,6 +40,8 @@ const TrainingManagement = lazy(() => import("../pages/TrainingManagement"));
 
 // Phase 3 pages
 const RefundApproval = lazy(() => import("../pages/RefundApproval"));
+const CommissionManagement = lazy(() => import("../pages/CommissionManagement"));
+const CMSManagement = lazy(() => import("../pages/CMSManagement"));
 const ReportsPage = lazy(() => import("../pages/ReportsPage"));
 
 export const authRoutes = [
@@ -141,6 +143,14 @@ export const adminRoutes = [
   {
     path: "settings",
     element: Settings,
+  },
+  {
+    path: "commissions",
+    element: CommissionManagement,
+  },
+  {
+    path: "cms",
+    element: CMSManagement,
   },
   {
     path: "finance",

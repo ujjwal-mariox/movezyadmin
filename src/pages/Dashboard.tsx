@@ -6,6 +6,8 @@ import {
   type ActionCenterDelayed,
   type ActionCenterAtRisk,
 } from "../services/api";
+import { driversApi } from "../services/admin-api";
+import { dialog } from "../components/Layout/Dialog";
 import {
   Package,
   Truck,
@@ -25,9 +27,6 @@ import {
   UserPlus,
   CheckCircle2,
   AlertCircle,
-  TrendingUp,
-  TrendingDown,
-  Filter,
   Bell,
   FileWarning,
   CreditCard,
@@ -54,13 +53,24 @@ import { useNavigate } from "react-router-dom";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
 
+// Failures used to resolve to null, which the page rendered as zeros and
+// "All orders assigned." — an expired session or a 403 was indistinguishable
+// from a quiet day. Throw instead so the caller can surface it.
 const fetchApi = async (endpoint: string, signal?: AbortSignal) => {
   const token = getToken();
   const res = await fetch(`${API_URL}${endpoint}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal,
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401
+        ? "Session expired — sign in again"
+        : res.status === 403
+        ? "Your role can't view this data"
+        : `Request failed (${res.status})`
+    );
+  }
   return res.json();
 };
 
@@ -101,6 +111,8 @@ const FlyTo: React.FC<{ target: [number, number] | null }> = ({ target }) => {
   return null;
 };
 
+// Mirrors GET /admin/dashboard/live-stats (FinanceController.getLiveStats).
+// Every required field below is returned by that endpoint today.
 interface LiveStats {
   totalOrders: number;
   liveOrders: number;
@@ -113,9 +125,23 @@ interface LiveStats {
   failureRate: number;
   driverUtilization: number;
   delayedOrders?: number;
-  failedOrders?: number;
-  completedOrders?: number;
-  idleDrivers?: number;
+  cancelledToday?: number;
+  // Same-day / on-trip counts the "Today" charts need. getLiveStats measures
+  // and returns these; they stay optional so an older backend still renders the
+  // explicit "unavailable" state instead of a wrong chart. They must never be
+  // re-derived client-side: the previous code subtracted all-time totals from a
+  // same-day count and from a %-online figure, which produced completed/idle
+  // numbers nothing had ever measured.
+  completedToday?: number;
+  pendingToday?: number;
+  driversOnTrip?: number;
+}
+
+interface LoadErrors {
+  stats?: string;
+  timeline?: string;
+  drivers?: string;
+  action?: string;
 }
 
 interface TimelineEvent {
@@ -136,8 +162,6 @@ interface DriverLocation {
 }
 
 const REFRESH_INTERVALS = [10, 20, 30, 60];
-const CITY_OPTIONS = ["All cities", "Bangalore", "Mumbai", "Delhi", "Chennai", "Hyderabad"];
-const TIME_RANGES = ["Today", "Last 24h", "This week", "This month"];
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -147,20 +171,18 @@ const Dashboard: React.FC = () => {
   const [pendingOrders, setPendingOrders] = useState<ActionCenterPending[]>([]);
   const [delayedOrders, setDelayedOrders] = useState<ActionCenterDelayed[]>([]);
   const [atRiskOrders, setAtRiskOrders] = useState<ActionCenterAtRisk[]>([]);
-  const [, setLoading] = useState(true);
-
-  // Sticky filters
-  const [city, setCity] = useState("All cities");
-  const [timeRange, setTimeRange] = useState("Today");
+  // The loading flag was discarded (`const [, setLoading]`), so the first paint
+  // showed zeros before anything had been fetched.
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState<LoadErrors>({});
 
   // Auto-refresh
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(20);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
-  // Automation toggles
-  const [autoAssign, setAutoAssign] = useState(true);
-  const [smartDelay, setSmartDelay] = useState(true);
+  // Auto-assign action (real endpoint: POST /admin/bookings/auto-assign)
+  const [autoAssigning, setAutoAssigning] = useState(false);
 
   // Smart list
   const [activeTab, setActiveTab] = useState<"delayed" | "unassigned" | "nearby">("delayed");
@@ -176,28 +198,100 @@ const Dashboard: React.FC = () => {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    try {
-      const [statsRes, timelineRes, driversRes, actionRes] = await Promise.all([
-        fetchApi("/admin/dashboard/live-stats", controller.signal),
-        fetchApi("/admin/dashboard/event-timeline?limit=10", controller.signal),
-        fetchApi("/admin/tracking/drivers?status=online", controller.signal),
-        fetchActionCenter(controller.signal).catch(() => null),
-      ]);
-      if (statsRes?.data) setLiveStats(statsRes.data);
-      const rawTimeline = timelineRes?.data?.events ?? timelineRes?.data ?? [];
-      setTimeline(Array.isArray(rawTimeline) ? rawTimeline : []);
-      const rawDrivers = driversRes?.data?.drivers ?? driversRes?.data ?? [];
-      setDrivers(Array.isArray(rawDrivers) ? rawDrivers : []);
-      const action = actionRes?.data ?? actionRes;
-      setPendingOrders(Array.isArray(action?.pendingAssignments) ? action.pendingAssignments : []);
-      setDelayedOrders(Array.isArray(action?.delayedOrders) ? action.delayedOrders : []);
-      setAtRiskOrders(Array.isArray(action?.atRisk) ? action.atRisk : []);
-      setLastRefreshed(new Date());
-    } catch (err: any) {
-      if (err?.name !== "AbortError") console.error("Dashboard load error:", err);
-    } finally {
-      setLoading(false);
+    // Settled per call: one failing endpoint must not blank the other three,
+    // and each failure has to be reported rather than swallowed into zeros.
+    const [statsRes, timelineRes, driversRes, actionRes] = await Promise.allSettled([
+      fetchApi("/admin/dashboard/live-stats", controller.signal),
+      fetchApi("/admin/dashboard/event-timeline?limit=10", controller.signal),
+      fetchApi("/admin/tracking/drivers?status=online", controller.signal),
+      fetchActionCenter(controller.signal),
+    ]);
+
+    // A newer refresh aborted this one; that call owns the next state update.
+    if (controller.signal.aborted) return;
+
+    const failureText = (r: PromiseSettledResult<unknown>, fallback: string) => {
+      if (r.status !== "rejected") return fallback;
+      const e = r.reason;
+      return e instanceof Error && e.message ? e.message : fallback;
+    };
+
+    const nextErrors: LoadErrors = {};
+
+    // --- live stats ---
+    const statsBody = statsRes.status === "fulfilled" ? (statsRes.value as any) : null;
+    const statsData = statsBody?.data;
+    // getLiveStats answers with {} when the db handle is missing, so require a
+    // known numeric field before trusting the payload.
+    if (statsData && typeof statsData.liveOrders === "number") {
+      setLiveStats(statsData as LiveStats);
+    } else {
+      setLiveStats(null);
+      nextErrors.stats = failureText(statsRes, "Live stats unavailable");
     }
+
+    // --- event timeline ---
+    if (timelineRes.status === "fulfilled") {
+      const rawTimeline =
+        (timelineRes.value as any)?.data?.events ?? (timelineRes.value as any)?.data ?? [];
+      setTimeline(Array.isArray(rawTimeline) ? rawTimeline : []);
+    } else {
+      setTimeline([]);
+      nextErrors.timeline = failureText(timelineRes, "Event timeline unavailable");
+    }
+
+    // --- driver locations ---
+    if (driversRes.status === "fulfilled") {
+      const rawDrivers =
+        (driversRes.value as any)?.data?.drivers ?? (driversRes.value as any)?.data ?? [];
+      // /admin/tracking/drivers returns driverId/name/isAvailable/hasActiveBooking;
+      // there is no `status` field — it is derived from the two booleans here so
+      // every consumer below can rely on _id/fullName/status being present.
+      setDrivers(
+        Array.isArray(rawDrivers)
+          ? rawDrivers.map((d: any) => ({
+              _id: String(d.driverId ?? d._id ?? ""),
+              fullName: d.name ?? d.fullName ?? "Unknown driver",
+              status:
+                d.status ??
+                (d.hasActiveBooking
+                  ? "on_trip"
+                  : d.isAvailable
+                  ? "available"
+                  : "offline"),
+              location: d.location,
+              currentBookingId: d.currentBookingId,
+            }))
+          : []
+      );
+    } else {
+      setDrivers([]);
+      nextErrors.drivers = failureText(driversRes, "Driver locations unavailable");
+    }
+
+    // --- action centre ---
+    // fetchActionCenter (services/api.ts) returns res.json() without an ok
+    // check, so a 401 resolves to {success:false,message:...}. Treat anything
+    // that isn't the expected payload as a failure instead of empty queues.
+    const actionBody = actionRes.status === "fulfilled" ? (actionRes.value as any) : null;
+    const action = actionBody?.data ?? actionBody;
+    if (actionBody?.success !== false && Array.isArray(action?.pendingAssignments)) {
+      setPendingOrders(action.pendingAssignments);
+      setDelayedOrders(Array.isArray(action.delayedOrders) ? action.delayedOrders : []);
+      setAtRiskOrders(Array.isArray(action.atRisk) ? action.atRisk : []);
+    } else {
+      setPendingOrders([]);
+      setDelayedOrders([]);
+      setAtRiskOrders([]);
+      nextErrors.action =
+        actionRes.status === "rejected"
+          ? failureText(actionRes, "Action center unavailable")
+          : actionBody?.message || "Action center unavailable";
+    }
+
+    setLoadErrors(nextErrors);
+    setLastRefreshed(new Date());
+    setInitialLoading(false);
   }, []);
 
   useEffect(() => {
@@ -213,6 +307,37 @@ const Dashboard: React.FC = () => {
     return () => clearInterval(id);
   }, [autoRefresh, refreshInterval, loadDashboardData]);
 
+  // Assign the nearest available driver to every SEARCHING booking, then
+  // refresh the action-center queues with the result.
+  const handleRunAutoAssign = useCallback(async () => {
+    if (autoAssigning) return;
+    setAutoAssigning(true);
+    try {
+      const res = await driversApi.autoAssign();
+      const assigned = res?.data?.assigned ?? 0;
+      const evaluated = res?.data?.evaluated ?? 0;
+      await loadDashboardData();
+      await dialog.alert({
+        title: "Auto-assign complete",
+        message:
+          evaluated === 0
+            ? "No unassigned orders to auto-assign right now."
+            : assigned > 0
+              ? `Assigned ${assigned} of ${evaluated} searching order(s) to the nearest available drivers.`
+              : `No available online drivers found for ${evaluated} searching order(s).`,
+        tone: evaluated === 0 || assigned > 0 ? "success" : "warning",
+      });
+    } catch (e) {
+      await dialog.alert({
+        title: "Auto-assign failed",
+        message: e instanceof Error ? e.message : "Auto-assign failed",
+        tone: "danger",
+      });
+    } finally {
+      setAutoAssigning(false);
+    }
+  }, [autoAssigning, loadDashboardData]);
+
   const s = liveStats || {
     totalOrders: 0,
     liveOrders: 0,
@@ -226,20 +351,35 @@ const Dashboard: React.FC = () => {
     driverUtilization: 0,
   };
 
+  // Stats are either present or not: with no payload the KPI strip shows "—"
+  // rather than a full set of confident zeros.
+  const statsLoaded = liveStats !== null;
+  const NO_VALUE = "—";
+
+  // A failed action-center fetch must not render as an empty, reassuring queue.
+  const actionFailed = Boolean(loadErrors.action);
+  const QUEUE_ERROR = "Couldn't load this queue.";
+
+  const failedSections = (
+    [
+      loadErrors.stats ? "live stats" : null,
+      loadErrors.timeline ? "event timeline" : null,
+      loadErrors.drivers ? "driver map" : null,
+      loadErrors.action ? "action center" : null,
+    ] as Array<string | null>
+  ).filter((x): x is string => x !== null);
+
   const delayedCount = s.delayedOrders ?? 0;
-  const failedCount = s.failedOrders ?? 0;
-  const completedCount = s.completedOrders ?? Math.max(s.totalOrders - s.liveOrders - s.pendingOrders - failedCount, 0);
-  const idleDrivers = s.idleDrivers ?? Math.max(s.activeDrivers - Math.round(s.activeDrivers * (s.driverUtilization / 100)), 0);
-  const activeOnTrip = Math.max(s.activeDrivers - idleDrivers, 0);
+  // "Failed" doesn't exist as a booking status — cancelled-today is the real
+  // signal, and failureRate has always been derived from it.
+  const failedCount = s.cancelledToday ?? 0;
 
   // ============ REAL-TIME ALERT STRIP ============
   // Thresholds for operational risk conditions
   const ALERT_THRESHOLDS = {
     unassignedMins: 10,
-    idleMins: 60,
     codFloatingHigh: 50000,
     docExpiryDays: 7,
-    cancelSpikePct: 25,
   };
 
   const minsSince = (iso?: string) => (iso ? (Date.now() - new Date(iso).getTime()) / 60000 : 0);
@@ -256,18 +396,13 @@ const Dashboard: React.FC = () => {
       path: "/admin/orders?status=pending",
     });
   }
-  if (idleDrivers > 0 && s.activeDrivers > 0) {
-    const idlePct = (idleDrivers / s.activeDrivers) * 100;
-    if (idlePct >= 50) {
-      alerts.push({
-        id: "idle-drivers",
-        level: "amber",
-        icon: Truck,
-        message: `${idleDrivers} drivers idle > ${ALERT_THRESHOLDS.idleMins} mins (${idlePct.toFixed(0)}% of active)`,
-        path: "/admin/tracking?filter=idle",
-      });
-    }
-  }
+  // An "N drivers idle > 60 mins" alert used to sit here. Nothing measured
+  // elapsed idle time: the count was activeDrivers minus activeDrivers ×
+  // (driverUtilization / 100), i.e. a restatement of the %-online figure, and
+  // the "> 60 mins" threshold was only ever interpolated into the sentence.
+  // GET /admin/dashboard/alerts does compute a real idle signal (online with no
+  // trip in 7+ days) — that endpoint, not arithmetic here, is what an idle
+  // alert must come from.
   if (s.activeSOS > 0) {
     alerts.push({
       id: "sos",
@@ -278,11 +413,13 @@ const Dashboard: React.FC = () => {
     });
   }
   if (s.failureRate > 10) {
+    // failureRate is todayCancelled / todayTotal (getLiveStats). It is not a
+    // comparison against the previous 24h, so the message no longer claims one.
     alerts.push({
       id: "failure-rate",
       level: "red",
       icon: XCircle,
-      message: `Failure rate ${s.failureRate.toFixed(1)}% — cancellation spike vs prev 24h`,
+      message: `${s.failureRate.toFixed(1)}% of today's orders cancelled`,
       path: "/admin/orders?status=cancelled",
     });
   }
@@ -313,7 +450,7 @@ const Dashboard: React.FC = () => {
       level: "amber",
       icon: FileWarning,
       message: `${anyExt.docsExpiringSoon} driver document${anyExt.docsExpiringSoon > 1 ? "s" : ""} expiring within ${ALERT_THRESHOLDS.docExpiryDays} days`,
-      path: "/admin/documents",
+      path: "/admin/compliance",
     });
   }
 
@@ -327,65 +464,99 @@ const Dashboard: React.FC = () => {
     return `${Math.floor(hrs / 24)}d`;
   };
 
-  // Chart data
-  const orderBreakdown = [
-    { name: "Completed", value: completedCount, color: "#10B981" },
-    { name: "Pending", value: s.pendingOrders, color: "#F59E0B" },
-    { name: "Failed", value: failedCount, color: "#EF4444" },
-  ];
-  const driverBreakdown = [
-    { name: "Active", value: activeOnTrip, color: "#10B981" },
-    { name: "Idle", value: idleDrivers, color: "#9CA3AF" },
-  ];
+  // Chart data — both cards sit under a "Today" heading, so every series must be
+  // same-day. Completed used to be (all-time total − live − pending − cancelled
+  // today), which plotted a lifetime figure against today's cancellations, and
+  // Pending was the all-time SEARCHING count. Only genuinely same-day fields are
+  // charted now; while the API doesn't send them the card says so.
+  const orderBreakdown =
+    typeof s.completedToday === "number" &&
+    typeof s.pendingToday === "number" &&
+    typeof s.cancelledToday === "number"
+      ? [
+          { name: "Completed", value: s.completedToday, color: "#10B981" },
+          { name: "Pending", value: s.pendingToday, color: "#F59E0B" },
+          { name: "Cancelled", value: s.cancelledToday, color: "#EF4444" },
+        ]
+      : null;
+
+  // Active = drivers actually on a trip. driverUtilization is % online, not trip
+  // occupancy, so it can't stand in for this split.
+  const driverBreakdown =
+    typeof s.driversOnTrip === "number"
+      ? [
+          { name: "On trip", value: s.driversOnTrip, color: "#10B981" },
+          {
+            name: "Idle",
+            value: Math.max(s.activeDrivers - s.driversOnTrip, 0),
+            color: "#9CA3AF",
+          },
+        ]
+      : null;
 
   const defaultCenter: [number, number] = [12.9716, 77.5946];
   const driverPoints: [number, number][] = drivers
     .filter((d) => d.location?.lat && d.location?.lng)
     .map((d) => [d.location.lat, d.location.lng] as [number, number]);
 
-  // Critical KPI cards
-  const kpis = [
+  // Critical KPI cards.
+  // Each card used to carry a hardcoded `trend: "up" | "down"` rendered as a
+  // coloured arrow — a green rise on Revenue Today even on a day revenue
+  // collapsed. No prior-period figure is fetched anywhere on this page and
+  // getLiveStats returns none, so the arrows are gone rather than invented.
+  const kpis: Array<{
+    label: string;
+    value: string | number;
+    hint: string;
+    icon: React.ElementType;
+    tone: "neutral" | "danger" | "success";
+    path: string;
+  }> = [
     {
       label: "Active Orders",
-      value: s.liveOrders,
-      hint: `+12% vs yesterday`,
-      trend: "up" as const,
+      value: statsLoaded ? s.liveOrders : NO_VALUE,
+      hint: ``,
       icon: Package,
       tone: "neutral" as const,
       path: "/admin/orders?status=in_progress",
     },
     {
       label: "Delayed Orders",
-      value: delayedCount,
-      hint: delayedCount > 0 ? `${delayedCount} need attention` : "All on time",
-      trend: "down" as const,
+      value: statsLoaded ? delayedCount : NO_VALUE,
+      hint: !statsLoaded
+        ? ""
+        : delayedCount > 0
+        ? `${delayedCount} need attention`
+        : "All on time",
       icon: Clock,
       tone: "danger" as const,
       path: "/admin/orders?status=delayed",
     },
     {
-      label: "Failed Orders",
-      value: failedCount,
-      hint: `${s.failureRate.toFixed(1)}% failure rate`,
-      trend: "down" as const,
+      label: "Cancelled Today",
+      value: statsLoaded ? failedCount : NO_VALUE,
+      hint: statsLoaded ? `${s.failureRate.toFixed(1)}% of today's orders` : "",
       icon: XCircle,
       tone: "danger" as const,
       path: "/admin/orders?status=cancelled",
     },
     {
-      label: "Available Drivers",
-      value: s.activeDrivers,
-      hint: `${s.totalDrivers} total · ${s.driverUtilization.toFixed(0)}% utilized`,
-      trend: "up" as const,
+      // activeDrivers counts approved drivers with isOnline true — that is
+      // online, not free: some of them are mid-trip. driverUtilization is the
+      // same online/approved ratio, so the hint no longer says "utilized".
+      label: "Online Drivers",
+      value: statsLoaded ? s.activeDrivers : NO_VALUE,
+      hint: statsLoaded
+        ? `${s.totalDrivers} approved · ${s.driverUtilization.toFixed(0)}% online`
+        : "",
       icon: Truck,
       tone: "success" as const,
       path: "/admin/tracking",
     },
     {
       label: "Revenue Today",
-      value: `₹${s.todayRevenue.toLocaleString()}`,
-      hint: "+18.3% vs yesterday",
-      trend: "up" as const,
+      value: statsLoaded ? `₹${s.todayRevenue.toLocaleString()}` : NO_VALUE,
+      hint: "",
       icon: DollarSign,
       tone: "neutral" as const,
       path: "/admin/finance",
@@ -398,32 +569,19 @@ const Dashboard: React.FC = () => {
       <div className="sticky top-0 z-30 -mx-4 px-4 py-3 bg-gray-50/95 backdrop-blur border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold text-gray-900">Operations</h1>
-          <span className="text-xs text-gray-500 hidden md:inline">
-            Updated {formatTimeAgo(lastRefreshed.toISOString())} ago
+          {/* "Updated just now" would otherwise appear even when every request
+              in that refresh failed. */}
+          <span
+            className={`text-xs hidden md:inline ${
+              failedSections.length > 0 ? "text-red-600" : "text-gray-500"
+            }`}
+          >
+            {failedSections.length > 0
+              ? `Tried ${formatTimeAgo(lastRefreshed.toISOString())} ago · some data failed`
+              : `Updated ${formatTimeAgo(lastRefreshed.toISOString())} ago`}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2.5 py-1.5">
-            <Filter className="w-3.5 h-3.5 text-gray-400" />
-            <select
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="text-sm bg-transparent focus:outline-none text-gray-700"
-            >
-              {CITY_OPTIONS.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <select
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value)}
-            className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none text-gray-700"
-          >
-            {TIME_RANGES.map((t) => (
-              <option key={t}>{t}</option>
-            ))}
-          </select>
           <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
             <button
               onClick={() => setAutoRefresh((v) => !v)}
@@ -461,6 +619,32 @@ const Dashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* LOAD FAILURE BANNER — a dead API used to look like an idle operation,
+          so every failed section is now named explicitly. */}
+      {failedSections.length > 0 && (
+        <div className="flex items-start justify-between gap-3 px-4 py-3 rounded-lg border border-red-200 bg-red-50">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <span className="inline-flex w-7 h-7 rounded-full items-center justify-center flex-shrink-0 bg-red-500 text-white">
+              <AlertCircle className="w-3.5 h-3.5" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-red-800">
+                Couldn't load live data — {failedSections.join(", ")}
+              </p>
+              <p className="text-xs text-red-700 mt-0.5">
+                {Array.from(new Set(Object.values(loadErrors))).join(" · ")}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={loadDashboardData}
+            className="flex-shrink-0 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* REAL-TIME ALERT STRIP */}
       {alerts.length > 0 && (
@@ -509,40 +693,56 @@ const Dashboard: React.FC = () => {
 
       {/* SECTION 1 — CRITICAL CONTROL STRIP */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        {kpis.map((k) => {
-          const Icon = k.icon;
-          const isDanger = k.tone === "danger";
-          const isSuccess = k.tone === "success";
-          const borderCls = isDanger
-            ? "border-l-4 border-red-500"
-            : isSuccess
-            ? "border-l-4 border-green-500"
-            : "border-l-4 border-movezy-500";
-          const iconBg = isDanger ? "bg-red-50 text-red-600" : isSuccess ? "bg-green-50 text-green-600" : "bg-movezy-50 text-movezy-600";
-          const valueCls = isDanger ? "text-red-600" : "text-gray-900";
-
-          return (
-            <button
-              key={k.label}
-              onClick={() => navigate(k.path)}
-              className={`group text-left bg-white rounded-xl shadow-sm hover:shadow-md transition p-5 ${borderCls}`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconBg}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                {k.trend === "up" ? (
-                  <TrendingUp className="w-4 h-4 text-green-500" />
-                ) : (
-                  <TrendingDown className="w-4 h-4 text-red-500" />
-                )}
+        {initialLoading
+          ? // First paint: a skeleton, not zeros.
+            [0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-gray-200 animate-pulse"
+              >
+                <div className="w-10 h-10 rounded-lg bg-gray-100 mb-3" />
+                <div className="h-8 w-20 bg-gray-100 rounded mb-2" />
+                <div className="h-3 w-24 bg-gray-100 rounded" />
               </div>
-              <div className={`text-3xl font-bold leading-tight mb-1 ${valueCls}`}>{k.value}</div>
-              <div className="text-sm text-gray-600 font-medium">{k.label}</div>
-              <div className={`text-xs mt-1 ${isDanger ? "text-red-500" : "text-gray-400"}`}>{k.hint}</div>
-            </button>
-          );
-        })}
+            ))
+          : kpis.map((k) => {
+              const Icon = k.icon;
+              const isDanger = k.tone === "danger";
+              const isSuccess = k.tone === "success";
+              const borderCls = isDanger
+                ? "border-l-4 border-red-500"
+                : isSuccess
+                ? "border-l-4 border-green-500"
+                : "border-l-4 border-movezy-500";
+              const iconBg = isDanger
+                ? "bg-red-50 text-red-600"
+                : isSuccess
+                ? "bg-green-50 text-green-600"
+                : "bg-movezy-50 text-movezy-600";
+              const hasValue = k.value !== NO_VALUE;
+              const valueCls = !hasValue
+                ? "text-gray-300"
+                : isDanger
+                ? "text-red-600"
+                : "text-gray-900";
+
+              return (
+                <button
+                  key={k.label}
+                  onClick={() => navigate(k.path)}
+                  className={`group text-left bg-white rounded-xl shadow-sm hover:shadow-md transition p-5 ${borderCls}`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconBg}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className={`text-3xl font-bold leading-tight mb-1 ${valueCls}`}>{k.value}</div>
+                  <div className="text-sm text-gray-600 font-medium">{k.label}</div>
+                  <div className={`text-xs mt-1 ${isDanger ? "text-red-500" : "text-gray-400"}`}>{k.hint}</div>
+                </button>
+              );
+            })}
       </div>
 
       {/* SECTION 2 — ACTION CENTER */}
@@ -552,44 +752,14 @@ const Dashboard: React.FC = () => {
             <h2 className="text-lg font-bold text-gray-900">Action Center</h2>
             <p className="text-xs text-gray-500">Queues that need human or automated intervention.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer">
-              <Zap className={`w-4 h-4 ${autoAssign ? "text-movezy-600" : "text-gray-400"}`} />
-              <span className="text-sm text-gray-700">Auto-assign</span>
-              <span
-                role="switch"
-                aria-checked={autoAssign}
-                onClick={() => setAutoAssign((v) => !v)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                  autoAssign ? "bg-movezy-500" : "bg-gray-300"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                    autoAssign ? "translate-x-4" : "translate-x-1"
-                  }`}
-                />
-              </span>
-            </label>
-            <label className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 cursor-pointer">
-              <Activity className={`w-4 h-4 ${smartDelay ? "text-movezy-600" : "text-gray-400"}`} />
-              <span className="text-sm text-gray-700">Smart delay</span>
-              <span
-                role="switch"
-                aria-checked={smartDelay}
-                onClick={() => setSmartDelay((v) => !v)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                  smartDelay ? "bg-movezy-500" : "bg-gray-300"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                    smartDelay ? "translate-x-4" : "translate-x-1"
-                  }`}
-                />
-              </span>
-            </label>
-          </div>
+          <button
+            onClick={handleRunAutoAssign}
+            disabled={autoAssigning}
+            className="flex items-center gap-2 bg-movezy-600 hover:bg-movezy-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg px-3 py-1.5"
+          >
+            <Zap className="w-4 h-4" />
+            {autoAssigning ? "Assigning..." : "Run auto-assign"}
+          </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -602,11 +772,13 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 text-sm">Pending Assignments</h3>
-                  <p className="text-xs text-gray-500">{pendingOrders.length} waiting for driver</p>
+                  <p className="text-xs text-gray-500">
+                    {actionFailed ? "Unavailable" : `${pendingOrders.length} waiting for driver`}
+                  </p>
                 </div>
               </div>
               <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
-                {pendingOrders.length}
+                {actionFailed ? NO_VALUE : pendingOrders.length}
               </span>
             </div>
             <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
@@ -623,14 +795,16 @@ const Dashboard: React.FC = () => {
                   </div>
                   <button
                     className="px-3 py-1.5 bg-movezy-600 hover:bg-movezy-700 text-white text-xs font-semibold rounded-lg flex-shrink-0"
-                    onClick={() => navigate(`/admin/orders/${o._id}`)}
+                    onClick={() => navigate("/admin/orders")}
                   >
                     Assign Now
                   </button>
                 </div>
               ))}
               {pendingOrders.length === 0 && (
-                <div className="p-6 text-center text-sm text-gray-400">All orders assigned.</div>
+                <div className="p-6 text-center text-sm text-gray-400">
+                  {actionFailed ? QUEUE_ERROR : "All orders assigned."}
+                </div>
               )}
             </div>
           </div>
@@ -644,11 +818,13 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 text-sm">Delayed Orders</h3>
-                  <p className="text-xs text-gray-500">{delayedOrders.length} past ETA</p>
+                  <p className="text-xs text-gray-500">
+                    {actionFailed ? "Unavailable" : `${delayedOrders.length} past ETA`}
+                  </p>
                 </div>
               </div>
               <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full">
-                {delayedOrders.length}
+                {actionFailed ? NO_VALUE : delayedOrders.length}
               </span>
             </div>
             <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
@@ -661,7 +837,7 @@ const Dashboard: React.FC = () => {
                   <p className="text-xs text-gray-500 mb-2">Driver: {o.driverName || "—"}</p>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => navigate(`/admin/orders/${o._id}`)}
+                      onClick={() => navigate("/admin/orders")}
                       className="flex-1 px-2 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-md"
                     >
                       Reassign
@@ -678,7 +854,9 @@ const Dashboard: React.FC = () => {
                 </div>
               ))}
               {delayedOrders.length === 0 && (
-                <div className="p-6 text-center text-sm text-gray-400">No delays right now.</div>
+                <div className="p-6 text-center text-sm text-gray-400">
+                  {actionFailed ? QUEUE_ERROR : "No delays right now."}
+                </div>
               )}
             </div>
           </div>
@@ -692,11 +870,16 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900 text-sm">At Risk Deliveries</h3>
-                  <p className="text-xs text-gray-500">Predicted to fail</p>
+                  {/* getActionCenter flags active trips whose liveLocation is
+                      older than 5 minutes — it is a stale-GPS queue, not a
+                      failure prediction. */}
+                  <p className="text-xs text-gray-500">
+                    {actionFailed ? "Unavailable" : "Driver location stale 5+ mins"}
+                  </p>
                 </div>
               </div>
               <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-semibold rounded-full">
-                {atRiskOrders.length}
+                {actionFailed ? NO_VALUE : atRiskOrders.length}
               </span>
             </div>
             <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
@@ -719,14 +902,16 @@ const Dashboard: React.FC = () => {
                   </div>
                   <button
                     className="px-3 py-1.5 border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-semibold rounded-lg"
-                    onClick={() => navigate(`/admin/orders/${o._id}`)}
+                    onClick={() => navigate("/admin/orders")}
                   >
                     Review
                   </button>
                 </div>
               ))}
               {atRiskOrders.length === 0 && (
-                <div className="p-6 text-center text-sm text-gray-400">No at-risk deliveries.</div>
+                <div className="p-6 text-center text-sm text-gray-400">
+                  {actionFailed ? QUEUE_ERROR : "No at-risk deliveries."}
+                </div>
               )}
             </div>
           </div>
@@ -765,7 +950,7 @@ const Dashboard: React.FC = () => {
                 <span className="text-gray-600">Delays</span>
               </div>
               <div className="ml-auto flex items-center gap-1 text-gray-500">
-                <MapPin className="w-3.5 h-3.5" /> {city}
+                <MapPin className="w-3.5 h-3.5" /> All cities
               </div>
             </div>
             <div className="h-[420px]">
@@ -821,9 +1006,21 @@ const Dashboard: React.FC = () => {
           <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col">
             <div className="flex border-b border-gray-100">
               {[
-                { key: "delayed", label: "Delayed", count: delayedOrders.length },
-                { key: "unassigned", label: "Unassigned", count: pendingOrders.length },
-                { key: "nearby", label: "Nearby", count: drivers.length },
+                {
+                  key: "delayed",
+                  label: "Delayed",
+                  count: actionFailed ? NO_VALUE : delayedOrders.length,
+                },
+                {
+                  key: "unassigned",
+                  label: "Unassigned",
+                  count: actionFailed ? NO_VALUE : pendingOrders.length,
+                },
+                {
+                  key: "nearby",
+                  label: "Nearby",
+                  count: loadErrors.drivers ? NO_VALUE : drivers.length,
+                },
               ].map((t) => (
                 <button
                   key={t.key}
@@ -913,7 +1110,15 @@ const Dashboard: React.FC = () => {
               {((activeTab === "delayed" && delayedOrders.length === 0) ||
                 (activeTab === "unassigned" && pendingOrders.length === 0) ||
                 (activeTab === "nearby" && drivers.length === 0)) && (
-                <div className="p-6 text-center text-sm text-gray-400">Nothing here right now.</div>
+                <div className="p-6 text-center text-sm text-gray-400">
+                  {activeTab === "nearby"
+                    ? loadErrors.drivers
+                      ? "Couldn't load drivers."
+                      : "Nothing here right now."
+                    : actionFailed
+                    ? QUEUE_ERROR
+                    : "Nothing here right now."}
+                </div>
               )}
             </div>
           </div>
@@ -966,7 +1171,9 @@ const Dashboard: React.FC = () => {
               return (
                 <div className="p-8 text-center text-sm text-gray-400">
                   <Bell className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                  No events to show for this filter.
+                  {loadErrors.timeline
+                    ? "Couldn't load the event feed."
+                    : "No events to show for this filter."}
                 </div>
               );
             }
@@ -1015,55 +1222,85 @@ const Dashboard: React.FC = () => {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold text-gray-900">Performance Snapshot</h2>
-          <span className="text-xs text-gray-500">{timeRange}</span>
+          <span className="text-xs text-gray-500">Today</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-900 text-sm">Orders</h3>
-              <span className="text-xs text-gray-400">Completed vs Failed vs Pending</span>
+              <span className="text-xs text-gray-400">Completed vs Pending vs Cancelled</span>
             </div>
             <div className="h-40">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={orderBreakdown} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#F3F4F6" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#9CA3AF" }} />
-                  <Tooltip cursor={{ fill: "#F9FAFB" }} />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                    {orderBreakdown.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              {orderBreakdown ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={orderBreakdown} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#F3F4F6" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "#9CA3AF" }} />
+                    <Tooltip cursor={{ fill: "#F9FAFB" }} />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      {orderBreakdown.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center px-4">
+                  <p className="text-sm text-gray-400">
+                    {loadErrors.stats
+                      ? "Couldn't load today's order breakdown."
+                      : "Today's order breakdown isn't available."}
+                  </p>
+                  {!loadErrors.stats && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Live stats don't include same-day completed and pending counts.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-900 text-sm">Driver Performance</h3>
-              <span className="text-xs text-gray-400">Active vs Idle</span>
+              <span className="text-xs text-gray-400">On trip vs Idle</span>
             </div>
             <div className="h-40">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={driverBreakdown}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={42}
-                    outerRadius={64}
-                    paddingAngle={2}
-                  >
-                    {driverBreakdown.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
+              {driverBreakdown ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={driverBreakdown}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={42}
+                      outerRadius={64}
+                      paddingAngle={2}
+                    >
+                      {driverBreakdown.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center px-4">
+                  <p className="text-sm text-gray-400">
+                    {loadErrors.stats
+                      ? "Couldn't load the driver split."
+                      : "On-trip vs idle split isn't available."}
+                  </p>
+                  {!loadErrors.stats && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Live stats don't include a count of drivers currently on a trip.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1085,7 +1322,9 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="divide-y divide-gray-100">
           {timeline.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">No recent events</p>
+            <p className="text-sm text-gray-400 text-center py-6">
+              {loadErrors.timeline ? "Couldn't load recent activity." : "No recent events"}
+            </p>
           ) : (
             timeline.slice(0, 10).map((event) => {
               const actionLower = event.action.toLowerCase();

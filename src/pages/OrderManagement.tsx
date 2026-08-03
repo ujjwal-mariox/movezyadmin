@@ -101,6 +101,9 @@ const personId = (
   return p._id;
 };
 
+// booking.estimatedDropTime is written when the driver marks the goods picked up
+// (pickedAt + durationMin, the drop leg's road duration). Bookings not yet picked
+// up have no estimate, so they return 0 here — not late rather than falsely late.
 const computeDelayMinutes = (o: BookingRow): number => {
   if (!ACTIVE_STATUSES.includes(o.status)) return 0;
   if (!o.estimatedDropTime) return 0;
@@ -114,6 +117,29 @@ const computeWaitingMinutes = (o: BookingRow): number => {
   if (o.status !== "SEARCHING") return 0;
   return Math.max(Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000), 0);
 };
+
+// A fare increase taken mid-trip (add-stop) leaves paymentStatus PAID and records
+// the uncollected difference on the booking as pendingCashTopUp, cleared by the
+// driver's cash-collected call. Without this the admin showed the raised fare as
+// fully PAID.
+const cashDue = (o: BookingRow): number => {
+  const v = o.pendingCashTopUp;
+  return typeof v === "number" && v > 0 ? v : 0;
+};
+
+// The assign modal used to show only name/phone/vehicle, so an offline driver —
+// or one already mid-trip on another booking — looked identical to a free one.
+type AssignableDriver = DriverOption;
+
+const driverConcerns = (d: AssignableDriver): string[] => {
+  const out: string[] = [];
+  if (d.isOnline === false) out.push("currently offline");
+  if (d.isActive === false) out.push("deactivated");
+  if (d.currentBookingId) out.push("already assigned to another booking");
+  return out;
+};
+
+const isDriverFree = (d: AssignableDriver) => driverConcerns(d).length === 0;
 
 const OrderManagement: React.FC = () => {
   const dialog = useDialog();
@@ -133,7 +159,7 @@ const OrderManagement: React.FC = () => {
 
   // Assign-driver modal
   const [assignModal, setAssignModal] = useState<BookingRow | null>(null);
-  const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [drivers, setDrivers] = useState<AssignableDriver[]>([]);
   const [driverSearch, setDriverSearch] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [loadingDrivers, setLoadingDrivers] = useState(false);
@@ -179,7 +205,6 @@ const OrderManagement: React.FC = () => {
   );
 
   const insights = useMemo(() => {
-    const delayed = orders.filter((o) => computeDelayMinutes(o) > 0).length;
     const active = orders.filter((o) => ACTIVE_STATUSES.includes(o.status)).length;
     const delivered = orders.filter((o) => o.status === "COMPLETED");
     const avgDeliveryMin = delivered.length
@@ -192,7 +217,8 @@ const OrderManagement: React.FC = () => {
       : 0;
     const cancelled = orders.filter((o) => o.status === "CANCELLED").length;
     const failureRate = orders.length ? (cancelled / orders.length) * 100 : 0;
-    return { delayed, active, avgDeliveryMin, failureRate };
+    const delayed = orders.filter((o) => computeDelayMinutes(o) > 0).length;
+    return { active, avgDeliveryMin, failureRate, delayed };
   }, [orders]);
 
   const clearFilters = () => {
@@ -211,18 +237,42 @@ const OrderManagement: React.FC = () => {
     setLoadingDrivers(true);
     try {
       const res = await fetchAvailableDrivers({ limit: 50 });
-      const list = (res?.data?.drivers ?? res?.data ?? []) as DriverOption[];
-      setDrivers(Array.isArray(list) ? list : []);
+      const list = (res?.data?.drivers ?? res?.data ?? []) as AssignableDriver[];
+      // The endpoint is only filtered by status=approved — no isOnline/isActive
+      // params are sent — so the list mixes free, offline, deactivated and
+      // mid-trip drivers. Surface the free ones first and label the rest.
+      setDrivers(
+        Array.isArray(list)
+          ? [...list].sort((a, b) => Number(isDriverFree(b)) - Number(isDriverFree(a)))
+          : [],
+      );
     } finally {
       setLoadingDrivers(false);
     }
   };
 
-  const submitAssign = async (driverId: string) => {
+  const submitAssign = async (driver: AssignableDriver) => {
     if (!assignModal) return;
+    const bookingLabel = assignModal.bookingNumber || assignModal._id.slice(-6).toUpperCase();
+    const driverLabel = driver.fullName || driver.mobileNumber || "this driver";
+    const concerns = driverConcerns(driver);
+    // Assign used to fire on a single click. The backend only checks that the
+    // booking is SEARCHING and then overwrites driver.currentBookingId
+    // (admin/booking.controller.ts:405-432), so assigning a driver who is already
+    // on a trip silently repoints them at the new booking.
+    const ok = await dialog.confirm({
+      title: `Assign ${driverLabel}?`,
+      message: concerns.length
+        ? `${driverLabel} is ${concerns.join(" and ")}. Assigning ${bookingLabel} anyway makes this booking the driver's active job — any booking they are already carrying keeps them as its driver but stops being tracked as their current trip. Continue?`
+        : `Assign booking ${bookingLabel} to ${driverLabel}?`,
+      tone: concerns.length ? "danger" : "warning",
+      confirmLabel: "Assign",
+      cancelLabel: "Back",
+    });
+    if (!ok) return;
     setAssigning(true);
     try {
-      const res = await assignAdminDriver(assignModal._id, driverId);
+      const res = await assignAdminDriver(assignModal._id, driver._id);
       if (res?.success === false) {
         await dialog.alert({ title: "Assign failed", message: res.message || "Assign failed", tone: "danger" });
       } else {
@@ -239,7 +289,12 @@ const OrderManagement: React.FC = () => {
   const handleCancel = async (order: BookingRow) => {
     const reason = await dialog.prompt({
       title: `Cancel booking ${order.bookingNumber || order._id}?`,
-      message: "Please enter a reason for cancellation. This will be recorded in the audit log.",
+      // The route now carries requireCommentAndAudit("booking:cancel"), so the
+      // reason is server-enforced (min 10 characters), an AuditLog row is
+      // written against the acting admin, and the booking records
+      // cancelledBy = "ADMIN" rather than "SYSTEM".
+      message:
+        "Please enter a reason for cancellation (at least 10 characters). It is saved on the booking, sent to the customer and driver apps, and recorded in Audit Logs against your account.",
       placeholder: "e.g. Customer requested cancellation",
       tone: "danger",
       required: true,
@@ -248,11 +303,25 @@ const OrderManagement: React.FC = () => {
       cancelLabel: "Keep booking",
     });
     if (!reason) return;
-    const res = await cancelAdminBooking(order._id, { reason });
-    if (res?.success === false) {
-      await dialog.alert({ title: "Cancel failed", message: res.message || "Cancel failed", tone: "danger" });
-    } else {
-      loadOrders();
+    // Match the server's minimum so a short reason is caught here rather than
+    // coming back as a bare 400.
+    if (reason.trim().length < 10) {
+      await dialog.alert({
+        title: "Reason too short",
+        message: "The cancellation reason must be at least 10 characters.",
+        tone: "danger",
+      });
+      return;
+    }
+    try {
+      const res = await cancelAdminBooking(order._id, { reason });
+      if (res?.success === false) {
+        await dialog.alert({ title: "Cancel failed", message: res.message || "Cancel failed", tone: "danger" });
+      } else {
+        loadOrders();
+      }
+    } catch (err: any) {
+      await dialog.alert({ title: "Cancel failed", message: err?.message || "Cancel failed", tone: "danger" });
     }
   };
 
@@ -292,22 +361,27 @@ const OrderManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Insights */}
+      {/* The backend now writes estimatedDropTime at pickup (pickedAt +
+          durationMin), so this tile measures something real. It stays scoped to
+          the loaded page, like its neighbours. Orders not yet picked up have no
+          estimate and are simply not counted, rather than counted as on time. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">Active orders</p>
+          <p className="text-xs text-gray-500 mb-1">Active orders (this page)</p>
           <p className="text-2xl font-bold text-gray-900">{insights.active}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 border-l-4 !border-l-red-500 p-4">
-          <p className="text-xs text-gray-500 mb-1">Delayed orders</p>
-          <p className="text-2xl font-bold text-red-600">{insights.delayed}</p>
+        <div className={`bg-white rounded-xl shadow-sm border p-4 ${insights.delayed > 0 ? "border-red-300" : "border-gray-200"}`}>
+          <p className="text-xs text-gray-500 mb-1">Delayed orders (this page)</p>
+          <p className={`text-2xl font-bold ${insights.delayed > 0 ? "text-red-600" : "text-gray-900"}`}>
+            {insights.delayed}
+          </p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">Avg delivery time</p>
+          <p className="text-xs text-gray-500 mb-1">Avg delivery time (this page)</p>
           <p className="text-2xl font-bold text-gray-900">{insights.avgDeliveryMin}m</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">Failure rate</p>
+          <p className="text-xs text-gray-500 mb-1">Failure rate (this page)</p>
           <p className={`text-2xl font-bold ${insights.failureRate > 10 ? "text-red-600" : "text-gray-900"}`}>
             {insights.failureRate.toFixed(1)}%
           </p>
@@ -516,6 +590,14 @@ const OrderManagement: React.FC = () => {
                           <div className="text-[11px] text-gray-400 mt-0.5">
                             ₹{(o.finalFare ?? 0).toLocaleString()} · {o.paymentMethod || "—"}
                           </div>
+                          {cashDue(o) > 0 && (
+                            <div
+                              className="mt-1 inline-block text-[10px] font-semibold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded"
+                              title="Fare raised mid-trip; this amount is still to be collected in cash by the driver"
+                            >
+                              ₹{cashDue(o).toLocaleString()} cash due
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 align-top text-right">
                           <div
@@ -615,6 +697,10 @@ const OrderManagement: React.FC = () => {
                 <p className="text-xs text-gray-500">
                   Booking {assignModal.bookingNumber || assignModal._id.slice(-6)}
                 </p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Approved drivers, availability first — offline, deactivated and
+                  mid-trip drivers are listed too and are labelled.
+                </p>
               </div>
               <button
                 onClick={() => setAssignModal(null)}
@@ -655,10 +741,35 @@ const OrderManagement: React.FC = () => {
                           {d.mobileNumber || "—"}
                           {d.vehicleNumber ? ` · ${d.vehicleNumber}` : ""}
                         </div>
+                        {/* Availability comes straight off the driver document; nothing
+                            here is derived or assumed. Only render a state the payload
+                            actually reported. */}
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {d.isOnline === true && (
+                            <span className="text-[10px] font-semibold bg-green-50 text-green-700 px-1.5 py-0.5 rounded">
+                              Online
+                            </span>
+                          )}
+                          {d.isOnline === false && (
+                            <span className="text-[10px] font-semibold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                              Offline
+                            </span>
+                          )}
+                          {d.isActive === false && (
+                            <span className="text-[10px] font-semibold bg-red-50 text-red-700 px-1.5 py-0.5 rounded">
+                              Deactivated
+                            </span>
+                          )}
+                          {d.currentBookingId && (
+                            <span className="text-[10px] font-semibold bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">
+                              On another booking
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <button
                         disabled={assigning}
-                        onClick={() => submitAssign(d._id)}
+                        onClick={() => submitAssign(d)}
                         className="px-3 py-1.5 bg-movezy-600 hover:bg-movezy-700 text-white text-xs font-semibold rounded-lg disabled:opacity-60"
                       >
                         Assign
@@ -852,10 +963,34 @@ const OrderDetailPanel: React.FC<{
               </p>
               <p className="text-xs text-gray-500">{order.paymentMethod || "—"}</p>
             </div>
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_COLORS[order.paymentStatus]}`}>
-              {order.paymentStatus}
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PAYMENT_COLORS[order.paymentStatus]}`}>
+                {order.paymentStatus}
+              </span>
+              {cashDue(order) > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700">
+                  CASH DUE
+                </span>
+              )}
+            </div>
           </div>
+          {/* Without this the panel showed a mid-trip fare increase as fully PAID.
+              Amounts are the server's own fields — finalFare already includes the
+              increase and pendingCashTopUp is the part still uncollected; nothing
+              is recomputed here. */}
+          {cashDue(order) > 0 && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs font-semibold text-amber-800">
+                ₹{cashDue(order).toLocaleString()} still to be collected in cash
+              </p>
+              <p className="mt-1 text-[11px] text-amber-700">
+                The fare was raised mid-trip (stop added). The total above includes the
+                increase, but the {order.paymentStatus} status covers only the amount
+                already paid — the driver collects the difference in cash and it clears
+                when they confirm collection.
+              </p>
+            </div>
+          )}
         </section>
 
         {order.cancellationReason && (
