@@ -88,6 +88,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: "Finance",
       items: [
         { id: "finance", label: "Finance & Insights", icon: DollarSign },
+        // The payout queues live on the Finance page but were invisible as
+        // unlabeled tabs — this entry lands directly on them.
+        { id: "payouts", label: "Payout Approvals", icon: Wallet },
         { id: "reports", label: "Reports & BI", icon: BarChart3 },
         { id: "payments", label: "Payments", icon: Wallet },
         { id: "wallet", label: "Wallet", icon: Wallet },

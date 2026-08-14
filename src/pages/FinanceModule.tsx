@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   DollarSign,
   TrendingUp,
@@ -121,7 +122,24 @@ const FinanceModule: React.FC = () => {
   // show what the platform owes drivers (pendingAmount), not COD float.
   const [payouts, setPayouts] = useState<PayoutItem[]>([]);
   const [pendingPayoutAmount, setPendingPayoutAmount] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "payouts" | "coin-payouts" | "cod" | "expenses" | "dso">("overview");
+  // Deep-linkable tabs (?tab=payouts). The approval queues used to be
+  // reachable ONLY by clicking through to the 4th/5th tab by hand, which is
+  // exactly how "payout approval section is not visible" happened.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const VALID_TABS = ["overview", "payouts", "coin-payouts", "cod", "expenses", "dso"] as const;
+  type FinanceTab = (typeof VALID_TABS)[number];
+  const urlTab = searchParams.get("tab");
+  const [activeTab, setActiveTabState] = useState<FinanceTab>(
+    VALID_TABS.includes(urlTab as FinanceTab) ? (urlTab as FinanceTab) : "overview",
+  );
+  const setActiveTab = useCallback(
+    (tab: FinanceTab) => {
+      setActiveTabState(tab);
+      // Keep the URL in sync so refresh/share lands on the same tab.
+      setSearchParams(tab === "overview" ? {} : { tab }, { replace: true });
+    },
+    [setSearchParams],
+  );
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [newExpense, setNewExpense] = useState({ description: "", amount: "", category: "OTHER", notes: "" });
   const [codBusy, setCodBusy] = useState(false);
@@ -665,7 +683,7 @@ const FinanceModule: React.FC = () => {
         ] as const).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            onClick={() => setActiveTab(key)}
+            onClick={() => setActiveTab(key as FinanceTab)}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
           >
             <Icon className="w-4 h-4" />

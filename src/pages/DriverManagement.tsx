@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   AlertTriangle,
@@ -133,6 +134,7 @@ interface DriverVehicle {
   assignedDriverLicenseBackImage?: string;
   onboardingFeePaid?: boolean;
   verificationStatus?: "pending" | "under_verification" | "approved" | "rejected";
+  rejectionReason?: string;
   isPrimary?: boolean;
   isOnline: boolean;
   isActive: boolean;
@@ -368,7 +370,15 @@ const DriverManagement: React.FC = () => {
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [limit, setLimit] = useState<PageSize>(10);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ApprovalFilter>("all");
+  // Deep-linkable (?status=document_not_complete) so dashboard stats can land
+  // on the filtered list instead of dying at the unfiltered page.
+  const [urlParams] = useSearchParams();
+  const urlApproval = urlParams.get("status") as ApprovalFilter | null;
+  const [statusFilter, setStatusFilter] = useState<ApprovalFilter>(
+    urlApproval && ["all", "approved", "document_not_complete", "blocked"].includes(urlApproval)
+      ? urlApproval
+      : "all",
+  );
   const [accountFilter, setAccountFilter] = useState<AccountFilter>("all");
   const [onlineFilter, setOnlineFilter] = useState<
     "all" | "online" | "offline"
@@ -857,6 +867,82 @@ const DriverManagement: React.FC = () => {
     [assignDriver, showToast, fetchStats, loadDrivers],
   );
 
+  // Vehicles awaiting approval across ALL drivers. The driver-level pending
+  // count misses an approved driver's added vehicle entirely — this queue is
+  // how those get seen.
+  const [pendingVehicles, setPendingVehicles] = useState<any[]>([]);
+  const [pendingVehiclesOpen, setPendingVehiclesOpen] = useState(false);
+  const loadPendingVehicles = useCallback(async () => {
+    try {
+      const res = await driversApi.getPendingVehicles();
+      setPendingVehicles(res.data?.vehicles || []);
+    } catch {
+      setPendingVehicles([]);
+    }
+  }, []);
+  useEffect(() => { loadPendingVehicles(); }, [loadPendingVehicles]);
+
+  // Approve/reject straight from the queue — no need to open the driver.
+  const handleQueueVerify = useCallback(
+    async (driverId: string, vehicleId: string, action: "approve" | "reject") => {
+      let rejectionReason: string | undefined;
+      if (action === "reject") {
+        rejectionReason = window.prompt("Reason for rejecting this vehicle:")?.trim() || undefined;
+        if (!rejectionReason) {
+          showToast({ type: "error", message: "Rejection reason is required" });
+          return;
+        }
+      }
+      try {
+        await driversApi.verifyVehicle(driverId, vehicleId, { action, rejectionReason });
+        showToast({
+          type: "success",
+          message: action === "approve" ? "Vehicle approved" : "Vehicle rejected",
+        });
+        loadPendingVehicles();
+      } catch (err: any) {
+        showToast({ type: "error", message: err.message || "Action failed" });
+      }
+    },
+    [showToast, loadPendingVehicles],
+  );
+
+  // Per-vehicle approve/reject. Refreshes just the vehicle list on success —
+  // the rest of the drawer's data is untouched by this action.
+  const handleVerifyVehicle = useCallback(
+    async (vehicleId: string, action: "approve" | "reject") => {
+      if (!selectedDriver) return;
+      let rejectionReason: string | undefined;
+      if (action === "reject") {
+        rejectionReason =
+          window.prompt("Reason for rejecting this vehicle:")?.trim() ||
+          undefined;
+        if (!rejectionReason) {
+          showToast({ type: "error", message: "Rejection reason is required" });
+          return;
+        }
+      }
+      try {
+        await driversApi.verifyVehicle(selectedDriver._id, vehicleId, {
+          action,
+          rejectionReason,
+        });
+        showToast({
+          type: "success",
+          message: action === "approve" ? "Vehicle approved" : "Vehicle rejected",
+        });
+        const res = await driversApi
+          .getVehicles(selectedDriver._id)
+          .catch(() => ({ data: { vehicles: [] } }));
+        setDriverVehicles(res.data?.vehicles || []);
+      } catch (err: any) {
+        showToast({ type: "error", message: err.message || "Action failed" });
+      }
+    },
+    [selectedDriver, showToast],
+  );
+
+
   return (
     <div className="space-y-6">
       {/* Toast */}
@@ -881,6 +967,61 @@ const DriverManagement: React.FC = () => {
           <button onClick={() => setToast(null)} className="ml-2">
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* Vehicles awaiting approval — across all drivers */}
+      {pendingVehicles.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl">
+          <button
+            onClick={() => setPendingVehiclesOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-left"
+          >
+            <span className="text-sm font-semibold text-amber-800">
+              {pendingVehicles.length} vehicle{pendingVehicles.length === 1 ? "" : "s"} awaiting approval
+            </span>
+            <span className="text-xs font-medium text-amber-700">
+              {pendingVehiclesOpen ? "Hide" : "Review"}
+            </span>
+          </button>
+          {pendingVehiclesOpen && (
+            <div className="px-4 pb-3 space-y-2">
+              {pendingVehicles.map((v: any) => (
+                <div key={v._id} className="flex flex-wrap items-center gap-3 bg-white rounded-lg px-3 py-2.5">
+                  <div className="flex-1 min-w-[180px]">
+                    <p className="text-sm font-medium text-gray-900 font-mono">{v.vehicleNumber}</p>
+                    <p className="text-xs text-gray-500">
+                      {v.driverId?.fullName || "Unknown driver"}
+                      {v.driverId?.mobileNumber ? ` · ${v.driverId.mobileNumber}` : ""}
+                      {v.driverId?.status === "approved" ? " · driver approved" : ""}
+                    </p>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    v.onboardingFeePaid ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+                  }`}>
+                    {v.onboardingFeePaid ? "Fee paid" : "Fee pending"}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                    {(v.verificationStatus || "pending").replace("_", " ")}
+                  </span>
+                  <div className="whitespace-nowrap">
+                    <button
+                      onClick={() => handleQueueVerify(v.driverId?._id || v.driverId, v._id, "approve")}
+                      className="px-3 py-1.5 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleQueueVerify(v.driverId?._id || v.driverId, v._id, "reject")}
+                      className="ml-2 px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2720,6 +2861,36 @@ const DriverManagement: React.FC = () => {
                                 )}
                               </div>
                             </div>
+
+                            {/* Per-vehicle approval — the ONLY path for a 2nd
+                                vehicle once the driver is already approved. */}
+                            {vehicle.verificationStatus !== "approved" && (
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  onClick={() =>
+                                    handleVerifyVehicle(vehicle._id, "approve")
+                                  }
+                                  className="px-3 py-1.5 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700"
+                                >
+                                  Approve Vehicle
+                                </button>
+                                {vehicle.verificationStatus !== "rejected" && (
+                                  <button
+                                    onClick={() =>
+                                      handleVerifyVehicle(vehicle._id, "reject")
+                                    }
+                                    className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                                  >
+                                    Reject
+                                  </button>
+                                )}
+                                {vehicle.rejectionReason && (
+                                  <span className="text-xs text-red-600">
+                                    {vehicle.rejectionReason}
+                                  </span>
+                                )}
+                              </div>
+                            )}
 
                             {(vehicle.assignedDriverName ||
                               vehicle.assignedDriverPhone) && (

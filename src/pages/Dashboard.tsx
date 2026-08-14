@@ -6,7 +6,7 @@ import {
   type ActionCenterDelayed,
   type ActionCenterAtRisk,
 } from "../services/api";
-import { driversApi } from "../services/admin-api";
+import { driversApi, dashboardApi, enhancedFinanceApi } from "../services/admin-api";
 import { dialog } from "../components/Layout/Dialog";
 import {
   Package,
@@ -165,6 +165,45 @@ const REFRESH_INTERVALS = [10, 20, 30, 60];
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+
+  // All-time / net figures for the second stats row. getStats aggregates
+  // total revenue in the backend but nothing ever called it; net revenue was
+  // only visible on Finance & Insights.
+  const [totals, setTotals] = useState<{
+    totalRevenue: number | null;
+    netRevenue: number | null;
+    commission: number | null;
+    expenses: number | null;
+    openTickets: number | null;
+    pendingVerification: number | null;
+  }>({ totalRevenue: null, netRevenue: null, commission: null, expenses: null, openTickets: null, pendingVerification: null });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [statsRes, finRes] = await Promise.all([
+          dashboardApi.getStats().catch(() => null),
+          enhancedFinanceApi.getEnhancedOverview({ period: "month" }).catch(() => null),
+        ]);
+        const d = (statsRes as any)?.data;
+        const f = (finRes as any)?.data?.summary;
+        setTotals({
+          totalRevenue: typeof d?.revenue?.total === "number" ? d.revenue.total : null,
+          netRevenue: typeof f?.netRevenue === "number" ? f.netRevenue : null,
+          commission: typeof f?.totalCommission === "number" ? f.totalCommission : null,
+          expenses: typeof f?.totalExpenses === "number" ? f.totalExpenses : null,
+          openTickets: typeof d?.support?.openTickets === "number"
+            ? d.support.openTickets
+            : typeof d?.openTickets === "number" ? d.openTickets : null,
+          pendingVerification: typeof d?.drivers?.pendingVerification === "number"
+            ? d.drivers.pendingVerification
+            : typeof d?.pendingVerification === "number" ? d.pendingVerification : null,
+        });
+      } catch {
+        /* cards render em-dashes when a figure is unavailable */
+      }
+    })();
+  }, []);
   const [liveStats, setLiveStats] = useState<LiveStats | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [drivers, setDrivers] = useState<DriverLocation[]>([]);
@@ -420,7 +459,7 @@ const Dashboard: React.FC = () => {
       level: "red",
       icon: XCircle,
       message: `${s.failureRate.toFixed(1)}% of today's orders cancelled`,
-      path: "/admin/orders?status=cancelled",
+      path: `/admin/orders?status=CANCELLED&dateFrom=${new Date().toISOString().slice(0, 10)}`,
     });
   }
   // Placeholders for backend-fed signals (enterprise credit, COD outstanding, doc expiry)
@@ -518,7 +557,7 @@ const Dashboard: React.FC = () => {
       hint: ``,
       icon: Package,
       tone: "neutral" as const,
-      path: "/admin/orders?status=in_progress",
+      path: "/admin/orders?status=IN_PROGRESS",
     },
     {
       label: "Delayed Orders",
@@ -530,7 +569,9 @@ const Dashboard: React.FC = () => {
         : "All on time",
       icon: Clock,
       tone: "danger" as const,
-      path: "/admin/orders?status=delayed",
+      // "delayed" is not a booking status the orders list can filter by; the
+      // live tracking board is where delayed trips are actually visible.
+      path: "/admin/tracking",
     },
     {
       label: "Cancelled Today",
@@ -743,6 +784,62 @@ const Dashboard: React.FC = () => {
                 </button>
               );
             })}
+      </div>
+
+      {/* SECTION 1b — TOTALS (all-time / month) */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        {[
+          {
+            label: "Total Revenue (Gross)",
+            value: totals.totalRevenue !== null ? `₹${totals.totalRevenue.toLocaleString("en-IN")}` : NO_VALUE,
+            hint: "All-time customer payments incl. GST",
+            path: "/admin/finance",
+          },
+          {
+            label: "Net Revenue (Month)",
+            value: totals.netRevenue !== null ? `₹${totals.netRevenue.toLocaleString("en-IN")}` : NO_VALUE,
+            hint: "After refunds · details in Finance & Insights",
+            path: "/admin/finance",
+          },
+          {
+            // The platform's actual income for the window — gross/net above are
+            // customer payments, most of which is passed through to drivers.
+            label: "Commission (Month)",
+            value: totals.commission !== null ? `₹${totals.commission.toLocaleString("en-IN")}` : NO_VALUE,
+            hint: "Platform earnings this month",
+            path: "/admin/finance",
+          },
+          {
+            label: "Expenses (Month)",
+            value: totals.expenses !== null ? `₹${totals.expenses.toLocaleString("en-IN")}` : NO_VALUE,
+            hint: "Operating expenses incl. driver payouts",
+            path: "/admin/finance?tab=expenses",
+          },
+          {
+            label: "Open Tickets",
+            value: totals.openTickets !== null ? totals.openTickets : NO_VALUE,
+            hint: "Open + in-progress support tickets",
+            path: "/admin/support?status=OPEN",
+          },
+          {
+            label: "Pending Driver Verifications",
+            value: totals.pendingVerification !== null ? totals.pendingVerification : NO_VALUE,
+            hint: "Documents awaiting review",
+            path: "/admin/riders?status=document_not_complete",
+          },
+        ].map((c) => (
+          <button
+            key={c.label}
+            onClick={() => navigate(c.path)}
+            className="group text-left bg-white rounded-xl shadow-sm hover:shadow-md transition p-4"
+          >
+            <div className={`text-2xl font-bold leading-tight mb-0.5 ${c.value === NO_VALUE ? "text-gray-300" : "text-gray-900"}`}>
+              {c.value}
+            </div>
+            <div className="text-sm text-gray-600 font-medium">{c.label}</div>
+            <div className="text-xs mt-0.5 text-gray-400">{c.hint}</div>
+          </button>
+        ))}
       </div>
 
       {/* SECTION 2 — ACTION CENTER */}

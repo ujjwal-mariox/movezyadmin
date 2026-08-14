@@ -30,6 +30,7 @@ const ProhibitedItemManagement = lazy(() => import("../pages/ProhibitedItemManag
 
 // Phase 2 pages
 const FinanceModule = lazy(() => import("../pages/FinanceModule"));
+const PayoutApprovals = lazy(() => import("../pages/PayoutApprovals"));
 const AuditLogPage = lazy(() => import("../pages/AuditLogPage"));
 const AutomationRulesPage = lazy(() => import("../pages/AutomationRulesPage"));
 const DocumentCompliancePage = lazy(() => import("../pages/DocumentCompliancePage"));
@@ -155,6 +156,12 @@ export const adminRoutes = [
   {
     path: "finance",
     element: FinanceModule,
+  },
+  {
+    // Direct landing on the payout approval queues (FinanceModule reads ?tab=,
+    // and PayoutApprovals just redirects there).
+    path: "payouts",
+    element: PayoutApprovals,
   },
   {
     path: "audit-logs",

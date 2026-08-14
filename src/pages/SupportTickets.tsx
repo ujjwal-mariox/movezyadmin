@@ -1,5 +1,6 @@
 // src/pages/SupportTickets.tsx
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   MessageSquare,
   Search,
@@ -108,7 +109,13 @@ const SupportTickets: React.FC = () => {
   const [tickets, setTickets] = useState<ExtTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [urlParams] = useSearchParams();
+  const urlTicketStatus = (urlParams.get("status") || "").toUpperCase();
+  const [statusFilter, setStatusFilter] = useState<string>(
+    ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"].includes(urlTicketStatus)
+      ? urlTicketStatus
+      : "ALL",
+  );
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<"ALL" | TicketType>("ALL");
   const [selectedTicket, setSelectedTicket] = useState<ExtTicket | null>(null);
@@ -403,7 +410,10 @@ const SupportTickets: React.FC = () => {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-xl">
+        <div
+          onClick={() => setStatusFilter("OPEN")}
+          className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-xl cursor-pointer hover:shadow-md transition"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Open</p>
@@ -414,7 +424,10 @@ const SupportTickets: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-yellow-500 shadow-sm rounded-xl">
+        <div
+          onClick={() => setStatusFilter("IN_PROGRESS")}
+          className="p-5 bg-white border border-gray-100 border-l-4 !border-l-yellow-500 shadow-sm rounded-xl cursor-pointer hover:shadow-md transition"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">In Progress</p>
@@ -447,7 +460,10 @@ const SupportTickets: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-xl">
+        <div
+          onClick={() => setStatusFilter("RESOLVED")}
+          className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-xl cursor-pointer hover:shadow-md transition"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Resolved</p>

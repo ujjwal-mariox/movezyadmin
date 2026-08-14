@@ -325,6 +325,138 @@ export const deleteAddonService = async (id: string) => {
 };
 
 // Promo Codes
+// ─── FAQs (Help & Support content) ───
+export interface FaqItem {
+  _id: string;
+  question: string;
+  answer: string;
+  category: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export const fetchAdminFaqs = async () => {
+  const res = await fetch(`${API_URL}/admin/faqs`, { headers: getHeaders() });
+  return ensureOk(res);
+};
+
+export const createAdminFaq = async (data: Partial<FaqItem>) => {
+  const res = await fetch(`${API_URL}/admin/faqs`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return ensureOk(res);
+};
+
+export const updateAdminFaq = async (id: string, data: Partial<FaqItem>) => {
+  const res = await fetch(`${API_URL}/admin/faqs/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return ensureOk(res);
+};
+
+export const deleteAdminFaq = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/faqs/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return ensureOk(res);
+};
+
+// ─── Driver onboarding coupons ───
+export interface OnboardingCouponItem {
+  _id: string;
+  code: string;
+  description?: string;
+  discountType: "PERCENT" | "FLAT";
+  value: number;
+  maxUses: number;
+  usedCount: number;
+  validFrom: string;
+  validTo: string;
+  isActive: boolean;
+}
+
+export const fetchOnboardingCoupons = async () => {
+  const res = await fetch(`${API_URL}/admin/onboarding-coupons`, { headers: getHeaders() });
+  return ensureOk(res);
+};
+
+export const createOnboardingCoupon = async (data: {
+  code: string;
+  description?: string;
+  discountType: "PERCENT" | "FLAT";
+  value: number;
+  maxUses?: number;
+  validFrom: string;
+  validTo: string;
+}) => {
+  const res = await fetch(`${API_URL}/admin/onboarding-coupons`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return ensureOk(res);
+};
+
+export const updateOnboardingCoupon = async (id: string, data: Record<string, unknown>) => {
+  const res = await fetch(`${API_URL}/admin/onboarding-coupons/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return ensureOk(res);
+};
+
+export const deleteOnboardingCoupon = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/onboarding-coupons/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return ensureOk(res);
+};
+
+// ─── Customer discounts (automatic strikethrough pricing) ───
+export interface UserDiscountItem {
+  _id: string;
+  name: string;
+  percent: number;
+  maxDiscountAmount: number;
+  appliesTo: "ALL" | "USERS";
+  userIds: { _id: string; fullName?: string; mobileNumber?: string }[];
+  validFrom: string;
+  validTo: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export const fetchUserDiscounts = async () => {
+  const res = await fetch(`${API_URL}/admin/user-discounts`, { headers: getHeaders() });
+  return ensureOk(res);
+};
+
+export const createUserDiscount = async (data: {
+  name: string;
+  percent: number;
+  maxDiscountAmount?: number;
+  appliesTo: "ALL" | "USERS";
+  userMobileNumbers?: string[];
+  validFrom: string;
+  validTo: string;
+}) => {
+  const res = await fetch(`${API_URL}/admin/user-discounts`, {
+    method: "POST", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return ensureOk(res);
+};
+
+export const updateUserDiscount = async (id: string, data: Record<string, unknown>) => {
+  const res = await fetch(`${API_URL}/admin/user-discounts/${id}`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify(data),
+  });
+  return ensureOk(res);
+};
+
+export const deleteUserDiscount = async (id: string) => {
+  const res = await fetch(`${API_URL}/admin/user-discounts/${id}`, {
+    method: "DELETE", headers: getHeaders(),
+  });
+  return ensureOk(res);
+};
+
 export const fetchPromos = async (page = 0, limit = 20, search?: string, status?: string) => {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (search) params.set("search", search);

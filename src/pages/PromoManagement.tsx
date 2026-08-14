@@ -25,6 +25,20 @@ import {
   deletePromo as deletePromoApi,
   type PromoCodeItem,
 } from "../services/api";
+import {
+  fetchUserDiscounts,
+  createUserDiscount,
+  updateUserDiscount,
+  deleteUserDiscount,
+  type UserDiscountItem,
+} from "../services/api";
+import {
+  fetchOnboardingCoupons,
+  createOnboardingCoupon,
+  updateOnboardingCoupon,
+  deleteOnboardingCoupon,
+  type OnboardingCouponItem,
+} from "../services/api";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import { useDialog } from "../components/Layout/Dialog";
@@ -1032,8 +1046,408 @@ const PromoManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      <UserDiscountsSection />
+
+      <OnboardingCouponsSection />
     </div>
   );
 };
 
+/**
+ * Driver onboarding-fee coupons — separate from customer promo codes, which
+ * the onboarding payment never reads. A PERCENT 100 (or FLAT >= fee) coupon
+ * waives the fee entirely: the driver app skips Razorpay for a zero payable.
+ * Usage counts at successful payment, not at apply.
+ */
+const OnboardingCouponsSection: React.FC = () => {
+  const [rows, setRows] = React.useState<OnboardingCouponItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [showForm, setShowForm] = React.useState(false);
+  const [code, setCode] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [discountType, setDiscountType] = React.useState<"PERCENT" | "FLAT">("PERCENT");
+  const [value, setValue] = React.useState("50");
+  const [maxUses, setMaxUses] = React.useState("");
+  const [from, setFrom] = React.useState("");
+  const [to, setTo] = React.useState("");
+  const [notice, setNotice] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchOnboardingCoupons();
+      setRows(res?.data?.coupons || []);
+    } catch {
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  const submit = async () => {
+    setNotice(null);
+    if (!code.trim() || !from || !to) {
+      setNotice("Code and both dates are required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await createOnboardingCoupon({
+        code: code.trim().toUpperCase(),
+        description: description.trim() || undefined,
+        discountType,
+        value: Number(value) || 0,
+        maxUses: maxUses.trim() ? Number(maxUses) : undefined,
+        validFrom: from,
+        validTo: to,
+      });
+      if (res?.success === false) throw new Error(res?.message || "Create failed");
+      setShowForm(false);
+      setCode(""); setDescription("");
+      load();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Create failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = async (r: OnboardingCouponItem) => {
+    setBusy(true);
+    try { await updateOnboardingCoupon(r._id, { isActive: !r.isActive }); load(); }
+    finally { setBusy(false); }
+  };
+  const remove = async (r: OnboardingCouponItem) => {
+    if (!window.confirm(`Delete coupon ${r.code}?`)) return;
+    setBusy(true);
+    try { await deleteOnboardingCoupon(r._id); load(); }
+    finally { setBusy(false); }
+  };
+
+  const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
+  return (
+    <div className="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="text-base font-bold text-gray-800">Driver Onboarding Coupons</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Discount codes drivers enter against the joining fee. A 100% coupon waives the
+            fee entirely (no Razorpay step). One redemption per driver; uses count only on
+            successful payment.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 text-sm font-medium"
+        >
+          {showForm ? "Close" : "New Coupon"}
+        </button>
+      </div>
+
+      {notice && <p className="mt-3 text-xs font-medium text-red-600">{notice}</p>}
+
+      {showForm && (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 border border-gray-100 rounded-xl p-4">
+          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="CODE (e.g. FREEDRIVE)"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono" />
+          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          <div className="flex gap-3">
+            <select value={discountType} onChange={(e) => setDiscountType(e.target.value as "PERCENT" | "FLAT")}
+              className="w-1/2 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+              <option value="PERCENT">% off</option>
+              <option value="FLAT">₹ off</option>
+            </select>
+            <input value={value} onChange={(e) => setValue(e.target.value)} type="number" min={1}
+              max={discountType === "PERCENT" ? 100 : undefined}
+              placeholder={discountType === "PERCENT" ? "1–100" : "₹"}
+              className="w-1/2 px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          </div>
+          <input value={maxUses} onChange={(e) => setMaxUses(e.target.value)} type="number" min={1}
+            placeholder="Max uses (blank = unlimited)" className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          <input value={from} onChange={(e) => setFrom(e.target.value)} type="date"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          <input value={to} onChange={(e) => setTo(e.target.value)} type="date"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          <div className="md:col-span-2">
+            <button onClick={submit} disabled={busy}
+              className="px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50">
+              {busy ? "Saving..." : "Create Coupon"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4">
+        {loading ? (
+          <p className="text-sm text-gray-400 py-6 text-center">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-gray-400 py-6 text-center">No onboarding coupons yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-left text-gray-500">
+                  <th className="py-2 pr-4 font-medium">Code</th>
+                  <th className="py-2 pr-4 font-medium">Discount</th>
+                  <th className="py-2 pr-4 font-medium">Uses</th>
+                  <th className="py-2 pr-4 font-medium">Window</th>
+                  <th className="py-2 pr-4 font-medium">Status</th>
+                  <th className="py-2 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const expired = new Date(r.validTo) < new Date();
+                  const exhausted = r.maxUses !== -1 && r.usedCount >= r.maxUses;
+                  return (
+                    <tr key={r._id} className="border-b border-gray-50">
+                      <td className="py-2.5 pr-4 font-mono font-semibold text-gray-800">{r.code}</td>
+                      <td className="py-2.5 pr-4">
+                        {r.discountType === "PERCENT" ? `${r.value}%` : `₹${r.value}`}
+                        {r.discountType === "PERCENT" && r.value === 100 && (
+                          <span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-700 rounded">FULL WAIVER</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        {r.usedCount}{r.maxUses !== -1 ? ` / ${r.maxUses}` : " / ∞"}
+                      </td>
+                      <td className="py-2.5 pr-4 text-gray-600">{fmt(r.validFrom)} – {fmt(r.validTo)}</td>
+                      <td className="py-2.5 pr-4">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          expired || exhausted ? "bg-gray-100 text-gray-600"
+                          : r.isActive ? "bg-green-100 text-green-700" : "bg-amber-50 text-amber-700"
+                        }`}>
+                          {expired ? "Expired" : exhausted ? "Exhausted" : r.isActive ? "Active" : "Paused"}
+                        </span>
+                      </td>
+                      <td className="py-2.5 text-right whitespace-nowrap">
+                        <button onClick={() => toggle(r)} disabled={busy}
+                          className="px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 rounded-md disabled:opacity-50">
+                          {r.isActive ? "Pause" : "Activate"}
+                        </button>
+                        <button onClick={() => remove(r)} disabled={busy}
+                          className="px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md disabled:opacity-50">
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Automatic customer discounts — the strikethrough pricing the apps render.
+ * Lives on the Coupons page because both are money-off configuration under the
+ * same PROMOS_* permissions. Unlike a promo code there is nothing to type at
+ * checkout: an active campaign applies to every priced request its audience
+ * makes, so the card states the audience loudly.
+ */
+const UserDiscountsSection: React.FC = () => {
+  const [rows, setRows] = React.useState<UserDiscountItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
+  const [showForm, setShowForm] = React.useState(false);
+  const [name, setName] = React.useState("");
+  const [percent, setPercent] = React.useState("10");
+  const [maxCap, setMaxCap] = React.useState("0");
+  const [audience, setAudience] = React.useState<"ALL" | "USERS">("ALL");
+  const [mobiles, setMobiles] = React.useState("");
+  const [from, setFrom] = React.useState("");
+  const [to, setTo] = React.useState("");
+  const [notice, setNotice] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchUserDiscounts();
+      setRows(res?.data?.discounts || []);
+    } catch {
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const submit = async () => {
+    setNotice(null);
+    if (!name.trim() || !from || !to) {
+      setNotice("Name and both dates are required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await createUserDiscount({
+        name: name.trim(),
+        percent: Number(percent) || 0,
+        maxDiscountAmount: Number(maxCap) || 0,
+        appliesTo: audience,
+        userMobileNumbers: audience === "USERS"
+          ? mobiles.split(/[\\n,]/).map((m) => m.trim()).filter(Boolean)
+          : undefined,
+        validFrom: from,
+        validTo: to,
+      });
+      if (res?.success === false) throw new Error(res?.message || "Create failed");
+      const unresolved: string[] = res?.data?.unresolvedMobileNumbers || [];
+      setNotice(unresolved.length
+        ? `Created — but no customer matches: ${unresolved.join(", ")}`
+        : "Discount created.");
+      setShowForm(false);
+      setName(""); setMobiles("");
+      load();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Create failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = async (r: UserDiscountItem) => {
+    setBusy(true);
+    try {
+      await updateUserDiscount(r._id, { isActive: !r.isActive });
+      load();
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (r: UserDiscountItem) => {
+    if (!window.confirm(`Delete discount "${r.name}"?`)) return;
+    setBusy(true);
+    try {
+      await deleteUserDiscount(r._id);
+      load();
+    } finally { setBusy(false); }
+  };
+
+  const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+
+  return (
+    <div className="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 className="text-base font-bold text-gray-800">Customer Discounts</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Applied automatically at pricing — the apps show the original price struck
+            through. No code to enter. Targets everyone, or specific customers by mobile number.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowForm((v) => !v)}
+          className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 text-sm font-medium"
+        >
+          {showForm ? "Close" : "New Discount"}
+        </button>
+      </div>
+
+      {notice && <p className="mt-3 text-xs font-medium text-amber-700">{notice}</p>}
+
+      {showForm && (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 border border-gray-100 rounded-xl p-4">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          <div className="flex gap-3">
+            <input value={percent} onChange={(e) => setPercent(e.target.value)} type="number" min={1} max={90}
+              placeholder="% off" className="w-1/2 px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+            <input value={maxCap} onChange={(e) => setMaxCap(e.target.value)} type="number" min={0}
+              placeholder="Max ₹ (0 = uncapped)" className="w-1/2 px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          </div>
+          <select value={audience} onChange={(e) => setAudience(e.target.value as "ALL" | "USERS")}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+            <option value="ALL">All customers</option>
+            <option value="USERS">Specific customers</option>
+          </select>
+          {audience === "USERS" ? (
+            <textarea value={mobiles} onChange={(e) => setMobiles(e.target.value)}
+              placeholder="Mobile numbers, comma or line separated"
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm min-h-[42px]" />
+          ) : <div />}
+          <input value={from} onChange={(e) => setFrom(e.target.value)} type="date"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          <input value={to} onChange={(e) => setTo(e.target.value)} type="date"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          <div className="md:col-span-2">
+            <button onClick={submit} disabled={busy}
+              className="px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50">
+              {busy ? "Saving..." : "Create Discount"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4">
+        {loading ? (
+          <p className="text-sm text-gray-400 py-6 text-center">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-gray-400 py-6 text-center">No customer discounts configured.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 text-left text-gray-500">
+                  <th className="py-2 pr-4 font-medium">Name</th>
+                  <th className="py-2 pr-4 font-medium">Discount</th>
+                  <th className="py-2 pr-4 font-medium">Audience</th>
+                  <th className="py-2 pr-4 font-medium">Window</th>
+                  <th className="py-2 pr-4 font-medium">Status</th>
+                  <th className="py-2 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const expired = new Date(r.validTo) < new Date();
+                  return (
+                    <tr key={r._id} className="border-b border-gray-50">
+                      <td className="py-2.5 pr-4 font-medium text-gray-800">{r.name}</td>
+                      <td className="py-2.5 pr-4">
+                        {r.percent}%{r.maxDiscountAmount > 0 ? ` (max ₹${r.maxDiscountAmount})` : ""}
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        {r.appliesTo === "ALL"
+                          ? "All customers"
+                          : `${r.userIds.length} customer${r.userIds.length === 1 ? "" : "s"}`}
+                      </td>
+                      <td className="py-2.5 pr-4 text-gray-600">{fmt(r.validFrom)} – {fmt(r.validTo)}</td>
+                      <td className="py-2.5 pr-4">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          expired ? "bg-gray-100 text-gray-600"
+                          : r.isActive ? "bg-green-100 text-green-700" : "bg-amber-50 text-amber-700"
+                        }`}>
+                          {expired ? "Expired" : r.isActive ? "Active" : "Paused"}
+                        </span>
+                      </td>
+                      <td className="py-2.5 text-right whitespace-nowrap">
+                        <button onClick={() => toggle(r)} disabled={busy}
+                          className="px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 rounded-md disabled:opacity-50">
+                          {r.isActive ? "Pause" : "Activate"}
+                        </button>
+                        <button onClick={() => remove(r)} disabled={busy}
+                          className="px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md disabled:opacity-50">
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 export default PromoManagement;

@@ -28,6 +28,9 @@ const KEYS = {
   notifyEmail: "notifications.email_enabled",
   notifySms: "notifications.sms_enabled",
   notifyPush: "notifications.push_enabled",
+  appDownloadUrl: "APP_DOWNLOAD_URL",
+  joiningFee: "joining_fee",
+  supportPhone: "SUPPORT_PHONE",
   theme: "appearance.theme",
   language: "appearance.language",
 } as const;
@@ -35,6 +38,9 @@ const KEYS = {
 type NotificationChannel = "email" | "sms" | "push";
 
 const DEFAULTS = {
+  appDownloadUrl: "",
+  supportPhone: "",
+  joiningFee: "",
   companyName: "Movezy",
   contactEmail: "admin@movezy.com",
   phoneNumber: "",
@@ -70,6 +76,9 @@ const Settings: React.FC = () => {
   const [companyName, setCompanyName] = useState(DEFAULTS.companyName);
   const [contactEmail, setContactEmail] = useState(DEFAULTS.contactEmail);
   const [phoneNumber, setPhoneNumber] = useState(DEFAULTS.phoneNumber);
+  const [appDownloadUrl, setAppDownloadUrl] = useState(DEFAULTS.appDownloadUrl);
+  const [supportPhone, setSupportPhone] = useState(DEFAULTS.supportPhone);
+  const [joiningFee, setJoiningFee] = useState(DEFAULTS.joiningFee);
   const [notifications, setNotifications] = useState<Record<NotificationChannel, boolean>>({
     email: DEFAULTS.notifyEmail,
     sms: DEFAULTS.notifySms,
@@ -87,6 +96,9 @@ const Settings: React.FC = () => {
       setCompanyName(readString(items, KEYS.companyName, DEFAULTS.companyName));
       setContactEmail(readString(items, KEYS.contactEmail, DEFAULTS.contactEmail));
       setPhoneNumber(readString(items, KEYS.phoneNumber, DEFAULTS.phoneNumber));
+      setAppDownloadUrl(readString(items, KEYS.appDownloadUrl, DEFAULTS.appDownloadUrl));
+      setSupportPhone(readString(items, KEYS.supportPhone, DEFAULTS.supportPhone));
+      setJoiningFee(readString(items, KEYS.joiningFee, DEFAULTS.joiningFee));
       setNotifications({
         email: readBool(items, KEYS.notifyEmail, DEFAULTS.notifyEmail),
         sms: readBool(items, KEYS.notifySms, DEFAULTS.notifySms),
@@ -116,6 +128,11 @@ const Settings: React.FC = () => {
       upsertAppSetting({ key: KEYS.notifyEmail, value: notifications.email, type: "BOOLEAN", category: "notifications", description: "Email notifications enabled" }),
       upsertAppSetting({ key: KEYS.notifySms, value: notifications.sms, type: "BOOLEAN", category: "notifications", description: "SMS notifications enabled" }),
       upsertAppSetting({ key: KEYS.notifyPush, value: notifications.push, type: "BOOLEAN", category: "notifications", description: "Push notifications enabled" }),
+      upsertAppSetting({ key: KEYS.appDownloadUrl, value: appDownloadUrl, type: "STRING", category: "general", description: "App store link used in referral share messages" }),
+      upsertAppSetting({ key: KEYS.supportPhone, value: supportPhone, type: "STRING", category: "general", description: "Number shown on the apps' Call Support card" }),
+      ...(joiningFee.trim() !== "" && Number.isFinite(Number(joiningFee)) && Number(joiningFee) > 0
+        ? [upsertAppSetting({ key: KEYS.joiningFee, value: Number(joiningFee), type: "NUMBER", category: "driver", description: "Driver onboarding/joining fee (INR) — the amount Razorpay actually charges" })]
+        : []),
       upsertAppSetting({ key: KEYS.theme, value: theme, type: "STRING", category: "appearance", description: "Admin UI theme" }),
       upsertAppSetting({ key: KEYS.language, value: language, type: "STRING", category: "appearance", description: "Admin UI language" }),
     ];
@@ -129,7 +146,7 @@ const Settings: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [companyName, contactEmail, phoneNumber, notifications, theme, language, loadSettings]);
+  }, [companyName, contactEmail, phoneNumber, appDownloadUrl, supportPhone, joiningFee, notifications, theme, language, loadSettings]);
 
   const toggleItems = useMemo(
     () => [
@@ -225,6 +242,55 @@ const Settings: React.FC = () => {
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 transition-all disabled:bg-gray-50"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Support Phone (shown in apps)</label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="tel"
+                  value={supportPhone}
+                  onChange={(e) => setSupportPhone(e.target.value)}
+                  disabled={loading}
+                  placeholder="Leave blank to hide the Call Support card"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 transition-all disabled:bg-gray-50"
+                />
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">App Download Link</label>
+              <input
+                type="url"
+                value={appDownloadUrl}
+                onChange={(e) => setAppDownloadUrl(e.target.value)}
+                disabled={loading}
+                placeholder="https://play.google.com/store/apps/details?id=..."
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 transition-all disabled:bg-gray-50"
+              />
+              <p className="mt-1.5 text-xs text-gray-500">
+                Used to build the referral link customers share (the code is appended as
+                <code className="mx-1 px-1 bg-gray-100 rounded">?ref=CODE</code>). Left blank,
+                referral messages go out with the code only — never a broken link.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Driver Joining Fee (₹)</label>
+              <input
+                type="number"
+                min={1}
+                value={joiningFee}
+                onChange={(e) => setJoiningFee(e.target.value)}
+                disabled={loading}
+                placeholder="999"
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 transition-all disabled:bg-gray-50"
+              />
+              <p className="mt-1.5 text-xs text-gray-500">
+                The onboarding fee new drivers pay per vehicle. The payment flow reads this
+                same setting, so what you save here is exactly what Razorpay charges.
+              </p>
             </div>
           </div>
         </div>

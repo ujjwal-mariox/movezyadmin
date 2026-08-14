@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { Link } from "react-router-dom";
+import { fetchPayouts, fetchCoinPayouts } from "../services/api";
 import {
   Wallet,
   Search,
@@ -32,6 +34,26 @@ type TabType = "wallets" | "transactions";
 export default function WalletManagement() {
   const dialog = useDialog();
   const [activeTab, setActiveTab] = useState<TabType>("wallets");
+  // The driver app calls the withdrawal flow "Wallet", so this page is where
+  // an admin looks for payout approvals — which actually live on the Finance
+  // page. Surface the pending count here with a direct link.
+  const [pendingPayouts, setPendingPayouts] = useState<number | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const [p, c] = await Promise.all([
+          fetchPayouts("PENDING").catch(() => null),
+          fetchCoinPayouts("PENDING").catch(() => null),
+        ]);
+        const count =
+          (p?.data?.payouts?.length ?? p?.data?.length ?? 0) +
+          (c?.data?.payouts?.length ?? c?.data?.length ?? 0);
+        setPendingPayouts(count);
+      } catch {
+        setPendingPayouts(null);
+      }
+    })();
+  }, []);
   const [search, setSearch] = useState("");
   const [wallets, setWallets] = useState<WalletUser[]>([]);
   const [transactions, setTransactions] = useState<WalletTransactionItem[]>([]);
@@ -192,7 +214,28 @@ export default function WalletManagement() {
             View customer wallets, transactions and manage balances
           </p>
         </div>
+        <Link
+          to="/admin/finance?tab=payouts"
+          className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700"
+        >
+          Payout Approvals
+          {pendingPayouts !== null && pendingPayouts > 0 && (
+            <span className="ml-2 px-2 py-0.5 text-xs font-bold bg-white text-green-700 rounded-full">
+              {pendingPayouts}
+            </span>
+          )}
+        </Link>
       </div>
+
+      {pendingPayouts !== null && pendingPayouts > 0 && (
+        <div className="p-3 text-sm rounded-xl bg-amber-50 border border-amber-200 text-amber-800">
+          {pendingPayouts} payout request{pendingPayouts === 1 ? "" : "s"} awaiting
+          approval —{" "}
+          <Link to="/admin/finance?tab=payouts" className="font-semibold underline">
+            review now
+          </Link>
+        </div>
+      )}
 
       {/* Top Strip — Wallet aggregates */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

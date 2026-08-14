@@ -658,6 +658,23 @@ export const driversApi = {
   // Get driver vehicles
   getVehicles: (id: string) => fetchWithAuth(`/admin/drivers/${id}/vehicles`),
 
+  // Queue of ALL vehicles awaiting approval (covers approved drivers' added
+  // vehicles, which the driver-level pending count misses).
+  getPendingVehicles: () => fetchWithAuth(`/admin/drivers/pending-vehicles`),
+
+  // Approve/reject ONE vehicle. Driver-level verify blanket-updates every
+  // vehicle and is unreachable once the driver is approved, so an added 2nd
+  // vehicle had no approval path at all.
+  verifyVehicle: (
+    id: string,
+    vehicleId: string,
+    body: { action: "approve" | "reject"; rejectionReason?: string },
+  ) =>
+    fetchWithAuth(`/admin/drivers/${id}/vehicles/${vehicleId}/verify`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   // Delete driver (soft delete)
   delete: (id: string) =>
     fetchWithAuth(`/admin/drivers/${id}`, { method: "DELETE" }),

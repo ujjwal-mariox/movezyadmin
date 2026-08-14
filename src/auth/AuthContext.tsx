@@ -111,6 +111,8 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   training: [PERMISSIONS.TRAINING_VIEW],
   refunds: [PERMISSIONS.REFUNDS_VIEW],
   finance: [PERMISSIONS.FINANCE_VIEW],
+  // Same gate as finance — the payout endpoints themselves require it.
+  payouts: [PERMISSIONS.FINANCE_VIEW],
   // GET /admin/reports/* is gated on reports:view, not finance:view.
   reports: [PERMISSIONS.REPORTS_VIEW],
   "audit-logs": [PERMISSIONS.AUDIT_VIEW],

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Search,
   Phone,
@@ -147,10 +148,18 @@ const OrderManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string>("");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<BookingStatus | "">("");
+  // Dashboard cards deep-link here (?status=CANCELLED&dateFrom=...). Filters
+  // used to start blank regardless of the URL, so every dashboard link was a
+  // silent no-op.
+  const [urlParams] = useSearchParams();
+  const VALID_STATUSES: (BookingStatus | "")[] = ["DRAFT", "SEARCHING", "ASSIGNED", "DRIVER_ARRIVED", "PICKED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+  const urlStatus = (urlParams.get("status") || "").toUpperCase();
+  const [statusFilter, setStatusFilter] = useState<BookingStatus | "">(
+    VALID_STATUSES.includes(urlStatus as BookingStatus) ? (urlStatus as BookingStatus) : "",
+  );
   const [paymentFilter, setPaymentFilter] = useState<BookingPaymentStatus | "">("");
   const [serviceFilter, setServiceFilter] = useState<"" | "WITHIN_CITY" | "OUTSTATION">("");
-  const [dateFrom, setDateFrom] = useState("");
+  const [dateFrom, setDateFrom] = useState(urlParams.get("dateFrom") || "");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(0);
