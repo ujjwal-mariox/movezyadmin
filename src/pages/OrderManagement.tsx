@@ -146,12 +146,17 @@ const OrderManagement: React.FC = () => {
   const dialog = useDialog();
   const [orders, setOrders] = useState<BookingRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string>("");
   const [search, setSearch] = useState("");
   // Dashboard cards deep-link here (?status=CANCELLED&dateFrom=...). Filters
   // used to start blank regardless of the URL, so every dashboard link was a
   // silent no-op.
   const [urlParams] = useSearchParams();
+  // ?bookingId= selects that booking on arrival, so the dashboard's row CTAs
+  // ("Assign Now", "Reassign", "Review") land on the order the admin clicked
+  // instead of dropping them on an unfiltered list to hunt for it.
+  const [selectedId, setSelectedId] = useState<string>(
+    urlParams.get("bookingId") || "",
+  );
   const VALID_STATUSES: (BookingStatus | "")[] = ["DRAFT", "SEARCHING", "ASSIGNED", "DRIVER_ARRIVED", "PICKED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
   const urlStatus = (urlParams.get("status") || "").toUpperCase();
   const [statusFilter, setStatusFilter] = useState<BookingStatus | "">(

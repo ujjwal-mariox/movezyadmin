@@ -53,8 +53,15 @@ interface StaffMember {
   createdBy?: { fullName: string; email: string } | string;
 }
 
-// Permission modules - IDs must match backend PERMISSIONS format (using colons)
-const PERMISSION_MODULES = [
+// Fallback permission list, used only if GET /admin/roles/permissions fails.
+//
+// This hardcoded list used to BE the permission editor, and it covered 49 of
+// the backend's 95 permissions — finance, payouts, refunds, expenses, audit,
+// pricing, COD and session permissions had no checkbox anywhere in the panel,
+// so a Super Admin could not grant or revoke them at all. The editor now
+// renders whatever the backend defines (PERMISSION_GROUPS) and falls back to
+// this only when that call fails.
+const FALLBACK_PERMISSION_MODULES = [
   {
     module: "Dashboard",
     permissions: [
@@ -382,9 +389,19 @@ const PERMISSION_MODULES = [
   },
 ];
 
+/** Turn "drivers:verify" into "Verify" for a checkbox label. */
+const prettyPermission = (id: string): string => {
+  const action = (id.split(":")[1] || id).replace(/[_-]/g, " ");
+  return action.charAt(0).toUpperCase() + action.slice(1);
+};
+
 const StaffManagement: React.FC = () => {
   useAuth(); // For authentication check
   const [activeTab, setActiveTab] = useState<"staff" | "roles">("staff");
+  // The authoritative permission catalogue, from the backend.
+  const [permissionModules, setPermissionModules] = useState(
+    FALLBACK_PERMISSION_MODULES,
+  );
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -433,6 +450,30 @@ const StaffManagement: React.FC = () => {
   } | null>(null);
 
   // Auto-dismiss notifications
+  // Load the backend's permission catalogue so the editor covers every
+  // permission the API actually enforces, not a stale hardcoded subset.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await rolesApi.getPermissions();
+        const groups = res?.data?.groups as Record<string, string[]> | undefined;
+        if (!groups || Object.keys(groups).length === 0) return;
+        setPermissionModules(
+          Object.entries(groups).map(([module, ids]) => ({
+            module,
+            permissions: (ids || []).map((id) => ({
+              id,
+              name: prettyPermission(id),
+              description: id,
+            })),
+          })),
+        );
+      } catch {
+        // Keep the fallback list.
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(null), 5000);
@@ -721,7 +762,7 @@ const StaffManagement: React.FC = () => {
 
   const toggleModulePermissions = (module: string) => {
     const modulePerms =
-      PERMISSION_MODULES.find((m) => m.module === module)?.permissions.map(
+      permissionModules.find((m) => m.module === module)?.permissions.map(
         (p) => p.id,
       ) || [];
     const allSelected = modulePerms.every((p) =>
@@ -1155,14 +1196,31 @@ const StaffManagement: React.FC = () => {
                       )}
                     </div>
                   </div>
-                  {!role.isSystem && (
-                    <div className="flex gap-1">
+                  <div className="flex gap-1">
+                    {/* Edit is available for system roles too: the backend
+                        only blocks RENAMING them (staff.controller updateRole),
+                        and the client's ask is precisely that a Super Admin can
+                        change what Finance Manager or Admin may do. Hiding this
+                        made every predefined role uneditable from the panel —
+                        the capability existed but only via the raw API.
+                        Super Admin is excluded because it bypasses permission
+                        checks by role name on both client and server, so its
+                        list has no effect. Delete stays hidden for system
+                        roles. */}
+                    {role.name !== "Super Admin" && (
                       <button
                         onClick={() => openEditRoleModal(role)}
+                        title={
+                          role.isSystem
+                            ? "Edit permissions (name is fixed)"
+                            : "Edit role"
+                        }
                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
+                    )}
+                    {!role.isSystem && (
                       <button
                         onClick={() =>
                           setDeleteConfirm({ type: "role", id: role._id })
@@ -1171,8 +1229,8 @@ const StaffManagement: React.FC = () => {
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
                 <p className="mb-4 text-sm text-gray-500">{role.description}</p>
@@ -1191,7 +1249,7 @@ const StaffManagement: React.FC = () => {
                 <div className="pt-4 mt-4 border-t border-gray-100">
                   <p className="mb-2 text-xs text-gray-500">Permissions:</p>
                   <div className="flex flex-wrap gap-1">
-                    {PERMISSION_MODULES.filter((m) =>
+                    {permissionModules.filter((m) =>
                       m.permissions.some((p) =>
                         role.permissions.includes(p.id),
                       ),
@@ -1205,14 +1263,14 @@ const StaffManagement: React.FC = () => {
                           {m.module}
                         </span>
                       ))}
-                    {PERMISSION_MODULES.filter((m) =>
+                    {permissionModules.filter((m) =>
                       m.permissions.some((p) =>
                         role.permissions.includes(p.id),
                       ),
                     ).length > 4 && (
                       <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
                         +
-                        {PERMISSION_MODULES.filter((m) =>
+                        {permissionModules.filter((m) =>
                           m.permissions.some((p) =>
                             role.permissions.includes(p.id),
                           ),
@@ -1422,9 +1480,18 @@ const StaffManagement: React.FC = () => {
                     onChange={(e) =>
                       setRoleForm({ ...roleForm, name: e.target.value })
                     }
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-movezy-500"
+                    // A system role's name is fixed server-side (updateRole
+                    // 403s on a rename), so let the field say so rather than
+                    // letting the admin type a change that gets rejected.
+                    disabled={!!editingRole?.isSystem}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-movezy-500 disabled:bg-gray-50 disabled:text-gray-500"
                     placeholder="e.g. Support Manager"
                   />
+                  {editingRole?.isSystem && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Built-in role — the name is fixed, but its permissions can be changed.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-700">
@@ -1447,7 +1514,7 @@ const StaffManagement: React.FC = () => {
                   Permissions ({roleForm.permissions.length} selected)
                 </h4>
                 <div className="space-y-4">
-                  {PERMISSION_MODULES.map((module) => {
+                  {permissionModules.map((module) => {
                     const modulePerms = module.permissions.map((p) => p.id);
                     const selectedCount = modulePerms.filter((p) =>
                       roleForm.permissions.includes(p),

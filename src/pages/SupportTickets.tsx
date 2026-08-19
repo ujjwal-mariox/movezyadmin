@@ -241,7 +241,9 @@ const SupportTickets: React.FC = () => {
       urgent: tickets.filter(
         (t) => t.priority === "URGENT" && t.status !== "RESOLVED" && t.status !== "CLOSED",
       ).length,
-      resolved: tickets.filter((t) => t.status === "RESOLVED" || t.status === "CLOSED").length,
+      // Must agree with what clicking this tile filters to (RESOLVED);
+      // counting CLOSED here too made the list contradict the number.
+      resolved: tickets.filter((t) => t.status === "RESOLVED").length,
       breaching:
         backendStats?.slaBreached ??
         tickets.filter((t) => {
@@ -411,7 +413,10 @@ const SupportTickets: React.FC = () => {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div
-          onClick={() => setStatusFilter("OPEN")}
+          onClick={() => {
+            setStatusFilter("OPEN");
+            setPriorityFilter("ALL");
+          }}
           className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-xl cursor-pointer hover:shadow-md transition"
         >
           <div className="flex items-center justify-between">
@@ -425,7 +430,10 @@ const SupportTickets: React.FC = () => {
           </div>
         </div>
         <div
-          onClick={() => setStatusFilter("IN_PROGRESS")}
+          onClick={() => {
+            setStatusFilter("IN_PROGRESS");
+            setPriorityFilter("ALL");
+          }}
           className="p-5 bg-white border border-gray-100 border-l-4 !border-l-yellow-500 shadow-sm rounded-xl cursor-pointer hover:shadow-md transition"
         >
           <div className="flex items-center justify-between">
@@ -438,7 +446,13 @@ const SupportTickets: React.FC = () => {
             </div>
           </div>
         </div>
-        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-red-500 shadow-sm rounded-xl">
+        <div
+          onClick={() => {
+            setPriorityFilter("URGENT");
+            setStatusFilter("ALL");
+          }}
+          className="p-5 bg-white border border-gray-100 border-l-4 !border-l-red-500 shadow-sm rounded-xl cursor-pointer hover:shadow-md transition"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Urgent</p>
@@ -452,7 +466,7 @@ const SupportTickets: React.FC = () => {
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-orange-500 shadow-sm rounded-xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">SLA Breaching</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide" title="Metric only — SLA breach is computed per ticket and has no server-side filter">SLA Breaching</p>
               <p className="mt-1 text-2xl font-bold text-orange-600">{stats.breaching}</p>
             </div>
             <div className="flex items-center justify-center w-10 h-10 bg-orange-50 rounded-lg">
@@ -461,7 +475,10 @@ const SupportTickets: React.FC = () => {
           </div>
         </div>
         <div
-          onClick={() => setStatusFilter("RESOLVED")}
+          onClick={() => {
+            setStatusFilter("RESOLVED");
+            setPriorityFilter("ALL");
+          }}
           className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-xl cursor-pointer hover:shadow-md transition"
         >
           <div className="flex items-center justify-between">

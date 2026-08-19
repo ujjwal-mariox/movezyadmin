@@ -496,6 +496,23 @@ const DriverManagement: React.FC = () => {
     loadDrivers();
   }, [loadDrivers]);
 
+  // Open one driver's detail straight from a URL (?driverId=...). Driver
+  // detail is a drawer inside this page, so before this nothing — dashboard
+  // included — could link to "detailed driver information"; the best any link
+  // could do was drop the admin on the unfiltered list.
+  const deepLinkedDriverId = urlParams.get("driverId");
+  const deepLinkHandled = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!deepLinkedDriverId) return;
+    if (deepLinkHandled.current === deepLinkedDriverId) return;
+    const match = drivers.find((d) => d._id === deepLinkedDriverId);
+    if (match) {
+      deepLinkHandled.current = deepLinkedDriverId;
+      openDriverDetail(match);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkedDriverId, drivers]);
+
   // Get driver details
   const openDriverDetail = async (driver: Driver) => {
     setSelectedDriver(driver);
@@ -1323,7 +1340,10 @@ const DriverManagement: React.FC = () => {
 
       {/* Secondary stats row (approval / document / online) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+        <div
+          onClick={() => setStatusFilter("approved")}
+          className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 cursor-pointer hover:shadow-md transition"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-gray-500 uppercase">Approved</p>
@@ -1334,7 +1354,10 @@ const DriverManagement: React.FC = () => {
             <ShieldCheck className="w-5 h-5 text-green-500" />
           </div>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+        <div
+          onClick={() => setStatusFilter("document_not_complete")}
+          className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 cursor-pointer hover:shadow-md transition"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-gray-500 uppercase">Docs Pending</p>

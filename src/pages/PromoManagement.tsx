@@ -1109,7 +1109,7 @@ const OnboardingCouponsSection: React.FC = () => {
       setCode(""); setDescription("");
       load();
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Create failed");
+      setNotice(e instanceof Error ? e.message : "Save failed");
     } finally {
       setBusy(false);
     }
@@ -1254,8 +1254,15 @@ const OnboardingCouponsSection: React.FC = () => {
  * checkout: an active campaign applies to every priced request its audience
  * makes, so the card states the audience loudly.
  */
+/** Accepts comma, semicolon or newline separated mobile numbers. */
+const SPLIT_RE = /[\n,;]/;
+
 const UserDiscountsSection: React.FC = () => {
   const [rows, setRows] = React.useState<UserDiscountItem[]>([]);
+  // The row being edited; null when the form is creating. The form was
+  // create-only, so correcting a percent or a date window meant deleting the
+  // campaign and re-entering it.
+  const [editing, setEditing] = React.useState<UserDiscountItem | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [showForm, setShowForm] = React.useState(false);
@@ -1290,23 +1297,29 @@ const UserDiscountsSection: React.FC = () => {
     }
     setBusy(true);
     try {
-      const res = await createUserDiscount({
+      const payload = {
         name: name.trim(),
         percent: Number(percent) || 0,
         maxDiscountAmount: Number(maxCap) || 0,
         appliesTo: audience,
         userMobileNumbers: audience === "USERS"
-          ? mobiles.split(/[\\n,]/).map((m) => m.trim()).filter(Boolean)
+          ? mobiles.split(SPLIT_RE).map((m) => m.trim()).filter(Boolean)
           : undefined,
         validFrom: from,
         validTo: to,
-      });
-      if (res?.success === false) throw new Error(res?.message || "Create failed");
+      };
+      const res = editing
+        ? await updateUserDiscount(editing._id, payload)
+        : await createUserDiscount(payload);
+      if (res?.success === false) {
+        throw new Error(res?.message || "Save failed");
+      }
       const unresolved: string[] = res?.data?.unresolvedMobileNumbers || [];
       setNotice(unresolved.length
-        ? `Created — but no customer matches: ${unresolved.join(", ")}`
-        : "Discount created.");
+        ? `Saved — but no customer matches: ${unresolved.join(", ")}`
+        : editing ? "Discount updated." : "Discount created.");
       setShowForm(false);
+      setEditing(null);
       setName(""); setMobiles("");
       load();
     } catch (e) {
@@ -1314,6 +1327,25 @@ const UserDiscountsSection: React.FC = () => {
     } finally {
       setBusy(false);
     }
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setName(""); setPercent("10"); setMaxCap("0");
+    setAudience("ALL"); setMobiles(""); setFrom(""); setTo("");
+    setNotice(null); setShowForm(true);
+  };
+
+  const openEdit = (r: UserDiscountItem) => {
+    setEditing(r);
+    setName(r.name);
+    setPercent(String(r.percent));
+    setMaxCap(String(r.maxDiscountAmount ?? 0));
+    setAudience(r.appliesTo);
+    setMobiles((r.userIds || []).map((u) => u.mobileNumber || "").filter(Boolean).join(", "));
+    setFrom(r.validFrom ? r.validFrom.slice(0, 10) : "");
+    setTo(r.validTo ? r.validTo.slice(0, 10) : "");
+    setNotice(null); setShowForm(true);
   };
 
   const toggle = async (r: UserDiscountItem) => {
@@ -1346,7 +1378,7 @@ const UserDiscountsSection: React.FC = () => {
           </p>
         </div>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => (showForm ? (setShowForm(false), setEditing(null)) : openCreate())}
           className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 text-sm font-medium"
         >
           {showForm ? "Close" : "New Discount"}
@@ -1382,7 +1414,7 @@ const UserDiscountsSection: React.FC = () => {
           <div className="md:col-span-2">
             <button onClick={submit} disabled={busy}
               className="px-5 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50">
-              {busy ? "Saving..." : "Create Discount"}
+              {busy ? "Saving..." : editing ? "Update Discount" : "Create Discount"}
             </button>
           </div>
         </div>
@@ -1430,6 +1462,10 @@ const UserDiscountsSection: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-2.5 text-right whitespace-nowrap">
+                        <button onClick={() => openEdit(r)} disabled={busy}
+                          className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded-md disabled:opacity-50">
+                          Edit
+                        </button>
                         <button onClick={() => toggle(r)} disabled={busy}
                           className="px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 rounded-md disabled:opacity-50">
                           {r.isActive ? "Pause" : "Activate"}

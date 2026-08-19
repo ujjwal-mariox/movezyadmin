@@ -432,7 +432,7 @@ const Dashboard: React.FC = () => {
       level: "red",
       icon: Clock,
       message: `${stuckOrders} order${stuckOrders > 1 ? "s" : ""} unassigned > ${ALERT_THRESHOLDS.unassignedMins} mins`,
-      path: "/admin/orders?status=pending",
+      path: "/admin/orders?status=SEARCHING",
     });
   }
   // An "N drivers idle > 60 mins" alert used to sit here. Nothing measured
@@ -819,7 +819,10 @@ const Dashboard: React.FC = () => {
             label: "Open Tickets",
             value: totals.openTickets !== null ? totals.openTickets : NO_VALUE,
             hint: "Open + in-progress support tickets",
-            path: "/admin/support?status=OPEN",
+            // No status filter: the card counts OPEN + IN_PROGRESS and the
+            // list can only filter one status at a time, so filtering to OPEN
+            // showed fewer rows than the number the admin just clicked.
+            path: "/admin/support",
           },
           {
             label: "Pending Driver Verifications",
@@ -892,7 +895,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <button
                     className="px-3 py-1.5 bg-movezy-600 hover:bg-movezy-700 text-white text-xs font-semibold rounded-lg flex-shrink-0"
-                    onClick={() => navigate("/admin/orders")}
+                    onClick={() => navigate(`/admin/orders?bookingId=${o._id}`)}
                   >
                     Assign Now
                   </button>
@@ -934,7 +937,7 @@ const Dashboard: React.FC = () => {
                   <p className="text-xs text-gray-500 mb-2">Driver: {o.driverName || "—"}</p>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => navigate("/admin/orders")}
+                      onClick={() => navigate(`/admin/orders?bookingId=${o._id}`)}
                       className="flex-1 px-2 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-md"
                     >
                       Reassign
@@ -1149,10 +1152,28 @@ const Dashboard: React.FC = () => {
                       <span className="text-xs font-bold text-red-600">+{o.delayMinutes}m</span>
                     </div>
                     <p className="text-xs text-gray-500">{o.driverName || "—"}</p>
+                    {/* These were underlined spans that looked like links but
+                        only re-centred the map. Reassign now actually opens the
+                        booking; Call is gone — no driver phone number is on
+                        this payload and there was nothing to dial. */}
                     <div className="flex gap-1.5 mt-2">
-                      <span className="text-[11px] text-gray-600 underline">Reassign</span>
-                      <span className="text-[11px] text-gray-300">·</span>
-                      <span className="text-[11px] text-gray-600 underline">Call</span>
+                      <span
+                        role="link"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/admin/orders?bookingId=${o._id}`);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.stopPropagation();
+                            navigate(`/admin/orders?bookingId=${o._id}`);
+                          }
+                        }}
+                        className="text-[11px] text-movezy-700 underline cursor-pointer hover:text-movezy-900"
+                      >
+                        Reassign
+                      </span>
                     </div>
                   </button>
                 ))}
