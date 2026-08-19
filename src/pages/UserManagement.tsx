@@ -21,7 +21,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { usersApi } from "../services/admin-api";
+import { usersApi, supportApi } from "../services/admin-api";
 import { PAGE_SIZE_OPTIONS, type PageSize } from "../hooks/usePagination";
 import { useDialog } from "../components/Layout/Dialog";
 
@@ -63,6 +63,12 @@ interface ApiUser {
   updatedAt: string;
   addressCount: number;
   allAddresses: UserAddress[];
+  // Per-user counters computed by GET /admin/users. Optional so an older
+  // backend renders no tags rather than wrong ones.
+  bookingCount?: number;
+  completedBookings?: number;
+  cancelledByUserCount?: number;
+  totalSpent?: number;
 }
 
 interface UserStatsSummary {
@@ -92,6 +98,52 @@ const formatDate = (value?: string) => {
 };
 
 // ==================== COMPONENT ====================
+
+/// Behaviour tags, each from a counter the list endpoint actually returns.
+/// Thresholds live here so ops can be told one number. "Risky" needs a
+/// meaningful sample — 2 cancels out of 3 orders is noise, 5 out of 12 is a
+/// pattern — hence the minimum-bookings guard.
+const TAG_RULES = {
+  highFrequencyBookings: 10,
+  highValueRupees: 10000,
+  riskyMinBookings: 5,
+  riskyCancelRatio: 0.3,
+};
+
+const userTags = (
+  u: { bookingCount?: number; totalSpent?: number; cancelledByUserCount?: number },
+): { label: string; cls: string; title: string }[] => {
+  const tags: { label: string; cls: string; title: string }[] = [];
+  const bookings = u.bookingCount ?? 0;
+  const spent = u.totalSpent ?? 0;
+  const cancels = u.cancelledByUserCount ?? 0;
+  if (bookings >= TAG_RULES.highFrequencyBookings) {
+    tags.push({
+      label: "High frequency",
+      cls: "bg-blue-50 text-blue-700",
+      title: `${bookings} bookings`,
+    });
+  }
+  if (spent >= TAG_RULES.highValueRupees) {
+    tags.push({
+      label: "High value",
+      cls: "bg-amber-50 text-amber-700",
+      title: `₹${spent.toLocaleString("en-IN")} spent (completed orders)`,
+    });
+  }
+  if (
+    bookings >= TAG_RULES.riskyMinBookings &&
+    cancels / bookings >= TAG_RULES.riskyCancelRatio
+  ) {
+    tags.push({
+      label: "Risky",
+      cls: "bg-red-50 text-red-700",
+      title: `Cancelled ${cancels} of ${bookings} bookings themselves`,
+    });
+  }
+  return tags;
+};
+
 const UserManagement: React.FC = () => {
   const dialog = useDialog();
   // State
@@ -112,6 +164,38 @@ const UserManagement: React.FC = () => {
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [blockModalOpen, setBlockModalOpen] = useState(false);
+
+  // Quick panel: the user's last 5 orders and their support tickets, fetched
+  // on demand. Both lists render an explicit failed state — an errored fetch
+  // must not look like "no orders / no issues".
+  const [quickUser, setQuickUser] = useState<ApiUser | null>(null);
+  const [quickOrders, setQuickOrders] = useState<any[] | null>(null);
+  const [quickTickets, setQuickTickets] = useState<any[] | null>(null);
+  const [quickError, setQuickError] = useState<string | null>(null);
+
+  const openQuickPanel = useCallback(async (user: ApiUser) => {
+    setQuickUser(user);
+    setQuickOrders(null);
+    setQuickTickets(null);
+    setQuickError(null);
+    try {
+      const [bookingsRes, ticketsRes] = await Promise.all([
+        usersApi.getBookings(user._id, { page: 0, limit: 5 }).catch(() => null),
+        supportApi.getAll({ userId: user._id, limit: 5 }).catch(() => null),
+      ]);
+      const bookings =
+        bookingsRes?.data?.bookings ?? bookingsRes?.data ?? null;
+      const tickets =
+        ticketsRes?.data?.tickets ?? ticketsRes?.data ?? null;
+      setQuickOrders(Array.isArray(bookings) ? bookings : null);
+      setQuickTickets(Array.isArray(tickets) ? tickets : null);
+      if (!Array.isArray(bookings) && !Array.isArray(tickets)) {
+        setQuickError("Couldn't load this customer's history.");
+      }
+    } catch {
+      setQuickError("Couldn't load this customer's history.");
+    }
+  }, []);
   const [addressFormOpen, setAddressFormOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<UserAddress | null>(
     null,
@@ -609,6 +693,28 @@ const UserManagement: React.FC = () => {
                               {user.gender}
                             </p>
                           )}
+                          {(() => {
+                            const tags = userTags(user);
+                            return tags.length > 0 ? (
+                              <span className="flex flex-wrap gap-1 mt-1">
+                                {tags.map((t) => (
+                                  <span
+                                    key={t.label}
+                                    title={t.title}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${t.cls}`}
+                                  >
+                                    {t.label}
+                                  </span>
+                                ))}
+                              </span>
+                            ) : null;
+                          })()}
+                          <button
+                            onClick={() => openQuickPanel(user)}
+                            className="mt-1 text-[11px] text-movezy-700 underline hover:text-movezy-900"
+                          >
+                            Quick view
+                          </button>
                         </div>
                       </div>
                     </td>
@@ -1426,6 +1532,93 @@ const UserManagement: React.FC = () => {
                     "Block"
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick panel — last 5 orders + issues, slid over the right edge */}
+      {quickUser && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setQuickUser(null)}>
+          <div
+            className="w-full max-w-md h-full bg-white shadow-2xl overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">{quickUser.fullName || "Unnamed User"}</h3>
+                <p className="text-xs text-gray-500">{quickUser.countryCode} {quickUser.mobileNumber}</p>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {userTags(quickUser).map((t) => (
+                    <span key={t.label} title={t.title} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${t.cls}`}>
+                      {t.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <button onClick={() => setQuickUser(null)} className="p-2 text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-6">
+              {quickError && (
+                <p className="text-sm text-red-600">{quickError}</p>
+              )}
+
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Last 5 orders</h4>
+                {quickOrders === null && !quickError ? (
+                  <p className="text-sm text-gray-400">Loading…</p>
+                ) : quickOrders && quickOrders.length > 0 ? (
+                  <div className="space-y-2">
+                    {quickOrders.map((b: any) => (
+                      <div key={b._id} className="border border-gray-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-900">{b.bookingNumber || String(b._id).slice(-6)}</span>
+                          <span className="text-xs font-medium text-gray-600">{b.status}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1 truncate">{b.pickup?.address || "—"}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[11px] text-gray-400">{new Date(b.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                          <span className="text-xs font-semibold text-gray-800">₹{Number(b.finalFare ?? 0).toLocaleString("en-IN")}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : quickOrders ? (
+                  <p className="text-sm text-gray-400">No orders yet.</p>
+                ) : null}
+              </div>
+
+              <div>
+                <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Issues</h4>
+                {quickTickets === null && !quickError ? (
+                  <p className="text-sm text-gray-400">Loading…</p>
+                ) : quickTickets && quickTickets.length > 0 ? (
+                  <div className="space-y-2">
+                    {quickTickets.map((t: any) => (
+                      <div key={t._id} className="border border-gray-100 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900 truncate max-w-[240px]">{t.subject || t.ticketId}</span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            t.status === "RESOLVED" || t.status === "CLOSED"
+                              ? "bg-green-50 text-green-700"
+                              : "bg-amber-50 text-amber-700"
+                          }`}>
+                            {t.status}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          {t.category || ""} · {new Date(t.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : quickTickets ? (
+                  <p className="text-sm text-gray-400">No support tickets.</p>
+                ) : null}
               </div>
             </div>
           </div>

@@ -344,6 +344,7 @@ export const supportApi = {
   getAll: (params?: {
     status?: string;
     priority?: string;
+    userId?: string;
     page?: number;
     limit?: number;
   }) => {

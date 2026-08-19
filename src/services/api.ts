@@ -1878,6 +1878,10 @@ export interface BookingRow {
   cancelledAt?: string;
   estimatedArrivalTime?: number;
   estimatedDropTime?: string;
+  /// When the driver is due at PICKUP. Written at assignment, unlike
+  /// estimatedDropTime which only exists after goods are collected — so this
+  /// is the only field that can flag an order running late to the pickup.
+  estimatedPickupTime?: string;
   liveLocation?: { lat?: number; lng?: number; updatedAt?: string };
   rating?: number;
   cancellationReason?: string;

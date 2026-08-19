@@ -75,6 +75,14 @@ const bookingNumber = (b: SOSAlertRow["bookingId"]): string | undefined => {
   return b.bookingNumber || b.orderId;
 };
 
+const locationText = (a: { address?: string; location?: { coordinates?: number[] } }): string => {
+  if (a.address) return a.address;
+  const c = a.location?.coordinates;
+  // GeoJSON order is [lng, lat]; print lat,lng the way maps read it.
+  if (c && c.length >= 2) return `${c[1].toFixed(5)}, ${c[0].toFixed(5)}`;
+  return "Location shared";
+};
+
 const coordsOf = (alert: SOSAlertRow): [number, number] | null => {
   const coords = alert.location?.coordinates;
   if (!coords || coords.length < 2) return null;
@@ -132,6 +140,10 @@ const SOSDashboard: React.FC = () => {
 
   useEffect(() => {
     void load();
+    // Fallback poll: the sos:new socket is the live channel, but a silently
+    // dropped socket on a safety page must not mean no new alerts. 30s.
+    const id = window.setInterval(() => void load(), 30_000);
+    return () => window.clearInterval(id);
   }, [load]);
 
   // Live SOS alerts. A panic press is safety-critical and this page previously
@@ -378,7 +390,7 @@ const SOSDashboard: React.FC = () => {
                       </div>
                       <p className="text-sm text-white/90 flex items-center gap-1.5 mt-0.5 truncate">
                         <MapPin className="w-3.5 h-3.5 flex-shrink-0" />{" "}
-                        {alert.address || "Location shared"}
+                        {locationText(alert)}
                       </p>
                     </div>
                   </div>
@@ -495,7 +507,7 @@ const SOSDashboard: React.FC = () => {
                         <p className="font-semibold text-red-600">{a.status}</p>
                         <p className="text-gray-700">{personName(triggered)}</p>
                         <p className="text-xs text-gray-500">
-                          {a.address || "Location shared"}
+                          {locationText(a)}
                         </p>
                       </div>
                     </Popup>
@@ -578,7 +590,7 @@ const SOSDashboard: React.FC = () => {
                         </div>
                         <p className="text-xs text-gray-500 truncate flex items-center gap-1 mt-0.5">
                           <MapPin className="w-3 h-3" />{" "}
-                          {a.address || "Location shared"}
+                          {locationText(a)}
                         </p>
                         <div className="flex items-center gap-1.5 mt-2">
                           {phone && (

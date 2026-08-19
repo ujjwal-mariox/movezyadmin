@@ -48,7 +48,8 @@ const STATUS_COLORS: Record<BookingStatus, { dot: string; pill: string }> = {
   PICKED: { dot: "bg-indigo-500", pill: "bg-indigo-50 text-indigo-700" },
   IN_PROGRESS: { dot: "bg-blue-600", pill: "bg-blue-50 text-blue-700" },
   COMPLETED: { dot: "bg-green-500", pill: "bg-green-50 text-green-700" },
-  CANCELLED: { dot: "bg-gray-700", pill: "bg-gray-100 text-gray-700" },
+  // Spec calls for black on cancelled; grey read as just another neutral row.
+  CANCELLED: { dot: "bg-black", pill: "bg-gray-900 text-white" },
 };
 
 const PAYMENT_COLORS: Record<BookingPaymentStatus, string> = {
@@ -107,10 +108,26 @@ const personId = (
 // up have no estimate, so they return 0 here — not late rather than falsely late.
 const computeDelayMinutes = (o: BookingRow): number => {
   if (!ACTIVE_STATUSES.includes(o.status)) return 0;
-  if (!o.estimatedDropTime) return 0;
-  const d = Math.floor(
-    (Date.now() - new Date(o.estimatedDropTime).getTime()) / 60000,
-  );
+
+  // Before pickup there is no estimatedDropTime — it is only written when the
+  // driver marks the goods collected. Measuring lateness solely against it
+  // meant an order sitting past its PICKUP window never flagged at all, which
+  // is the window ops can still rescue. Use whichever estimate applies to the
+  // stage the booking is actually in.
+  const dueAt = (() => {
+    if (o.estimatedDropTime) return new Date(o.estimatedDropTime).getTime();
+    if (o.estimatedPickupTime) return new Date(o.estimatedPickupTime).getTime();
+    // Older bookings carry only "minutes to arrival" from the assignment time.
+    if (o.assignedAt && o.estimatedArrivalTime) {
+      return (
+        new Date(o.assignedAt).getTime() + o.estimatedArrivalTime * 60000
+      );
+    }
+    return null;
+  })();
+  if (dueAt === null) return 0;
+
+  const d = Math.floor((Date.now() - dueAt) / 60000);
   return d > 0 ? d : 0;
 };
 

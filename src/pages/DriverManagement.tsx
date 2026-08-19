@@ -169,6 +169,13 @@ interface Driver {
   onboardingFeePaid?: boolean;
   completedTrips?: number;
   totalEarnings?: number;
+  /// Booking the driver is carrying right now (null when idle).
+  currentBookingId?: string | null;
+  /// completed / everything-ever-assigned, as a whole percent. Null = nothing
+  /// was ever assigned — "no history" is not "completes 0%".
+  completionRate?: number | null;
+  cancelledByDriver?: number;
+  assignedTotal?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -179,6 +186,9 @@ interface DriverStats {
   activeDrivers: number;
   inactiveDrivers: number;
   unassignedOrders?: number;
+  busyDrivers?: number;
+  idleDrivers?: number;
+  underperformingDrivers?: number;
 }
 
 interface PendingAssignment {
@@ -759,20 +769,29 @@ const DriverManagement: React.FC = () => {
     drivers.filter((d) => d.status === "approved" && d.isOnline && d.isActive)
       .length,
   );
-  const busyCount = drivers.filter(
-    (d) => d.isOnline && (d.completedTrips || 0) > 0 && (d.rating || 0) > 0,
-  ).length;
+  // Fleet-wide, from /admin/drivers/stats. The old figure was a proxy that
+  // counted online drivers who had EVER completed a trip — i.e. "experienced",
+  // not "busy". A driver carrying a booking right now is what the yellow card
+  // claims. Falls back to counting currentBookingId on the loaded page for an
+  // older backend.
+  const busyCount =
+    stats?.busyDrivers ??
+    drivers.filter((d) => d.isOnline && d.currentBookingId).length;
   const offlineCount = Math.max(
     0,
     (stats?.activeDrivers || 0) - onlineCount,
   );
-  const underperformingCount = drivers.filter(
-    (d) => (d.rating || 0) > 0 && (d.rating || 0) < 3.5,
-  ).length;
+  // Fleet-wide from stats; the page-local filter undercounted because it only
+  // saw the loaded page.
+  const underperformingCount =
+    stats?.underperformingDrivers ??
+    drivers.filter((d) => (d.rating || 0) > 0 && (d.rating || 0) < 3.5).length;
 
-  // Idle drivers = online but not yet handling trips (proxy heuristic)
+  // Idle = online RIGHT NOW with no booking assigned — from currentBookingId,
+  // not the old "has never completed a trip" proxy, which flagged veteran
+  // drivers as non-idle even when they were sitting empty.
   const idleDrivers = drivers.filter(
-    (d) => d.isOnline && d.status === "approved" && (d.completedTrips || 0) === 0,
+    (d) => d.isOnline && d.status === "approved" && !d.currentBookingId,
   );
   // Available drivers for assignment
   const availableDrivers = drivers.filter(
@@ -1649,12 +1668,56 @@ const DriverManagement: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Live/risk chips. "On trip" is currentBookingId — the
+                    actual dispatch state, not a heuristic. "Needs attention"
+                    fires on a real rated average under 3.5 or a driver who
+                    cancels more than a fifth of what they're assigned. */}
+                {(driver.currentBookingId ||
+                  ((driver.rating || 0) > 0 && (driver.rating || 0) < 3.5) ||
+                  ((driver.assignedTotal || 0) >= 5 &&
+                    (driver.cancelledByDriver || 0) / (driver.assignedTotal || 1) > 0.2)) && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {driver.currentBookingId && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-100 text-yellow-700">
+                        ON TRIP
+                      </span>
+                    )}
+                    {(((driver.rating || 0) > 0 && (driver.rating || 0) < 3.5) ||
+                      ((driver.assignedTotal || 0) >= 5 &&
+                        (driver.cancelledByDriver || 0) / (driver.assignedTotal || 1) > 0.2)) && (
+                      <span
+                        title={
+                          (driver.rating || 0) > 0 && (driver.rating || 0) < 3.5
+                            ? `Rated ${(driver.rating || 0).toFixed(1)}`
+                            : `Cancelled ${driver.cancelledByDriver} of ${driver.assignedTotal} assigned trips`
+                        }
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700"
+                      >
+                        NEEDS ATTENTION
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {/* Performance row */}
-                <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+                <div className="grid grid-cols-4 gap-2 mt-3 text-center">
                   <div className="bg-gray-50 rounded-lg py-2">
                     <p className="text-[10px] uppercase text-gray-500">Trips</p>
                     <p className="text-sm font-bold text-gray-800">
                       {driver.completedTrips || 0}
+                    </p>
+                  </div>
+                  <div
+                    className="bg-blue-50 rounded-lg py-2"
+                    title="Completed as a share of everything ever assigned. Acceptance % cannot be shown — no offer/decline record is stored anywhere."
+                  >
+                    <p className="text-[10px] uppercase text-blue-600">
+                      Completion
+                    </p>
+                    <p className="text-sm font-bold text-blue-700">
+                      {driver.completionRate != null
+                        ? `${driver.completionRate}%`
+                        : "—"}
                     </p>
                   </div>
                   <div className="bg-yellow-50 rounded-lg py-2">
