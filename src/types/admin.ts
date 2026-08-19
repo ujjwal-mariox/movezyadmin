@@ -135,8 +135,14 @@ export interface DriverLocation {
   lng: number;
   heading?: number;
   speed?: number;
-  status: "ONLINE" | "OFFLINE" | "BUSY";
+  /// ACTIVE = working a trip (green), IDLE = online but carrying nothing
+  /// (yellow), DELAYED = current trip is past its estimated drop time (red).
+  /// The previous ONLINE/BUSY pair had the colours inverted relative to the
+  /// operations meaning: a driver mid-delivery rendered yellow.
+  status: "ACTIVE" | "IDLE" | "DELAYED" | "OFFLINE";
   currentBookingId?: string;
+  /// ETA of the current trip, when one is running and has an estimate.
+  currentBookingEta?: string | null;
   vehicleType: string;
   vehicleNumber: string;
   lastUpdated: string;

@@ -37,10 +37,16 @@ const DriverTracking: React.FC = () => {
   const navigate = useNavigate();
   const dialog = useDialog();
   const [drivers, setDrivers] = useState<DriverLocation[]>([]);
+  /// Fleet-wide counts (approved / online). The map feed only carries drivers
+  /// that pinged recently, so it cannot answer "how many are offline".
+  const [fleet, setFleet] = useState<{
+    totalDrivers: number;
+    activeDrivers: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "ALL" | "ONLINE" | "OFFLINE" | "BUSY"
+    "ALL" | "ACTIVE" | "IDLE" | "DELAYED" | "OFFLINE"
   >("ALL");
   const [selectedDriver, setSelectedDriver] = useState<DriverLocation | null>(
     null,
@@ -74,13 +80,18 @@ const DriverTracking: React.FC = () => {
           lng: d.location?.lng ?? d.lng,
           heading: d.heading || 0,
           speed: d.speed || 0,
-          // Everyone on this feed pinged within the last 10 minutes — they are
-          // online by definition; busy when the backend says they have a trip.
-          status: d.hasActiveBooking
-            ? "BUSY"
-            : d.isAvailable !== false
-            ? "ONLINE"
-            : "BUSY",
+          // Spec colours: green = ACTIVE (working a trip), yellow = IDLE
+          // (online but carrying nothing), red = DELAYED (their current trip is
+          // past its estimated drop time). This was inverted before — a driver
+          // mid-delivery showed yellow and an idle one showed green.
+          // `isDelayed` is only ever true when a real ETA exists and has
+          // passed; it is never inferred.
+          status: d.isDelayed
+            ? "DELAYED"
+            : d.hasActiveBooking
+            ? "ACTIVE"
+            : "IDLE",
+          currentBookingEta: d.currentBookingEta || null,
           currentBookingId: d.currentBookingId,
           vehicleType: d.vehicleType || "Unknown",
           vehicleNumber: d.vehicleNumber || "-",
@@ -121,6 +132,32 @@ const DriverTracking: React.FC = () => {
   }, []);
 
   // Fetch demand zones for heatmap
+  /// Fleet-wide counts. The map feed only carries drivers that pinged
+  /// recently, so it can never answer "how many are offline" — that tile read
+  /// a filter which could only return 0, rendering as "nobody is offline".
+  const fetchFleetCounts = useCallback(async () => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${API_URL}/admin/dashboard/live-stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const d = data.data ?? data;
+      if (
+        typeof d?.totalDrivers === "number" &&
+        typeof d?.activeDrivers === "number"
+      ) {
+        setFleet({
+          totalDrivers: d.totalDrivers,
+          activeDrivers: d.activeDrivers,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch fleet counts:", err);
+    }
+  }, []);
+
   const fetchDemandZones = useCallback(async () => {
     try {
       const token = getToken();
@@ -148,6 +185,7 @@ const DriverTracking: React.FC = () => {
   // Auto-refresh effect
   useEffect(() => {
     fetchDrivers();
+    fetchFleetCounts();
     if (!autoRefresh) return;
     const interval = setInterval(fetchDrivers, refreshInterval * 1000);
     return () => clearInterval(interval);
@@ -164,10 +202,16 @@ const DriverTracking: React.FC = () => {
   });
 
   const stats = {
-    total: drivers.length,
-    online: drivers.filter((d) => d.status === "ONLINE").length,
-    busy: drivers.filter((d) => d.status === "BUSY").length,
-    offline: drivers.filter((d) => d.status === "OFFLINE").length,
+    total: fleet?.totalDrivers ?? drivers.length,
+    idle: drivers.filter((d) => d.status === "IDLE").length,
+    active: drivers.filter((d) => d.status === "ACTIVE").length,
+    delayed: drivers.filter((d) => d.status === "DELAYED").length,
+    // From the fleet counts, not from this feed: approved drivers minus those
+    // currently online.
+    offline:
+      fleet != null
+        ? Math.max(fleet.totalDrivers - fleet.activeDrivers, 0)
+        : null,
   };
 
   // Leaflet map ref
@@ -230,7 +274,7 @@ const DriverTracking: React.FC = () => {
 
   // Create driver icon with color coding
   const createDriverIcon = useCallback((status: string, speed: number = 0) => {
-    const color = status === "ONLINE" ? "#22c55e" : status === "BUSY" ? "#eab308" : "#9ca3af";
+    const color = status === "ACTIVE" ? "#22c55e" : status === "IDLE" ? "#eab308" : status === "DELAYED" ? "#ef4444" : "#9ca3af";
     const isMoving = speed > 5;
     return L.divIcon({
       html: `<div style="background:${color};width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.3);${isMoving ? 'animation:pulse 1.5s infinite;' : ''}">
@@ -282,7 +326,7 @@ const DriverTracking: React.FC = () => {
         <div style="min-width:180px">
           <b>${driver.driverName}</b><br/>
           <span style="font-size:12px">${driver.vehicleType} • ${driver.vehicleNumber}</span><br/>
-          <span style="color:${driver.status === "ONLINE" ? "#22c55e" : driver.status === "BUSY" ? "#eab308" : "#9ca3af"};font-weight:500">${driver.status}</span>
+          <span style="color:${driver.status === "ACTIVE" ? "#22c55e" : driver.status === "IDLE" ? "#eab308" : driver.status === "DELAYED" ? "#ef4444" : "#9ca3af"};font-weight:500">${driver.status}</span>
           ${driver.speed ? ` • ${driver.speed} km/h` : ""}
           ${driver.currentBookingId ? `<br/><a href="/admin/orders/${driver.currentBookingId}" style="color:#f97316;font-size:11px">View Order →</a>` : ""}
         </div>
@@ -314,10 +358,12 @@ const DriverTracking: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "ONLINE":
+      case "ACTIVE":
         return "text-green-500";
-      case "BUSY":
+      case "IDLE":
         return "text-yellow-500";
+      case "DELAYED":
+        return "text-red-500";
       case "OFFLINE":
         return "text-gray-400";
       default:
@@ -327,10 +373,12 @@ const DriverTracking: React.FC = () => {
 
   const getStatusBg = (status: string) => {
     switch (status) {
-      case "ONLINE":
+      case "ACTIVE":
         return "bg-green-100 text-green-800";
-      case "BUSY":
+      case "IDLE":
         return "bg-yellow-100 text-yellow-800";
+      case "DELAYED":
+        return "bg-red-100 text-red-800";
       case "OFFLINE":
         return "bg-gray-100 text-gray-800";
       default:
@@ -491,11 +539,11 @@ const DriverTracking: React.FC = () => {
 
         <div
           className={`bg-white rounded-2xl shadow-sm p-4 border cursor-pointer transition-all ${
-            statusFilter === "ONLINE"
+            statusFilter === "IDLE"
               ? "border-green-500 ring-2 ring-green-200"
               : "border-gray-100"
           }`}
-          onClick={() => setStatusFilter("ONLINE")}
+          onClick={() => setStatusFilter("IDLE")}
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
@@ -503,27 +551,27 @@ const DriverTracking: React.FC = () => {
             </div>
             <div>
               <p className="text-2xl font-bold text-green-600">
-                {stats.online}
+                {stats.idle}
               </p>
-              <p className="text-xs text-gray-500">Online</p>
+              <p className="text-xs text-gray-500">Idle</p>
             </div>
           </div>
         </div>
 
         <div
           className={`bg-white rounded-2xl shadow-sm p-4 border cursor-pointer transition-all ${
-            statusFilter === "BUSY"
+            statusFilter === "ACTIVE"
               ? "border-yellow-500 ring-2 ring-yellow-200"
               : "border-gray-100"
           }`}
-          onClick={() => setStatusFilter("BUSY")}
+          onClick={() => setStatusFilter("ACTIVE")}
         >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center">
               <Package className="w-5 h-5 text-yellow-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-yellow-600">{stats.busy}</p>
+              <p className="text-2xl font-bold text-yellow-600">{stats.active}</p>
               <p className="text-xs text-gray-500">On Trip</p>
             </div>
           </div>
@@ -543,7 +591,7 @@ const DriverTracking: React.FC = () => {
             </div>
             <div>
               <p className="text-2xl font-bold text-gray-600">
-                {stats.offline}
+                {stats.offline ?? "—"}
               </p>
               <p className="text-xs text-gray-500">Offline</p>
             </div>
@@ -553,30 +601,65 @@ const DriverTracking: React.FC = () => {
 
       {/* Intelligence strip */}
       {(() => {
-        const highDemand = heatmapData.filter(([, , i]) => i > 5).length;
-        const shortageZones = Math.max(
-          0,
-          heatmapData.filter(([, , i]) => i > 2).length -
-            drivers.filter((d) => d.status === "ONLINE").length
-        );
+        // High demand = pickup clusters at or above the same intensity the
+        // backend uses for its own highDemandZones list (>= 5 orders).
+        const demandZones = heatmapData.filter(([, , i]) => i >= 5);
+
+        // A shortage zone is a demand cluster with NO driver near it. The old
+        // figure subtracted a driver COUNT from a zone COUNT — two different
+        // units — so it reported shortages that had nothing to do with where
+        // the drivers actually were. This measures the thing it claims to.
+        const SHORTAGE_RADIUS_KM = 3;
+        const kmBetween = (
+          aLat: number,
+          aLng: number,
+          bLat: number,
+          bLng: number,
+        ) => {
+          const toRad = (v: number) => (v * Math.PI) / 180;
+          const dLat = toRad(bLat - aLat);
+          const dLng = toRad(bLng - aLng);
+          const h =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(aLat)) *
+              Math.cos(toRad(bLat)) *
+              Math.sin(dLng / 2) ** 2;
+          return 6371 * 2 * Math.asin(Math.sqrt(h));
+        };
+        const freeDrivers = drivers.filter((d) => d.status === "IDLE");
+        const shortageZones = demandZones.filter(
+          ([lat, lng]) =>
+            !freeDrivers.some(
+              (d) => kmBetween(lat, lng, d.lat, d.lng) <= SHORTAGE_RADIUS_KM,
+            ),
+        ).length;
+
         return (
           <div className="flex flex-wrap gap-2">
-            {highDemand > 0 && (
+            {demandZones.length > 0 && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-xs font-semibold">
-                <Zap className="w-3.5 h-3.5" /> High-demand areas: {highDemand}
+                <Zap className="w-3.5 h-3.5" /> High-demand areas: {demandZones.length}
               </span>
             )}
             {shortageZones > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-semibold">
+              <span
+                title={`Demand clusters with no free driver within ${SHORTAGE_RADIUS_KM} km`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-semibold"
+              >
                 <AlertTriangle className="w-3.5 h-3.5" /> Driver shortage zones: {shortageZones}
               </span>
             )}
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-700 border border-green-200 text-xs font-semibold">
-              <Circle className="w-2 h-2 fill-green-500 text-green-500" /> Online: {stats.online}
+              <Circle className="w-2 h-2 fill-green-500 text-green-500" /> On trip: {stats.active}
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 text-xs font-semibold">
-              <Circle className="w-2 h-2 fill-yellow-500 text-yellow-500" /> Idle/Busy: {stats.busy}
+              <Circle className="w-2 h-2 fill-yellow-500 text-yellow-500" /> Idle: {stats.idle}
             </span>
+            {stats.delayed > 0 && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-semibold">
+                <Circle className="w-2 h-2 fill-red-500 text-red-500" /> Delayed: {stats.delayed}
+              </span>
+            )}
           </div>
         );
       })()}
@@ -630,11 +713,13 @@ const DriverTracking: React.FC = () => {
                   <div className="flex items-start gap-3">
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        driver.status === "ONLINE"
+                        driver.status === "ACTIVE"
                           ? "bg-green-100"
-                          : driver.status === "BUSY"
+                          : driver.status === "IDLE"
                             ? "bg-yellow-100"
-                            : "bg-gray-100"
+                            : driver.status === "DELAYED"
+                              ? "bg-red-100"
+                              : "bg-gray-100"
                       }`}
                     >
                       <User
@@ -688,11 +773,13 @@ const DriverTracking: React.FC = () => {
             <div className="flex items-center gap-4">
               <div
                 className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                  selectedDriver.status === "ONLINE"
+                  selectedDriver.status === "ACTIVE"
                     ? "bg-green-100"
-                    : selectedDriver.status === "BUSY"
+                    : selectedDriver.status === "IDLE"
                       ? "bg-yellow-100"
-                      : "bg-gray-100"
+                      : selectedDriver.status === "DELAYED"
+                        ? "bg-red-100"
+                        : "bg-gray-100"
                 }`}
               >
                 <User
@@ -724,7 +811,7 @@ const DriverTracking: React.FC = () => {
                 <MessageSquare className="w-4 h-4" />
                 SMS
               </a>
-              {selectedDriver.status === "ONLINE" && (
+              {selectedDriver.status === "IDLE" && (
                 <button
                   onClick={() => {
                     fetchPendingOrders();
@@ -736,8 +823,23 @@ const DriverTracking: React.FC = () => {
                   Assign Order
                 </button>
               )}
+              {selectedDriver.currentBookingId && (
+                <button
+                  onClick={() =>
+                    navigate(
+                      `/admin/orders?bookingId=${selectedDriver.currentBookingId}`,
+                    )
+                  }
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors"
+                >
+                  <ClipboardList className="w-4 h-4" />
+                  View order
+                </button>
+              )}
               <button
-                onClick={() => navigate(`/admin/drivers?id=${selectedDriver.driverId}`)}
+                onClick={() =>
+                  navigate(`/admin/riders?driverId=${selectedDriver.driverId}`)
+                }
                 className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
               >
                 <Eye className="w-4 h-4" />

@@ -114,6 +114,16 @@ const computeDelayMinutes = (o: BookingRow): number => {
   return d > 0 ? d : 0;
 };
 
+/// Operational thresholds for the row flags. Kept together so ops can be told
+/// one number rather than hunting them in the markup.
+const FLAG_THRESHOLDS = {
+  unassignedMins: 10,
+  delayedMins: 15,
+  /// "High value" is relative to typical order size on this platform, not a
+  /// customer tier — no tier field exists on the user model.
+  highValueRupees: 2000,
+};
+
 const computeWaitingMinutes = (o: BookingRow): number => {
   if (o.status !== "SEARCHING") return 0;
   return Math.max(Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000), 0);
@@ -235,7 +245,49 @@ const OrderManagement: React.FC = () => {
     return { active, avgDeliveryMin, failureRate, delayed };
   }, [orders]);
 
+  /// Operational priority score. Deliberately simple and inspectable rather
+  /// than a hidden model: minutes waiting unassigned dominate, lateness next,
+  /// order value last as a tie-breaker. "Customer type" from the spec is not
+  /// included — no customer tier exists on the user model, and inventing one
+  /// would make the ranking unexplainable to the ops team using it.
+  const priorityScore = useCallback((o: BookingRow): number => {
+    const waiting = computeWaitingMinutes(o);
+    const delay = computeDelayMinutes(o);
+    const value = Number(o.finalFare ?? 0);
+    return waiting * 10 + delay * 6 + Math.min(value / 100, 30);
+  }, []);
+
+  const [sortByPriority, setSortByPriority] = useState(false);
+
+  /// The rows actually rendered. Sorting is client-side over the loaded page,
+  /// which is what the insight tiles already scope themselves to.
+  const visibleOrders = useMemo(() => {
+    if (!sortByPriority) return orders;
+    return [...orders].sort((a, b) => priorityScore(b) - priorityScore(a));
+  }, [orders, sortByPriority, priorityScore]);
+
+  /// Saved filters for the ops team — one click into the two views they live
+  /// in. "Unassigned" is SEARCHING; "Delayed" has no status of its own, so it
+  /// filters to active orders and turns on priority sort to float the worst to
+  /// the top (the list API cannot express "past ETA").
+  const applySavedFilter = (which: "delayed" | "unassigned") => {
+    setPaymentFilter("");
+    setServiceFilter("");
+    setDateFrom("");
+    setDateTo("");
+    setSearch("");
+    setPage(0);
+    if (which === "unassigned") {
+      setStatusFilter("SEARCHING");
+      setSortByPriority(true);
+    } else {
+      setStatusFilter("IN_PROGRESS");
+      setSortByPriority(true);
+    }
+  };
+
   const clearFilters = () => {
+    setSortByPriority(false);
     setStatusFilter("");
     setPaymentFilter("");
     setServiceFilter("");
@@ -479,7 +531,7 @@ const OrderManagement: React.FC = () => {
               }}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
             />
-            {(search || statusFilter || paymentFilter || serviceFilter || dateFrom || dateTo) && (
+            {(search || statusFilter || paymentFilter || serviceFilter || dateFrom || dateTo || sortByPriority) && (
               <button
                 onClick={clearFilters}
                 className="text-xs text-gray-500 hover:text-gray-700 underline"
@@ -487,6 +539,36 @@ const OrderManagement: React.FC = () => {
                 Clear
               </button>
             )}
+          </div>
+
+          {/* Saved filters — the two views ops actually live in, one click. */}
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
+              Saved
+            </span>
+            <button
+              onClick={() => applySavedFilter("unassigned")}
+              className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+            >
+              Unassigned orders
+            </button>
+            <button
+              onClick={() => applySavedFilter("delayed")}
+              className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+            >
+              Delayed orders
+            </button>
+            <button
+              onClick={() => setSortByPriority((v) => !v)}
+              title="Rank by minutes waiting, then lateness, then order value"
+              className={`px-2.5 py-1 text-xs font-medium rounded-lg border ${
+                sortByPriority
+                  ? "bg-movezy-50 border-movezy-300 text-movezy-700"
+                  : "border-gray-200 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              Priority sort {sortByPriority ? "ON" : "OFF"}
+            </button>
           </div>
         </div>
       )}
@@ -504,6 +586,7 @@ const OrderManagement: React.FC = () => {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Pickup → Drop</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Driver</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">ETA</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
                 </tr>
@@ -511,7 +594,7 @@ const OrderManagement: React.FC = () => {
               <tbody className="divide-y divide-gray-100">
                 {loading && (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-sm text-gray-400">
+                    <td colSpan={8} className="py-10 text-center text-sm text-gray-400">
                       <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
                       Loading orders…
                     </td>
@@ -519,13 +602,13 @@ const OrderManagement: React.FC = () => {
                 )}
                 {!loading && orders.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-10 text-center text-sm text-gray-400">
+                    <td colSpan={8} className="py-10 text-center text-sm text-gray-400">
                       No orders match your filters.
                     </td>
                   </tr>
                 )}
                 {!loading &&
-                  orders.map((o) => {
+                  visibleOrders.map((o) => {
                     const isSelected = o._id === selected?._id;
                     const waiting = computeWaitingMinutes(o);
                     const delay = computeDelayMinutes(o);
@@ -543,6 +626,37 @@ const OrderManagement: React.FC = () => {
                           </div>
                           <div className="text-[10px] text-gray-400 mt-1">
                             {formatTimeAgo(o.createdAt)}
+                          </div>
+                          {/* Smart flags — every one derived from a real field,
+                              so no flag can appear without something behind it.
+                              "Repeat customer issue" is deliberately absent: it
+                              would need per-customer complaint history, which no
+                              endpoint on this page returns. */}
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {computeWaitingMinutes(o) > FLAG_THRESHOLDS.unassignedMins && (
+                              <span
+                                title={`Unassigned for ${computeWaitingMinutes(o)} minutes`}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700"
+                              >
+                                UNASSIGNED {computeWaitingMinutes(o)}m
+                              </span>
+                            )}
+                            {computeDelayMinutes(o) > FLAG_THRESHOLDS.delayedMins && (
+                              <span
+                                title={`Past its estimated drop time by ${computeDelayMinutes(o)} minutes`}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700"
+                              >
+                                DELAYED
+                              </span>
+                            )}
+                            {(o.finalFare ?? 0) >= FLAG_THRESHOLDS.highValueRupees && (
+                              <span
+                                title={`High value order (₹${o.finalFare})`}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800"
+                              >
+                                ★ HIGH VALUE
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3 align-top">
@@ -594,6 +708,33 @@ const OrderManagement: React.FC = () => {
                           ) : (
                             <span className="text-xs text-gray-400">—</span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                          {(() => {
+                            const delay = computeDelayMinutes(o);
+                            if (delay > 0) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700">
+                                  +{delay}m late
+                                </span>
+                              );
+                            }
+                            if (!o.estimatedDropTime) {
+                              // No estimate exists until pickup, so say nothing
+                              // rather than implying an on-time promise.
+                              return <span className="text-xs text-gray-400">—</span>;
+                            }
+                            const mins = Math.round(
+                              (new Date(o.estimatedDropTime).getTime() - Date.now()) / 60000,
+                            );
+                            return ACTIVE_STATUSES.includes(o.status) ? (
+                              <span className="text-xs text-gray-700">
+                                {mins > 0 ? `in ${mins}m` : "due now"}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 align-top">
                           <span
