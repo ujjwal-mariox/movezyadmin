@@ -31,6 +31,9 @@ interface FormData {
   bgColor: string;
   description: string;
   riskLevel: "HIGH" | "MEDIUM" | "LOW";
+  /// Comma/newline separated in the input; sent as an array.
+  keywordsText: string;
+  actionRule: "WARN" | "BLOCK";
   sortOrder: number | string;
 }
 
@@ -42,6 +45,8 @@ const initialFormData: FormData = {
   description: "",
   sortOrder: 0,
   riskLevel: "MEDIUM",
+  keywordsText: "",
+  actionRule: "WARN",
 };
 
 const presetColors = [
@@ -134,6 +139,8 @@ const ProhibitedItemManagement: React.FC = () => {
       bgColor: item.bgColor || "#FFF3E0",
       description: item.description || "",
       riskLevel: (item as any).riskLevel ?? "MEDIUM",
+      keywordsText: (((item as any).keywords ?? []) as string[]).join(", "),
+      actionRule: (item as any).actionRule ?? "WARN",
       sortOrder: item.sortOrder || 0,
     });
     setIsEditing(true);
@@ -149,7 +156,15 @@ const ProhibitedItemManagement: React.FC = () => {
 
     try {
       setActionLoading("save");
-      const payload = { ...formData, sortOrder: Number(formData.sortOrder) || 0 };
+      const payload = {
+        ...formData,
+        sortOrder: Number(formData.sortOrder) || 0,
+        keywords: formData.keywordsText
+          .split(/[\n,;]/)
+          .map((k) => k.trim().toLowerCase())
+          .filter(Boolean),
+        actionRule: formData.actionRule,
+      };
       if (isEditing && editingId) {
         await updateProhibitedItem(editingId, payload);
         showNotification("success", "Prohibited item updated");
@@ -347,6 +362,14 @@ const ProhibitedItemManagement: React.FC = () => {
                           }`}>
                             {(item as any).riskLevel ?? "MEDIUM"}
                           </span>
+                          {(((item as any).violationCount ?? 0) > 0 || ((item as any).blockedCount ?? 0) > 0) && (
+                            <span
+                              className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 align-middle"
+                              title={`${(item as any).violationCount ?? 0} warned · ${(item as any).blockedCount ?? 0} blocked (since keyword screening began)`}
+                            >
+                              {(item as any).violationCount ?? 0}⚠ {(item as any).blockedCount ?? 0}⛔
+                            </span>
+                          )}
                         </div>
                         {item.description && (
                           <div className="text-xs text-gray-500 mt-0.5 truncate max-w-[220px]">
@@ -555,9 +578,35 @@ const ProhibitedItemManagement: React.FC = () => {
                     <option value="LOW">Low — restricted with conditions</option>
                   </select>
                   <p className="mt-1 text-xs text-gray-500">
-                    Triage label. Every item today acts as "show warning" — the app lists
-                    them before booking; no automated detection or blocking exists.
+                    Triage label for the list; enforcement comes from the
+                    keyword rule below.
                   </p>
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-700">Detection Keywords</label>
+                  <textarea
+                    value={formData.keywordsText}
+                    onChange={(e) => setFormData({ ...formData, keywordsText: e.target.value })}
+                    placeholder="e.g. gas cylinder, lpg, cylinder — comma or line separated"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[60px]"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Matched (plain keyword contains, not AI) against the customer's goods
+                    description at booking. Leave empty to keep this item display-only.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-700">On Match</label>
+                  <select
+                    value={formData.actionRule}
+                    onChange={(e) => setFormData({ ...formData, actionRule: e.target.value as FormData["actionRule"] })}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="WARN">Warn — booking proceeds, flagged for ops</option>
+                    <option value="BLOCK">Block — booking refused, item named to the customer</option>
+                  </select>
                 </div>
 
               {/* Sort Order */}

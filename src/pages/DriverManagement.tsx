@@ -176,6 +176,10 @@ interface Driver {
   completionRate?: number | null;
   cancelledByDriver?: number;
   assignedTotal?: number;
+  /// From persisted dispatch offers, accruing since tracking began. Null
+  /// until the driver has any resolved offers on record.
+  acceptanceRate?: number | null;
+  offersReceived?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1700,7 +1704,7 @@ const DriverManagement: React.FC = () => {
                 )}
 
                 {/* Performance row */}
-                <div className="grid grid-cols-4 gap-2 mt-3 text-center">
+                <div className="grid grid-cols-5 gap-2 mt-3 text-center">
                   <div className="bg-gray-50 rounded-lg py-2">
                     <p className="text-[10px] uppercase text-gray-500">Trips</p>
                     <p className="text-sm font-bold text-gray-800">
@@ -1708,8 +1712,25 @@ const DriverManagement: React.FC = () => {
                     </p>
                   </div>
                   <div
+                    className="bg-purple-50 rounded-lg py-2"
+                    title={
+                      driver.acceptanceRate != null
+                        ? `Accepted ${driver.acceptanceRate}% of ${driver.offersReceived} offers (since tracking began)`
+                        : "No resolved dispatch offers on record yet — offers are persisted from the tracking rollout onward"
+                    }
+                  >
+                    <p className="text-[10px] uppercase text-purple-600">
+                      Acceptance
+                    </p>
+                    <p className="text-sm font-bold text-purple-700">
+                      {driver.acceptanceRate != null
+                        ? `${driver.acceptanceRate}%`
+                        : "—"}
+                    </p>
+                  </div>
+                  <div
                     className="bg-blue-50 rounded-lg py-2"
-                    title="Completed as a share of everything ever assigned. Acceptance % cannot be shown — no offer/decline record is stored anywhere."
+                    title="Completed as a share of everything ever assigned"
                   >
                     <p className="text-[10px] uppercase text-blue-600">
                       Completion

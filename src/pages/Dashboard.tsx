@@ -7,6 +7,7 @@ import {
   type ActionCenterAtRisk,
 } from "../services/api";
 import { driversApi, dashboardApi, enhancedFinanceApi } from "../services/admin-api";
+import { fetchAppSettings, upsertAppSetting } from "../services/api";
 import { dialog } from "../components/Layout/Dialog";
 import {
   Package,
@@ -238,15 +239,24 @@ const Dashboard: React.FC = () => {
   // Scope, stated plainly: this runs from the dashboard, so it works while an
   // ops console is OPEN. New bookings are already dispatched automatically by
   // the server the moment they are created — this sweep is the retry pass for
-  // orders nobody accepted. Making it run with no browser open needs a
-  // server-side scheduler, which does not exist yet.
-  const [autoAssignOn, setAutoAssignOn] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem("movezy.autoAssign") === "on";
-    } catch {
-      return false;
-    }
-  });
+  // orders nobody accepted. The switch is now SERVER state
+  // (auto_assign_scheduler_enabled): the job scheduler runs the same sweep on
+  // its own timer, so it works with no console open.
+  const [autoAssignOn, setAutoAssignOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetchAppSettings();
+        const items = res?.data?.settings ?? res?.settings ?? [];
+        const row = Array.isArray(items)
+          ? items.find((i: any) => i.key === "auto_assign_scheduler_enabled")
+          : null;
+        setAutoAssignOn(row ? row.value === true || row.value === "true" : false);
+      } catch {
+        setAutoAssignOn(null); // unknown — never show a false OFF
+      }
+    })();
+  }, []);
 
   // Smart list
   const [activeTab, setActiveTab] = useState<"delayed" | "unassigned" | "nearby">("delayed");
@@ -370,22 +380,6 @@ const Dashboard: React.FC = () => {
     const id = setInterval(loadDashboardData, refreshInterval * 1000);
     return () => clearInterval(id);
   }, [autoRefresh, refreshInterval, loadDashboardData]);
-
-  useEffect(() => {
-    if (!autoAssignOn || !autoRefresh) return;
-    const id = setInterval(() => {
-      handleRunAutoAssignRef.current?.();
-    }, refreshInterval * 1000);
-    return () => clearInterval(id);
-  }, [autoAssignOn, autoRefresh, refreshInterval]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("movezy.autoAssign", autoAssignOn ? "on" : "off");
-    } catch {
-      // Private mode / storage disabled — the toggle still works this session.
-    }
-  }, [autoAssignOn]);
 
   // Assign the nearest available driver to every SEARCHING booking, then
   // refresh the action-center queues with the result.
@@ -930,11 +924,28 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setAutoAssignOn((v) => !v)}
+              onClick={async () => {
+                if (autoAssignOn === null) return;
+                const next = !autoAssignOn;
+                try {
+                  await upsertAppSetting({
+                    key: "auto_assign_scheduler_enabled",
+                    value: next,
+                    type: "BOOLEAN",
+                    category: "scheduler",
+                    description: "Unattended auto-assign sweep (job scheduler)",
+                  });
+                  setAutoAssignOn(next);
+                } catch {
+                  // Failed write — leave the shown state untouched.
+                }
+              }}
               title={
-                autoAssignOn
-                  ? "Auto-assign runs on every refresh while this console is open"
-                  : "Auto-assign only runs when you press the button"
+                autoAssignOn === null
+                  ? "State unknown (settings unreadable)"
+                  : autoAssignOn
+                    ? "The server runs the auto-assign sweep on its own schedule — no console needs to be open"
+                    : "Unattended auto-assign is off; the button still runs a one-shot sweep"
               }
               className={`flex items-center gap-2 text-sm font-semibold rounded-lg px-3 py-1.5 border ${
                 autoAssignOn
@@ -947,7 +958,7 @@ const Dashboard: React.FC = () => {
                   autoAssignOn ? "bg-green-500" : "bg-gray-400"
                 }`}
               />
-              Auto-assign {autoAssignOn ? "ON" : "OFF"}
+              Auto-assign {autoAssignOn === null ? "?" : autoAssignOn ? "ON" : "OFF"}
             </button>
             <button
               onClick={handleRunAutoAssign}

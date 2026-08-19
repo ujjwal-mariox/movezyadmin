@@ -321,6 +321,14 @@ const DriverInstructionManagement: React.FC = () => {
                             <span className="ml-2 text-[10px] text-gray-400 align-middle" title="Bumped on every edit">
                               v{(item as any).version ?? 1}
                             </span>
+                            {((item as any).ackCount ?? 0) > 0 && (
+                              <span
+                                className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700 align-middle"
+                                title="Trips where drivers tapped through this instruction at start (mandatory instructions only)"
+                              >
+                                {(item as any).ackCount} acks
+                              </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-gray-400 mt-0.5">Sort #{item.sortOrder || 0}</div>
                         </div>
