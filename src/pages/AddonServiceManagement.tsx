@@ -36,6 +36,10 @@ interface FormData {
   description: string;
   icon: string;
   priceType: "FIXED" | "PER_FLOOR" | "PER_KG" | "PERCENTAGE" | "CONDITIONAL";
+  applicableGoodsCategories: string[];
+  stage: "PICKUP" | "DELIVERY" | "BOTH";
+  autoApply: boolean;
+  autoApplyMinFare: number | string;
   price: number | string;
   applicableVehicleTypes: string[];
   sortOrder: number | string;
@@ -47,6 +51,10 @@ const initialFormData: FormData = {
   description: "",
   icon: "",
   priceType: "FIXED",
+  applicableGoodsCategories: [],
+  stage: "BOTH",
+  autoApply: false,
+  autoApplyMinFare: 0,
   price: 0,
   applicableVehicleTypes: [],
   sortOrder: 0,
@@ -128,6 +136,10 @@ const AddonServiceManagement: React.FC = () => {
       description: addon.description || "",
       icon: addon.icon || "",
       priceType: addon.priceType,
+      applicableGoodsCategories: addon.applicableGoodsCategories ?? [],
+      stage: addon.stage ?? "BOTH",
+      autoApply: addon.autoApply ?? false,
+      autoApplyMinFare: addon.autoApplyMinFare ?? 0,
       price: addon.price,
       applicableVehicleTypes: addon.applicableVehicleTypes?.map((v) => v._id) || [],
       sortOrder: addon.sortOrder || 0,
@@ -141,7 +153,12 @@ const AddonServiceManagement: React.FC = () => {
     e.preventDefault();
     try {
       setActionLoading("submit");
-      const payload = { ...formData, price: Number(formData.price) || 0, sortOrder: Number(formData.sortOrder) || 0 };
+      const payload = {
+        ...formData,
+        price: Number(formData.price) || 0,
+        sortOrder: Number(formData.sortOrder) || 0,
+        autoApplyMinFare: Number(formData.autoApplyMinFare) || 0,
+      };
       if (isEditing && editingId) {
         await updateAddonService(editingId, payload as any);
         showNotification("success", "Add-on updated successfully");
@@ -324,6 +341,44 @@ const AddonServiceManagement: React.FC = () => {
                   </span>
                 </div>
 
+                {addon.usage && (
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-gray-50 rounded-lg py-1.5">
+                      <p className="text-[10px] uppercase text-gray-400">Usage</p>
+                      <p className="text-sm font-bold text-gray-800">{addon.usage.count}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg py-1.5">
+                      <p className="text-[10px] uppercase text-gray-400">Revenue</p>
+                      <p className="text-sm font-bold text-gray-800">
+                        ₹{addon.usage.revenue.toLocaleString("en-IN")}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg py-1.5" title="Share of add-on revenue among the add-ons listed">
+                      <p className="text-[10px] uppercase text-gray-400">Rev share</p>
+                      <p className="text-sm font-bold text-gray-800">{addon.usage.revenueSharePct}%</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-1">
+                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">
+                    {addon.stage === "PICKUP" ? "Pickup" : addon.stage === "DELIVERY" ? "Delivery" : "Pickup + Delivery"}
+                  </span>
+                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-semibold rounded-full">
+                    {addon.applicableGoodsCategories && addon.applicableGoodsCategories.length > 0
+                      ? addon.applicableGoodsCategories.join(" · ")
+                      : "All categories"}
+                  </span>
+                  {addon.autoApply && (
+                    <span
+                      className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-full"
+                      title={`Preselected in the app for orders ≥ ₹${addon.autoApplyMinFare ?? 0} — the customer still sees and can remove it`}
+                    >
+                      AUTO ≥ ₹{addon.autoApplyMinFare ?? 0}
+                    </span>
+                  )}
+                </div>
+
                 <p className="text-[10px] text-gray-400">Sort #{addon.sortOrder}</p>
 
                 <div>
@@ -436,6 +491,73 @@ const AddonServiceManagement: React.FC = () => {
                   <div>
                     <label className="block mb-1 text-sm font-medium text-gray-700">Sort Order</label>
                     <input type="number" min="0" value={formData.sortOrder} onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value === '' ? '' : Number(e.target.value) })} className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100">
+                <h3 className="mb-3 text-sm font-semibold text-gray-700">Targeting &amp; Auto-apply</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">Applicable Categories</label>
+                    <div className="flex gap-4 pt-2">
+                      {(["BUSINESS", "PERSONAL"] as const).map((c) => (
+                        <label key={c} className="flex items-center gap-1.5 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={formData.applicableGoodsCategories.includes(c)}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                applicableGoodsCategories: e.target.checked
+                                  ? [...formData.applicableGoodsCategories, c]
+                                  : formData.applicableGoodsCategories.filter((x) => x !== c),
+                              })
+                            }
+                          />
+                          {c.charAt(0) + c.slice(1).toLowerCase()}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">None checked = offered for every category.</p>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">Order Stage</label>
+                    <select
+                      value={formData.stage}
+                      onChange={(e) => setFormData({ ...formData, stage: e.target.value as FormData["stage"] })}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="BOTH">Pickup + Delivery</option>
+                      <option value="PICKUP">Pickup only</option>
+                      <option value="DELIVERY">Delivery only</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 flex items-end gap-4">
+                    <label className="flex items-center gap-2 text-sm text-gray-700 pb-2">
+                      <input
+                        type="checkbox"
+                        checked={formData.autoApply}
+                        onChange={(e) => setFormData({ ...formData, autoApply: e.target.checked })}
+                      />
+                      Auto-apply above a fare
+                    </label>
+                    {formData.autoApply && (
+                      <div className="flex-1 max-w-[200px]">
+                        <label className="block mb-1 text-xs font-medium text-gray-500">Min fare (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={formData.autoApplyMinFare}
+                          onChange={(e) => setFormData({ ...formData, autoApplyMinFare: e.target.value === '' ? '' : Number(e.target.value) })}
+                          className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
+                        />
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 pb-2 flex-1">
+                      Preselects this add-on in the app for qualifying orders. The customer
+                      sees the charge and can remove it — it is never added silently.
+                    </p>
                   </div>
                 </div>
               </div>

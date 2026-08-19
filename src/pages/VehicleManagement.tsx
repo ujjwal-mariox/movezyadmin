@@ -44,6 +44,14 @@ interface VehicleType {
   sortOrder?: number;
   showOnHomeScreen: boolean;
   isActive: boolean;
+  avgSpeedKmph?: number;
+  loadTypes?: ("FRAGILE" | "HEAVY" | "LIQUID")[];
+  /// Orders/revenue/avg-delivery attached by the list endpoint.
+  usage?: {
+    orders: number;
+    completedRevenue: number;
+    avgDeliveryMin: number | null;
+  };
   isDeleted: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -56,6 +64,8 @@ interface FormData {
   baseFare: number | string;
   perKmRate: number | string;
   perMinuteRate: number | string;
+  avgSpeedKmph: number | string;
+  loadTypes: string[];
   minDistanceKm: number | string;
   minRangeKm: number | string;
   maxRangeKm: number | string;
@@ -73,6 +83,8 @@ const initialFormData: FormData = {
   baseFare: 0,
   perKmRate: 0,
   perMinuteRate: 0,
+  avgSpeedKmph: 25,
+  loadTypes: [],
   minDistanceKm: 1,
   minRangeKm: 1,
   maxRangeKm: 100,
@@ -172,6 +184,8 @@ const VehicleManagement: React.FC = () => {
       baseFare: vehicleType.baseFare,
       perKmRate: vehicleType.perKmRate,
       perMinuteRate: vehicleType.perMinuteRate,
+      avgSpeedKmph: vehicleType.avgSpeedKmph ?? 25,
+      loadTypes: vehicleType.loadTypes ?? [],
       minDistanceKm: vehicleType.minDistanceKm || 1,
       minRangeKm: vehicleType.minRangeKm || 1,
       maxRangeKm: vehicleType.maxRangeKm || 100,
@@ -199,6 +213,8 @@ const VehicleManagement: React.FC = () => {
         baseFare: Number(formData.baseFare) || 0,
         perKmRate: Number(formData.perKmRate) || 0,
         perMinuteRate: Number(formData.perMinuteRate) || 0,
+        avgSpeedKmph: Number(formData.avgSpeedKmph) || 25,
+        loadTypes: formData.loadTypes,
         minDistanceKm: Number(formData.minDistanceKm) || 0,
         minRangeKm: Number(formData.minRangeKm) || 0,
         maxRangeKm: Number(formData.maxRangeKm) || 0,
@@ -288,6 +304,19 @@ const VehicleManagement: React.FC = () => {
   ).length;
 
   // Server-side: vehicleTypes IS the current page (already filtered)
+  // Performance indicators, page-scoped like every other figure here. Most
+  // used = highest order count on the page; underutilized = active but under
+  // 5% of the page's orders (only meaningful once anything has orders).
+  const pageOrderMax = Math.max(0, ...vehicleTypes.map((v) => v.usage?.orders ?? 0));
+  const pageOrderTotal = vehicleTypes.reduce((sum, v) => sum + (v.usage?.orders ?? 0), 0);
+  const isMostUsed = (v: VehicleType) =>
+    pageOrderMax > 0 && (v.usage?.orders ?? 0) === pageOrderMax;
+  const isUnderutilized = (v: VehicleType) =>
+    v.isActive &&
+    !v.isDeleted &&
+    pageOrderTotal >= 20 &&
+    (v.usage?.orders ?? 0) / pageOrderTotal < 0.05;
+
   const paginatedVehicleTypes = vehicleTypes;
   const totalItems = paginationMeta.total;
   const totalPages = paginationMeta.pages;
@@ -423,11 +452,14 @@ const VehicleManagement: React.FC = () => {
         /* Vehicle Types Grid */
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {paginatedVehicleTypes.map((vt) => {
-            // Load types inferred from weight capacity
+            // Real declared load types. The old chips were INFERRED from
+            // weight ("fragile = under 50kg"), which nobody ever declared —
+            // now they render only what the admin actually set on the type.
+            const lt = vt.loadTypes || [];
             const supports = {
-              fragile: vt.maxWeightKg <= 50,
-              heavy: vt.maxWeightKg >= 100,
-              liquid: vt.maxWeightKg >= 30 && vt.maxWeightKg <= 500,
+              fragile: lt.includes("FRAGILE"),
+              heavy: lt.includes("HEAVY"),
+              liquid: lt.includes("LIQUID"),
             };
             return (
             <div
@@ -563,6 +595,45 @@ const VehicleManagement: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {/* Usage metrics from the list endpoint's booking aggregation */}
+              {vt.usage && (
+                <div className="px-4 py-2.5 border-t border-gray-100 grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-[10px] uppercase text-gray-400">Orders</p>
+                    <p className="text-sm font-bold text-gray-800">{vt.usage.orders}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-gray-400">Revenue</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      ₹{vt.usage.completedRevenue.toLocaleString("en-IN")}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-gray-400">Avg delivery</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {vt.usage.avgDeliveryMin != null ? `${vt.usage.avgDeliveryMin}m` : "—"}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {(isMostUsed(vt) || isUnderutilized(vt)) && (
+                <div className="px-4 pb-2">
+                  {isMostUsed(vt) && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700">
+                      MOST USED
+                    </span>
+                  )}
+                  {isUnderutilized(vt) && (
+                    <span
+                      title="Active with fewer than 5% of the orders on this page"
+                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700"
+                    >
+                      UNDERUTILIZED
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Card Footer - Actions */}
               <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-100 bg-gray-50">
@@ -842,6 +913,62 @@ const VehicleManagement: React.FC = () => {
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="0"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* ETA + load types */}
+              <div className="pt-4 border-t border-gray-100">
+                <h3 className="mb-3 text-sm font-semibold text-gray-700">
+                  ETA &amp; Load Support
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Avg Speed (km/h)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="80"
+                      value={formData.avgSpeedKmph}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          avgSpeedKmph: e.target.value === '' ? '' : Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="25"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Scales the ETA shown per vehicle. Fares keep billing on the
+                      standard 25 km/h city model — this never changes a price.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">
+                      Load Types Supported
+                    </label>
+                    <div className="flex flex-wrap gap-3 pt-2">
+                      {(["FRAGILE", "HEAVY", "LIQUID"] as const).map((t) => (
+                        <label key={t} className="flex items-center gap-1.5 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={formData.loadTypes.includes(t)}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                loadTypes: e.target.checked
+                                  ? [...formData.loadTypes, t]
+                                  : formData.loadTypes.filter((x) => x !== t),
+                              })
+                            }
+                          />
+                          {t.charAt(0) + t.slice(1).toLowerCase()}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

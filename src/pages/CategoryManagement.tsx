@@ -193,6 +193,19 @@ const CategoryManagement: React.FC = () => {
 
   const totalCategories = paginationMeta.total;
   const activeCategories = categories.filter((c) => c.isActive && !c.isDeleted).length;
+
+  // From the list endpoint's booking aggregation. goodsTypeId is recorded on
+  // bookings only from the field's introduction, so these figures start there
+  // — the captions say "since tracking began" rather than implying all-time.
+  const mostUsed = categories.reduce<GoodsTypeItem | null>(
+    (best, c) =>
+      (c.usage?.orders ?? 0) > (best?.usage?.orders ?? 0) ? c : best,
+    null,
+  );
+  const categoriesRevenue = categories.reduce(
+    (sum, c) => sum + (c.usage?.completedRevenue ?? 0),
+    0,
+  );
   // Real breakdown by the category field (no per-category booking analytics exist).
   const businessCategories = categories.filter((c) => c.category === "BUSINESS").length;
   const personalCategories = categories.filter((c) => c.category === "PERSONAL").length;
@@ -225,7 +238,7 @@ const CategoryManagement: React.FC = () => {
       </div>
 
       {/* KPI Strip */}
-      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 mb-6 md:grid-cols-5">
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
@@ -242,12 +255,33 @@ const CategoryManagement: React.FC = () => {
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-green-500 shadow-sm rounded-2xl">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase">Active</p>
-              <h3 className="mt-1 text-2xl font-bold text-gray-800">{activeCategories}</h3>
-              <p className="mt-1 text-xs text-green-600">Visible to users</p>
+              <p className="text-xs font-medium text-gray-500 uppercase">Most Used</p>
+              <h3 className="mt-1 text-lg font-bold text-gray-800 truncate max-w-[140px]">
+                {mostUsed && (mostUsed.usage?.orders ?? 0) > 0 ? mostUsed.name : "—"}
+              </h3>
+              <p className="mt-1 text-xs text-green-600">
+                {mostUsed && (mostUsed.usage?.orders ?? 0) > 0
+                  ? `${mostUsed.usage!.orders} orders since tracking began`
+                  : "No tracked orders yet"}
+              </p>
             </div>
             <div className="flex items-center justify-center bg-green-50 w-11 h-11 rounded-xl">
               <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-emerald-500 shadow-sm rounded-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase">Revenue Contribution</p>
+              <h3 className="mt-1 text-2xl font-bold text-gray-800">
+                ₹{categoriesRevenue.toLocaleString("en-IN")}
+              </h3>
+              <p className="mt-1 text-xs text-gray-500">Completed · since tracking began</p>
+            </div>
+            <div className="flex items-center justify-center bg-emerald-50 w-11 h-11 rounded-xl">
+              <Package className="w-5 h-5 text-emerald-600" />
             </div>
           </div>
         </div>
@@ -323,6 +357,28 @@ const CategoryManagement: React.FC = () => {
               {/* Card Body */}
               <div className="p-4 space-y-3">
                 {cat.description && <p className="text-sm text-gray-600 line-clamp-2">{cat.description}</p>}
+                {cat.usage && (
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-gray-50 rounded-lg py-1.5">
+                      <p className="text-[10px] uppercase text-gray-400">Orders</p>
+                      <p className="text-sm font-bold text-gray-800">{cat.usage.orders}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg py-1.5">
+                      <p className="text-[10px] uppercase text-gray-400">Revenue</p>
+                      <p className="text-sm font-bold text-gray-800">
+                        ₹{cat.usage.completedRevenue.toLocaleString("en-IN")}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg py-1.5" title="Average value of completed orders">
+                      <p className="text-[10px] uppercase text-gray-400">AOV</p>
+                      <p className="text-sm font-bold text-gray-800">
+                        {cat.usage.avgOrderValue != null
+                          ? `₹${cat.usage.avgOrderValue.toLocaleString("en-IN")}`
+                          : "—"}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <div>

@@ -184,6 +184,13 @@ export interface VehicleTypeItem {
 }
 
 export interface GoodsTypeItem {
+  /// Booking aggregation from the list endpoint. Bookings record their
+  /// goodsTypeId only from the schema-add onward, so figures start there.
+  usage?: {
+    orders: number;
+    completedRevenue: number;
+    avgOrderValue: number | null;
+  };
   _id: string;
   name: string;
   code: string;
@@ -203,12 +210,22 @@ export interface AddonServiceItem {
   code: string;
   description: string;
   icon: string;
-  priceType: "FIXED" | "PER_FLOOR" | "PER_KG";
+  priceType: "FIXED" | "PERCENTAGE" | "PER_FLOOR" | "PER_KG";
   price: number;
   isActive: boolean;
   applicableVehicleTypes: VehicleTypeItem[];
+  applicableGoodsCategories?: ("BUSINESS" | "PERSONAL")[];
+  stage?: "PICKUP" | "DELIVERY" | "BOTH";
+  autoApply?: boolean;
+  autoApplyMinFare?: number;
   sortOrder: number;
   createdAt: string;
+  /// Booking aggregation attached by the list endpoint.
+  usage?: {
+    count: number;
+    revenue: number;
+    revenueSharePct: number;
+  };
 }
 
 export interface PromoCodeItem {
