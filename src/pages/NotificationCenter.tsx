@@ -323,6 +323,30 @@ const NotificationCenter: React.FC = () => {
         </div>
       </div>
 
+      {/* Automated sends actually in effect — statements of real behaviour,
+          each backed by running code, not aspirations. Rules are managed on
+          the Automation page and the compliance panel. */}
+      <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+        <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-2">
+          Automation in effect
+        </p>
+        <ul className="text-xs text-blue-800 space-y-1">
+          <li>
+            • <span className="font-medium">Delay alerts</span> — customers are pushed an
+            update automatically when a trip runs &gt;10 min late (15-min re-notify cooldown).
+          </li>
+          <li>
+            • <span className="font-medium">Licence-expiry reminders</span> — drivers are
+            warned ahead of expiry per the rule saved on the Document Compliance page.
+          </li>
+          <li>
+            • <span className="font-medium">Performance rules</span> — warnings, flags and
+            training assignments fire from the Automation page's rules (rating,
+            cancellation-rate, idle triggers).
+          </li>
+        </ul>
+      </div>
+
       {/* Health Strip */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="p-5 bg-white border border-gray-100 border-l-4 !border-l-blue-500 shadow-sm rounded-xl">
