@@ -135,6 +135,15 @@ interface LiveStats {
   completedToday?: number;
   pendingToday?: number;
   driversOnTrip?: number;
+  /// Online, approved, and NOT already carrying a booking — the count that can
+  /// actually be dispatched. `activeDrivers` includes drivers mid-trip.
+  availableDrivers?: number;
+  // Same slice of yesterday, for the KPI trend text. Optional so an older
+  // backend simply renders no trend rather than a fabricated one.
+  yesterdayRevenue?: number;
+  yesterdayCancelled?: number;
+  yesterdayOrders?: number;
+  todayOrders?: number;
 }
 
 interface LoadErrors {
@@ -222,6 +231,22 @@ const Dashboard: React.FC = () => {
 
   // Auto-assign action (real endpoint: POST /admin/bookings/auto-assign)
   const [autoAssigning, setAutoAssigning] = useState(false);
+  const handleRunAutoAssignRef = React.useRef<(() => void) | null>(null);
+  // Auto-assign ON/OFF. When ON, the sweep runs on every auto-refresh tick
+  // instead of waiting for someone to press the button.
+  //
+  // Scope, stated plainly: this runs from the dashboard, so it works while an
+  // ops console is OPEN. New bookings are already dispatched automatically by
+  // the server the moment they are created — this sweep is the retry pass for
+  // orders nobody accepted. Making it run with no browser open needs a
+  // server-side scheduler, which does not exist yet.
+  const [autoAssignOn, setAutoAssignOn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("movezy.autoAssign") === "on";
+    } catch {
+      return false;
+    }
+  });
 
   // Smart list
   const [activeTab, setActiveTab] = useState<"delayed" | "unassigned" | "nearby">("delayed");
@@ -346,6 +371,22 @@ const Dashboard: React.FC = () => {
     return () => clearInterval(id);
   }, [autoRefresh, refreshInterval, loadDashboardData]);
 
+  useEffect(() => {
+    if (!autoAssignOn || !autoRefresh) return;
+    const id = setInterval(() => {
+      handleRunAutoAssignRef.current?.();
+    }, refreshInterval * 1000);
+    return () => clearInterval(id);
+  }, [autoAssignOn, autoRefresh, refreshInterval]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("movezy.autoAssign", autoAssignOn ? "on" : "off");
+    } catch {
+      // Private mode / storage disabled — the toggle still works this session.
+    }
+  }, [autoAssignOn]);
+
   // Assign the nearest available driver to every SEARCHING booking, then
   // refresh the action-center queues with the result.
   const handleRunAutoAssign = useCallback(async () => {
@@ -377,6 +418,10 @@ const Dashboard: React.FC = () => {
     }
   }, [autoAssigning, loadDashboardData]);
 
+  useEffect(() => {
+    handleRunAutoAssignRef.current = handleRunAutoAssign;
+  }, [handleRunAutoAssign]);
+
   const s = liveStats || {
     totalOrders: 0,
     liveOrders: 0,
@@ -407,6 +452,22 @@ const Dashboard: React.FC = () => {
       loadErrors.action ? "action center" : null,
     ] as Array<string | null>
   ).filter((x): x is string => x !== null);
+
+  /// "+12% vs yesterday" style micro-text, from real same-slice-of-yesterday
+  /// figures. Returns "" when the backend sent no basis, so an older backend
+  /// renders no trend rather than an invented one. A 0 -> n change has no
+  /// percentage, so it reports the movement in absolute terms instead of
+  /// dividing by zero.
+  const trendText = (today?: number, yesterday?: number): string => {
+    if (today === undefined || yesterday === undefined) return "";
+    if (yesterday === 0) {
+      if (today === 0) return "same as yesterday";
+      return `+${today} vs yesterday`;
+    }
+    const pct = ((today - yesterday) / yesterday) * 100;
+    if (Math.abs(pct) < 1) return "same as yesterday";
+    return `${pct > 0 ? "+" : ""}${pct.toFixed(0)}% vs yesterday`;
+  };
 
   const delayedCount = s.delayedOrders ?? 0;
   // "Failed" doesn't exist as a booking status — cancelled-today is the real
@@ -554,7 +615,7 @@ const Dashboard: React.FC = () => {
     {
       label: "Active Orders",
       value: statsLoaded ? s.liveOrders : NO_VALUE,
-      hint: ``,
+      hint: statsLoaded ? trendText(s.todayOrders, s.yesterdayOrders) : "",
       icon: Package,
       tone: "neutral" as const,
       path: "/admin/orders?status=IN_PROGRESS",
@@ -574,21 +635,30 @@ const Dashboard: React.FC = () => {
       path: "/admin/tracking",
     },
     {
-      label: "Cancelled Today",
+      // The spec calls this "Failed Orders". Cancelled IS the failure signal
+      // in this data — no separate FAILED booking status exists — so the label
+      // follows the spec while the number stays the one that is measured.
+      label: "Failed Orders",
       value: statsLoaded ? failedCount : NO_VALUE,
-      hint: statsLoaded ? `${s.failureRate.toFixed(1)}% of today's orders` : "",
+      hint: statsLoaded
+        ? `${s.failureRate.toFixed(1)}% of today · ${trendText(failedCount, s.yesterdayCancelled)}`
+        : "",
       icon: XCircle,
       tone: "danger" as const,
       path: "/admin/orders?status=cancelled",
     },
     {
-      // activeDrivers counts approved drivers with isOnline true — that is
-      // online, not free: some of them are mid-trip. driverUtilization is the
-      // same online/approved ratio, so the hint no longer says "utilized".
-      label: "Online Drivers",
-      value: statsLoaded ? s.activeDrivers : NO_VALUE,
+      // Genuinely available = online AND not already on a trip. The card used
+      // to show `activeDrivers` (everyone online, mid-trip included) and was
+      // therefore labelled "Online Drivers" to avoid overstating capacity. The
+      // server now computes the free count, so the spec's "Available Drivers"
+      // label is accurate rather than a rename of the wrong number.
+      label: "Available Drivers",
+      value: statsLoaded
+        ? (s.availableDrivers ?? Math.max(s.activeDrivers - (s.driversOnTrip ?? 0), 0))
+        : NO_VALUE,
       hint: statsLoaded
-        ? `${s.totalDrivers} approved · ${s.driverUtilization.toFixed(0)}% online`
+        ? `${s.activeDrivers} online · ${s.driversOnTrip ?? 0} on trip`
         : "",
       icon: Truck,
       tone: "success" as const,
@@ -597,7 +667,7 @@ const Dashboard: React.FC = () => {
     {
       label: "Revenue Today",
       value: statsLoaded ? `₹${s.todayRevenue.toLocaleString()}` : NO_VALUE,
-      hint: "",
+      hint: statsLoaded ? trendText(s.todayRevenue, s.yesterdayRevenue) : "",
       icon: DollarSign,
       tone: "neutral" as const,
       path: "/admin/finance",
@@ -751,7 +821,7 @@ const Dashboard: React.FC = () => {
               const isDanger = k.tone === "danger";
               const isSuccess = k.tone === "success";
               const borderCls = isDanger
-                ? "border-l-4 border-red-500"
+                ? "border-l-[6px] border-red-500"
                 : isSuccess
                 ? "border-l-4 border-green-500"
                 : "border-l-4 border-movezy-500";
@@ -771,16 +841,22 @@ const Dashboard: React.FC = () => {
                 <button
                   key={k.label}
                   onClick={() => navigate(k.path)}
-                  className={`group text-left bg-white rounded-xl shadow-sm hover:shadow-md transition p-5 ${borderCls}`}
+                  className={`group text-left rounded-xl shadow-sm hover:shadow-md transition p-6 ${borderCls} ${
+                    isDanger ? "bg-red-50/60" : "bg-white"
+                  }`}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconBg}`}>
                       <Icon className="w-5 h-5" />
                     </div>
                   </div>
-                  <div className={`text-3xl font-bold leading-tight mb-1 ${valueCls}`}>{k.value}</div>
-                  <div className="text-sm text-gray-600 font-medium">{k.label}</div>
-                  <div className={`text-xs mt-1 ${isDanger ? "text-red-500" : "text-gray-400"}`}>{k.hint}</div>
+                  <div className={`text-[32px] font-bold leading-none mb-1.5 ${valueCls}`}>{k.value}</div>
+                  <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold">{k.label}</div>
+                  {k.hint && (
+                    <div className={`text-xs mt-1.5 ${isDanger ? "text-red-600 font-medium" : "text-gray-500"}`}>
+                      {k.hint}
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -852,14 +928,36 @@ const Dashboard: React.FC = () => {
             <h2 className="text-lg font-bold text-gray-900">Action Center</h2>
             <p className="text-xs text-gray-500">Queues that need human or automated intervention.</p>
           </div>
-          <button
-            onClick={handleRunAutoAssign}
-            disabled={autoAssigning}
-            className="flex items-center gap-2 bg-movezy-600 hover:bg-movezy-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg px-3 py-1.5"
-          >
-            <Zap className="w-4 h-4" />
-            {autoAssigning ? "Assigning..." : "Run auto-assign"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAutoAssignOn((v) => !v)}
+              title={
+                autoAssignOn
+                  ? "Auto-assign runs on every refresh while this console is open"
+                  : "Auto-assign only runs when you press the button"
+              }
+              className={`flex items-center gap-2 text-sm font-semibold rounded-lg px-3 py-1.5 border ${
+                autoAssignOn
+                  ? "bg-green-50 border-green-300 text-green-700"
+                  : "bg-white border-gray-300 text-gray-600"
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  autoAssignOn ? "bg-green-500" : "bg-gray-400"
+                }`}
+              />
+              Auto-assign {autoAssignOn ? "ON" : "OFF"}
+            </button>
+            <button
+              onClick={handleRunAutoAssign}
+              disabled={autoAssigning}
+              className="flex items-center gap-2 bg-movezy-600 hover:bg-movezy-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg px-3 py-1.5"
+            >
+              <Zap className="w-4 h-4" />
+              {autoAssigning ? "Assigning..." : "Run now"}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -1174,6 +1272,22 @@ const Dashboard: React.FC = () => {
                       >
                         Reassign
                       </span>
+                      {/* Real tel: link — the same delayedOrders rows carry
+                          driverPhone (booking.controller delayedOrders), which
+                          the Action Center card already dials. Rendered only
+                          when a number is actually present. */}
+                      {o.driverPhone && (
+                        <>
+                          <span className="text-[11px] text-gray-300">·</span>
+                          <a
+                            href={`tel:${o.driverPhone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[11px] text-movezy-700 underline hover:text-movezy-900"
+                          >
+                            Call
+                          </a>
+                        </>
+                      )}
                     </div>
                   </button>
                 ))}
