@@ -25,6 +25,7 @@ import {
   updateCancellationReason,
   deleteCancellationReason,
   type CancellationReasonItem,
+  type CancellationSummary,
 } from "../services/api";
 
 // penaltyType/penaltyValue are live again: booking.controller.ts cancelBooking
@@ -45,6 +46,7 @@ interface FormData {
   penaltyType: "NONE" | "FIXED" | "PERCENTAGE";
   penaltyValue: number | string;
   sortOrder: number | string;
+  impactLevel: "HIGH" | "MEDIUM" | "LOW";
 }
 
 const initialFormData: FormData = {
@@ -56,11 +58,13 @@ const initialFormData: FormData = {
   penaltyType: "NONE",
   penaltyValue: 0,
   sortOrder: 0,
+  impactLevel: "MEDIUM",
 };
 
 const CancellationReasonManagement: React.FC = () => {
   const dialog = useDialog();
   const [reasons, setReasons] = useState<CancellationReasonItem[]>([]);
+  const [summary, setSummary] = useState<CancellationSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -93,6 +97,7 @@ const CancellationReasonManagement: React.FC = () => {
         applicableTo: filterApplicable !== "all" ? filterApplicable : undefined,
       });
       setReasons(res.data?.reasons || res.reasons || []);
+      setSummary(res.data?.summary ?? null);
       if (res.data?.pagination) {
         setPaginationMeta({
           total: res.data.pagination.total || 0,
@@ -133,6 +138,7 @@ const CancellationReasonManagement: React.FC = () => {
       applicableTo: item.applicableTo,
       isRefundable: item.isRefundable,
       refundPercentage: item.refundPercentage ?? 100,
+      impactLevel: item.impactLevel ?? "MEDIUM",
       penaltyType: item.penaltyType ?? "NONE",
       penaltyValue: item.penaltyValue ?? 0,
       sortOrder: item.sortOrder || 0,
@@ -257,6 +263,50 @@ const CancellationReasonManagement: React.FC = () => {
         </button>
       </div>
 
+      {/* Cancellation analytics — real figures from cancelled bookings. */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+          <div className="p-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+            <p className="text-xs font-medium text-gray-500 uppercase">Total Cancellations</p>
+            <p className="mt-1 text-2xl font-bold text-gray-800">{summary.totalCancellations}</p>
+          </div>
+          <div className="p-4 bg-white border border-gray-100 border-l-4 !border-l-red-500 shadow-sm rounded-2xl">
+            <p className="text-xs font-medium text-gray-500 uppercase">Cancellation Rate</p>
+            <p className="mt-1 text-2xl font-bold text-red-600">{summary.cancellationRate}%</p>
+            <p className="text-[11px] text-gray-400">of all bookings ever placed</p>
+          </div>
+          <div className="p-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+            <p className="text-xs font-medium text-gray-500 uppercase">Top Reason</p>
+            <p className="mt-1 text-sm font-bold text-gray-800 line-clamp-2">
+              {(() => {
+                const top = reasons.reduce<CancellationReasonItem | null>(
+                  (best, r) => ((r.usage?.count ?? 0) > (best?.usage?.count ?? 0) ? r : best),
+                  null,
+                );
+                return top && (top.usage?.count ?? 0) > 0
+                  ? `${top.reason} (${top.usage!.count})`
+                  : "—";
+              })()}
+            </p>
+          </div>
+          <div className="p-4 bg-white border border-gray-100 shadow-sm rounded-2xl">
+            <p className="text-xs font-medium text-gray-500 uppercase">Customer vs Driver</p>
+            <p className="mt-1 text-lg font-bold text-gray-800">
+              {summary.byUser} <span className="text-gray-400 text-sm">vs</span> {summary.byDriver}
+            </p>
+            <p className="text-[11px] text-gray-400">{summary.bySystem} system/admin</p>
+          </div>
+        </div>
+      )}
+
+      {/* Built-in auto actions — statements of real platform behaviour, not
+          per-reason switches: a driver cancellation already re-dispatches the
+          booking to other drivers automatically. No other auto-action exists
+          (payment-failed auto-retry is not built), so none is offered. */}
+      <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-800">
+        Auto action in effect: <span className="font-semibold">driver cancels → booking is automatically re-dispatched to nearby drivers</span> and the customer is notified.
+      </div>
+
       {/* KPI Strip. The old third card ("High Impact / Penalty-heavy") ranked
           rows by penaltyType/penaltyValue — config that no cancellation path
           reads — so it presented a policy the platform never applies. Removed. */}
@@ -322,6 +372,10 @@ const CancellationReasonManagement: React.FC = () => {
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Reason</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">For</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Refund</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Impact</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Used</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Stage</th>
+                <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Trend</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-left text-gray-500 uppercase">Status</th>
                 <th className="px-4 py-3 text-xs font-semibold tracking-wider text-right text-gray-500 uppercase">Actions</th>
               </tr>
@@ -379,6 +433,57 @@ const CancellationReasonManagement: React.FC = () => {
                       </div>
                     )}
                     <div className="mt-1 text-[10px] text-gray-400">Capped by the trip-stage ceiling in Fare Config</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${
+                      item.impactLevel === "HIGH"
+                        ? "bg-red-100 text-red-700"
+                        : item.impactLevel === "LOW"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-yellow-100 text-yellow-700"
+                    }`}>
+                      {item.impactLevel ?? "MEDIUM"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className="font-semibold text-gray-800">{item.usage?.count ?? 0}</span>
+                    {(item.usage?.count ?? 0) > 0 && (
+                      <div className="text-[10px] text-gray-400 mt-0.5">
+                        {item.usage!.byUser} customer · {item.usage!.byDriver} driver
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-[11px] text-gray-600">
+                    {(item.usage?.count ?? 0) > 0 ? (
+                      <>
+                        <div>Before assign: {item.usage!.beforeAssignment}</div>
+                        <div>After assign: {item.usage!.afterAssignment}</div>
+                        <div>In delivery: {item.usage!.duringDelivery}</div>
+                      </>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const last = item.usage?.last30 ?? 0;
+                      const prev = item.usage?.prev30 ?? 0;
+                      if (last === 0 && prev === 0)
+                        return <span className="text-xs text-gray-400">—</span>;
+                      if (last > prev)
+                        return (
+                          <span className="text-xs font-bold text-red-600" title={`${last} in the last 30 days vs ${prev} in the 30 before`}>
+                            ↑ {last - prev}
+                          </span>
+                        );
+                      if (last < prev)
+                        return (
+                          <span className="text-xs font-bold text-green-600" title={`${last} in the last 30 days vs ${prev} in the 30 before`}>
+                            ↓ {prev - last}
+                          </span>
+                        );
+                      return <span className="text-xs text-gray-500" title={`${last} in each of the last two 30-day windows`}>=</span>;
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${item.isActive ? "text-green-700 bg-green-100" : "text-yellow-700 bg-yellow-100"}`}>
@@ -505,6 +610,20 @@ const CancellationReasonManagement: React.FC = () => {
                     )}
                   </div>
                 </div>
+
+                  <div>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">Business Impact</label>
+                    <select
+                      value={formData.impactLevel}
+                      onChange={(e) => setFormData({ ...formData, impactLevel: e.target.value as FormData["impactLevel"] })}
+                      className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="HIGH">High — hurts revenue/trust directly</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="LOW">Low — routine</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">Triage label for this panel; it does not change refunds or fees.</p>
+                  </div>
 
                 {/* Cancellation fee. Withheld from the refund, never charged on
                     top of it: a customer who has not paid cannot be billed, so

@@ -521,10 +521,30 @@ export interface CancellationReasonItem {
   penaltyValue: number;
   isRefundable: boolean;
   refundPercentage: number;
+  impactLevel?: "HIGH" | "MEDIUM" | "LOW";
   isActive: boolean;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+  /// From the list endpoint's booking aggregation.
+  usage?: {
+    count: number;
+    byUser: number;
+    byDriver: number;
+    beforeAssignment: number;
+    afterAssignment: number;
+    duringDelivery: number;
+    last30: number;
+    prev30: number;
+  };
+}
+
+export interface CancellationSummary {
+  totalCancellations: number;
+  cancellationRate: number;
+  byUser: number;
+  byDriver: number;
+  bySystem: number;
 }
 
 export const fetchCancellationReasons = async (params?: { page?: number; limit?: number; search?: string; activeOnly?: string; applicableTo?: string }) => {

@@ -30,6 +30,7 @@ interface FormData {
   image: string;
   bgColor: string;
   description: string;
+  riskLevel: "HIGH" | "MEDIUM" | "LOW";
   sortOrder: number | string;
 }
 
@@ -40,6 +41,7 @@ const initialFormData: FormData = {
   bgColor: "#FFF3E0",
   description: "",
   sortOrder: 0,
+  riskLevel: "MEDIUM",
 };
 
 const presetColors = [
@@ -131,6 +133,7 @@ const ProhibitedItemManagement: React.FC = () => {
       image: item.image || "",
       bgColor: item.bgColor || "#FFF3E0",
       description: item.description || "",
+      riskLevel: (item as any).riskLevel ?? "MEDIUM",
       sortOrder: item.sortOrder || 0,
     });
     setIsEditing(true);
@@ -335,6 +338,15 @@ const ProhibitedItemManagement: React.FC = () => {
                       <div className="min-w-0">
                         <div className="font-medium text-gray-900 truncate">
                           {item.name}
+                          <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold align-middle ${
+                            (item as any).riskLevel === "HIGH"
+                              ? "bg-red-100 text-red-700"
+                              : (item as any).riskLevel === "LOW"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-yellow-100 text-yellow-700"
+                          }`}>
+                            {(item as any).riskLevel ?? "MEDIUM"}
+                          </span>
                         </div>
                         {item.description && (
                           <div className="text-xs text-gray-500 mt-0.5 truncate max-w-[220px]">
@@ -530,6 +542,23 @@ const ProhibitedItemManagement: React.FC = () => {
                   placeholder="Additional description..."
                 />
               </div>
+
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-700">Risk Level</label>
+                  <select
+                    value={formData.riskLevel}
+                    onChange={(e) => setFormData({ ...formData, riskLevel: e.target.value as FormData["riskLevel"] })}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="HIGH">High — dangerous (weapons, explosives)</option>
+                    <option value="MEDIUM">Medium — fragile/handling risk</option>
+                    <option value="LOW">Low — restricted with conditions</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Triage label. Every item today acts as "show warning" — the app lists
+                    them before booking; no automated detection or blocking exists.
+                  </p>
+                </div>
 
               {/* Sort Order */}
               <div>

@@ -111,7 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: "addon-services", label: "Add-on Services", icon: Wrench },
         { id: "cancellation-reasons", label: "Cancellation Reasons", icon: Ban },
         { id: "prohibited-items", label: "Prohibited Items", icon: Ban },
-        { id: "master-data", label: "Master Data", icon: Database },
+        { id: "master-data", label: "System Configuration", icon: Database },
         { id: "driver-instructions", label: "Driver Instructions", icon: FileText },
         { id: "cms", label: "Content & Policies", icon: FileText },
       ],

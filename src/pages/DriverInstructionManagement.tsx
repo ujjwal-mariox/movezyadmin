@@ -27,12 +27,14 @@ import {
 interface FormData {
   text: string;
   icon: string;
+  instructionType: "MANDATORY" | "ADVISORY";
   sortOrder: number | string;
 }
 
 const initialFormData: FormData = {
   text: "",
   icon: "📋",
+  instructionType: "ADVISORY",
   sortOrder: 0,
 };
 
@@ -118,6 +120,7 @@ const DriverInstructionManagement: React.FC = () => {
   const handleEdit = (item: DriverInstructionItem) => {
     setFormData({
       text: item.text,
+      instructionType: (item as any).instructionType ?? "ADVISORY",
       icon: item.icon || "📋",
       sortOrder: item.sortOrder || 0,
     });
@@ -308,6 +311,16 @@ const DriverInstructionManagement: React.FC = () => {
                         <div className="min-w-0">
                           <div className="font-medium text-gray-900 text-sm">
                             {item.text}
+                            <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold align-middle ${
+                              (item as any).instructionType === "MANDATORY"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}>
+                              {(item as any).instructionType === "MANDATORY" ? "MANDATORY" : "ADVISORY"}
+                            </span>
+                            <span className="ml-2 text-[10px] text-gray-400 align-middle" title="Bumped on every edit">
+                              v{(item as any).version ?? 1}
+                            </span>
                           </div>
                           <div className="text-[11px] text-gray-400 mt-0.5">Sort #{item.sortOrder || 0}</div>
                         </div>
@@ -432,6 +445,23 @@ const DriverInstructionManagement: React.FC = () => {
                   placeholder="e.g. Be on time for every pickup"
                 />
               </div>
+
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-700">Instruction Type</label>
+                  <select
+                    value={formData.instructionType}
+                    onChange={(e) => setFormData({ ...formData, instructionType: e.target.value as FormData["instructionType"] })}
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="ADVISORY">Advisory — guidance</option>
+                    <option value="MANDATORY">Mandatory — must follow</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Display semantics in the driver app. No enforcement pipeline
+                    (checklists, proof, penalties) exists yet — building one is a
+                    separate project.
+                  </p>
+                </div>
 
               {/* Sort Order */}
               <div>
