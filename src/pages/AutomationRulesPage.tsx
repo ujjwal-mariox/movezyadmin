@@ -24,6 +24,7 @@ import {
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import { useDialog } from "../components/Layout/Dialog";
+import { fetchAppSettings, upsertAppSetting } from "../services/api";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
@@ -127,6 +128,45 @@ const AutomationRulesPage: React.FC = () => {
   // Category filter
   const [category, setCategory] = useState<"ALL" | "OPERATIONAL" | "COMPLIANCE" | "FINANCE" | "COMMUNICATION">("ALL");
   const [previewRule, setPreviewRule] = useState<any>(null);
+
+  // Master engine switch — the emergency stop. The backend reads the
+  // automation_engine_enabled setting fresh on every run, so flipping this
+  // takes effect on the next tick without a deploy. Absent setting = ON.
+  const [engineOn, setEngineOn] = useState<boolean | null>(null);
+  const [engineSaving, setEngineSaving] = useState(false);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetchAppSettings();
+        const items = res?.data?.settings ?? res?.settings ?? [];
+        const row = Array.isArray(items)
+          ? items.find((i: any) => i.key === "automation_engine_enabled")
+          : null;
+        setEngineOn(row ? !(row.value === false || row.value === "false") : true);
+      } catch {
+        setEngineOn(null); // unknown — the toggle shows an unknown state
+      }
+    })();
+  }, []);
+  const toggleEngine = async () => {
+    if (engineOn === null || engineSaving) return;
+    const next = !engineOn;
+    setEngineSaving(true);
+    try {
+      await upsertAppSetting({
+        key: "automation_engine_enabled",
+        value: next,
+        type: "BOOLEAN",
+        category: "automation",
+        description: "Master switch for the automation rule engine",
+      });
+      setEngineOn(next);
+    } catch {
+      // Leave state untouched — a failed write must not show a false OFF.
+    } finally {
+      setEngineSaving(false);
+    }
+  };
 
   const categorizeRule = (rule: any): "OPERATIONAL" | "COMPLIANCE" | "FINANCE" | "COMMUNICATION" => {
     const action = String(rule?.action?.type || "").toLowerCase();
@@ -326,6 +366,29 @@ const AutomationRulesPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={toggleEngine}
+            disabled={engineOn === null || engineSaving}
+            title={
+              engineOn === null
+                ? "Engine state unknown (settings unreadable)"
+                : engineOn
+                  ? "Engine is running — click to stop all automations on the next tick"
+                  : "Engine is stopped — no rule will fire until re-enabled"
+            }
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border disabled:opacity-60 ${
+              engineOn === null
+                ? "bg-gray-50 border-gray-200 text-gray-500"
+                : engineOn
+                  ? "bg-green-50 border-green-300 text-green-700"
+                  : "bg-red-50 border-red-300 text-red-700"
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${
+              engineOn === null ? "bg-gray-400" : engineOn ? "bg-green-500 animate-pulse" : "bg-red-500"
+            }`} />
+            {engineSaving ? "Saving…" : engineOn === null ? "Engine ?" : engineOn ? "Engine ON" : "Engine OFF"}
+          </button>
           <button onClick={openCreateForm} className="flex items-center gap-2 px-4 py-2 bg-movezy-600 text-white rounded-lg hover:bg-movezy-700 transition-colors text-sm font-medium">
             <Plus className="w-4 h-4" />
             Create Rule
