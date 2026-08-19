@@ -196,6 +196,14 @@ const AccountsTab: React.FC = () => {
     suspended: enterprises.filter((e) => e.status === "SUSPENDED").length,
   };
 
+  // Completed revenue across this page's enterprises. Labeled page-scoped —
+  // the list endpoint aggregates per page, and inventing a platform-wide
+  // share would need a total-revenue denominator this page doesn't load.
+  const revenueOnPage = enterprises.reduce(
+    (sum, e) => sum + (e.completedRevenue || 0),
+    0,
+  );
+
   // Credit-risk & revenue derived metrics from loaded page
   const creditRiskEnterprises = enterprises.filter((e) => {
     if (e.status !== "APPROVED" || !e.creditLimit || e.creditLimit <= 0) return false;
@@ -302,7 +310,7 @@ const AccountsTab: React.FC = () => {
   return (
     <>
       {/* Top Strip — Enterprise KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
           <div className="flex items-center justify-between">
             <div>
@@ -382,6 +390,26 @@ const AccountsTab: React.FC = () => {
             </div>
           </div>
         </div>
+
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-l-4 border-gray-100 !border-l-green-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 flex items-center gap-1.5">
+                <TrendingUp className="w-3.5 h-3.5 text-green-600" />
+                Revenue Contribution
+              </p>
+              <p className="text-3xl font-bold text-green-600 mt-1">
+                {fmt(revenueOnPage)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Completed orders · this page
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+              <IndianRupee className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filters + Add button */}
@@ -417,16 +445,16 @@ const AccountsTab: React.FC = () => {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {["Company", "Contact", "GSTIN", "Status", "Credit", "Discount", "Actions"].map((h) => (
+                {["Company", "Contact", "Orders", "Revenue", "Status", "Credit", "Outstanding", "Discount", "Actions"].map((h) => (
                   <th key={h} className="text-left px-6 py-4 text-sm font-semibold text-gray-600">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">Loading...</td></tr>
+                <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500">Loading...</td></tr>
               ) : enterprises.length === 0 ? (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">No enterprises found</td></tr>
+                <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500">No enterprises found</td></tr>
               ) : (
                 paginatedEnterprises.map((ent) => {
                   const usagePct = ent.creditLimit
@@ -451,7 +479,12 @@ const AccountsTab: React.FC = () => {
                       <p className="text-gray-800">{ent.contactPerson}</p>
                       <p className="text-sm text-gray-500">{ent.phone}</p>
                     </td>
-                    <td className="px-6 py-4"><span className="font-mono text-sm text-gray-600">{ent.gstin || "-"}</span></td>
+                    <td className="px-6 py-4">
+                      <span className="text-gray-800 font-medium">{ent.orderCount ?? 0}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-gray-800">{fmt(ent.completedRevenue || 0)}</span>
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(ent.status)}`}>{ent.status}</span>
                     </td>
@@ -464,6 +497,13 @@ const AccountsTab: React.FC = () => {
                               style={{ width: `${Math.min(((ent.usedCredit || 0) / (ent.creditLimit || 1)) * 100, 100)}%` }} />
                           </div>
                         </div>
+                      ) : <span className="text-gray-400">-</span>}
+                    </td>
+                    <td className="px-6 py-4">
+                      {ent.status === "APPROVED" ? (
+                        <span className={`text-sm font-medium ${(ent.usedCredit || 0) > 0 ? "text-orange-600" : "text-gray-500"}`}>
+                          {fmt(ent.usedCredit || 0)}
+                        </span>
                       ) : <span className="text-gray-400">-</span>}
                     </td>
                     <td className="px-6 py-4"><span className="text-gray-800">{ent.discountPercentage || 0}%</span></td>

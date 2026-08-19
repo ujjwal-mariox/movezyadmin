@@ -60,6 +60,9 @@ export interface AppUser {
 
 // Enterprise Types
 export interface Enterprise {
+  /// Page-scoped booking join from the list endpoint.
+  orderCount?: number;
+  completedRevenue?: number;
   _id: string;
   companyName: string;
   gstin?: string;

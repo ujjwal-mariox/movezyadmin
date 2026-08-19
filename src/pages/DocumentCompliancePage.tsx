@@ -23,6 +23,7 @@ import {
 import { usePagination } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import { useDialog } from "../components/Layout/Dialog";
+import { automationApi } from "../services/admin-api";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getToken = () => localStorage.getItem("adminToken");
@@ -235,9 +236,21 @@ const DocumentCompliancePage: React.FC = () => {
     "all",
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   const [profileDriver, setProfileDriver] = useState<DriverDoc | null>(null);
 
-  // Automation rules state (client-side; persist to backend later)
+  // Automation rules, persisted as real AutomationRule documents evaluated by
+  // the backend engine's document_expiry trigger (licence expiry — the one
+  // KYC document that carries a date). The block rule follows the engine's
+  // own destructive-action policy: it runs DRY-RUN (audit-logged, not
+  // applied) unless enforce is set on the rule.
+  const RULE_NAMES = {
+    notify: "Compliance: notify before licence expiry",
+    block: "Compliance: block driver after licence expiry",
+  };
+  const [rulesSaving, setRulesSaving] = useState(false);
+  const [rulesNotice, setRulesNotice] = useState<string | null>(null);
+  const [ruleIds, setRuleIds] = useState<{ notify?: string; block?: string }>({});
   const [rules, setRules] = useState({
     notifyBeforeDays: 3,
     blockIfExpiredDays: 2,
@@ -245,6 +258,86 @@ const DocumentCompliancePage: React.FC = () => {
     notifyBefore: true,
     autoBlock: true,
   });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await automationApi.getRules();
+        const list = res?.data?.rules ?? res?.data ?? [];
+        if (!Array.isArray(list)) return;
+        const notify = list.find((r: any) => r.name === RULE_NAMES.notify);
+        const block = list.find((r: any) => r.name === RULE_NAMES.block);
+        setRuleIds({ notify: notify?._id, block: block?._id });
+        setRules((prev) => ({
+          ...prev,
+          notifyBefore: notify ? !!notify.isActive : prev.notifyBefore,
+          notifyBeforeDays: notify?.trigger?.threshold ?? prev.notifyBeforeDays,
+          autoBlock: block ? !!block.isActive : prev.autoBlock,
+          blockIfExpiredDays:
+            block?.trigger?.threshold != null
+              ? Math.abs(block.trigger.threshold)
+              : prev.blockIfExpiredDays,
+        }));
+      } catch {
+        // Panel falls back to defaults; Save will create the rules.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveAutomationRules = useCallback(async () => {
+    setRulesSaving(true);
+    setRulesNotice(null);
+    try {
+      const notifyPayload = {
+        name: RULE_NAMES.notify,
+        description: `Warn a driver when their licence expires within ${rules.notifyBeforeDays} days`,
+        isActive: rules.notifyBefore,
+        trigger: {
+          type: "document_expiry",
+          metric: "days_to_licence_expiry",
+          operator: "lte",
+          threshold: rules.notifyBeforeDays,
+          timeWindowDays: 1,
+        },
+        action: { type: "warn_driver", params: { reason: "Driving licence expiring soon — please renew" } },
+        cooldownMinutes: 1440,
+      };
+      // Negative days-left = already expired that many days.
+      const blockPayload = {
+        name: RULE_NAMES.block,
+        description: `Suspend a driver whose licence has been expired more than ${rules.blockIfExpiredDays} days (dry-run unless enforced)`,
+        isActive: rules.autoBlock,
+        trigger: {
+          type: "document_expiry",
+          metric: "days_to_licence_expiry",
+          operator: "lte",
+          threshold: -rules.blockIfExpiredDays,
+          timeWindowDays: 1,
+        },
+        action: { type: "suspend_driver", params: { reason: "Driving licence expired" } },
+        cooldownMinutes: 1440,
+      };
+      const [notifyRes, blockRes] = await Promise.all([
+        ruleIds.notify
+          ? automationApi.updateRule(ruleIds.notify, notifyPayload)
+          : automationApi.createRule(notifyPayload),
+        ruleIds.block
+          ? automationApi.updateRule(ruleIds.block, blockPayload)
+          : automationApi.createRule(blockPayload),
+      ]);
+      setRuleIds({
+        notify: notifyRes?.data?.rule?._id ?? notifyRes?.data?._id ?? ruleIds.notify,
+        block: blockRes?.data?.rule?._id ?? blockRes?.data?._id ?? ruleIds.block,
+      });
+      setRulesNotice("Rules saved — the automation engine enforces them on its schedule.");
+    } catch (e: any) {
+      setRulesNotice(e?.message || "Couldn't save the rules.");
+    } finally {
+      setRulesSaving(false);
+    }
+  }, [rules, ruleIds]);
+
 
   const loadDrivers = useCallback(async () => {
     setLoading(true);
@@ -1242,7 +1335,18 @@ const DocumentCompliancePage: React.FC = () => {
               Automation Rules
             </p>
           </div>
-          <span className="text-xs text-gray-400">Saved locally — wire to backend to persist</span>
+          <div className="flex items-center gap-3">
+            {rulesNotice && (
+              <span className="text-xs text-gray-500">{rulesNotice}</span>
+            )}
+            <button
+              onClick={saveAutomationRules}
+              disabled={rulesSaving}
+              className="px-3 py-1.5 text-xs font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600 disabled:opacity-50"
+            >
+              {rulesSaving ? "Saving…" : "Save rules"}
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <RuleToggle
@@ -1287,14 +1391,16 @@ const DocumentCompliancePage: React.FC = () => {
               />
             }
           />
-          <RuleToggle
-            label="Auto-approve if verified source"
-            description="Skip manual review for DigiLocker / API-verified docs"
-            enabled={rules.autoApproveVerified}
-            onToggle={() =>
-              setRules((r) => ({ ...r, autoApproveVerified: !r.autoApproveVerified }))
-            }
-          />
+          <div className="border border-dashed border-gray-200 rounded-xl p-4 opacity-70">
+            <p className="text-sm font-medium text-gray-500">
+              Auto-approve if verified source
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Not available: no document carries a verified-source flag
+              (DigiLocker/API verification isn't integrated), so there is
+              nothing for this rule to check yet.
+            </p>
+          </div>
         </div>
       </div>
 

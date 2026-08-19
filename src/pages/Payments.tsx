@@ -220,8 +220,28 @@ const Payments: React.FC = () => {
     );
   }, [filtered, searchTerm]);
 
+  const failedOnPage = visiblePayments.filter((p) => p.status === "FAILED");
+
   return (
     <div className="p-6 space-y-6">
+      {/* Failed payments demand eyes — a FAILED row buried on page 3 is money
+          the platform thinks it collected and didn't. Scoped to the loaded
+          page, and the banner filters to them in one click. */}
+      {failedOnPage.length > 0 && statusFilter !== "FAILED" && (
+        <div className="p-3 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between gap-3">
+          <p className="text-sm font-medium text-red-700">
+            {failedOnPage.length} failed payment{failedOnPage.length === 1 ? "" : "s"} on this page —
+            ₹{failedOnPage.reduce((s2, p2) => s2 + (p2.amount || 0), 0).toLocaleString("en-IN")} not collected
+          </p>
+          <button
+            onClick={() => setStatusFilter("FAILED")}
+            className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 flex-shrink-0"
+          >
+            Review failed
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
