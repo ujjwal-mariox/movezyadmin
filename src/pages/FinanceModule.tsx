@@ -36,6 +36,7 @@ import {
   BarChart,
   Bar,
 } from "recharts";
+import { initialChartSize } from "../utils/chart";
 import { enhancedFinanceApi, enterpriseCreditApi, enhancedDriverApi } from "../services/admin-api";
 import {
   fetchPayouts,
@@ -63,6 +64,36 @@ const fetchApi = async (endpoint: string) => {
   });
   if (!res.ok) throw new Error("API error");
   return res.json();
+};
+
+/**
+ * Turn an export payload into a downloaded CSV. Shared with the standalone
+ * Payout Approvals page so both routes export identically.
+ * Returns false when there was nothing to write.
+ */
+export const rowsToCsvDownload = (rows: any[], type: string): boolean => {
+  if (!rows || rows.length === 0) return false;
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(","),
+    ...rows.map((r: any) =>
+      headers.map((h) => JSON.stringify(r[h] ?? "")).join(","),
+    ),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `movezy_${type}_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  return true;
+};
+
+/** Fetch + download one of the server-side finance exports. */
+export const exportFinanceCsv = async (type: string): Promise<boolean> => {
+  const result = await fetchApi(`/admin/finance/export?type=${type}&format=csv`);
+  return rowsToCsvDownload(result.data?.rows || result.data?.data || [], type);
 };
 
 const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"];
@@ -304,16 +335,9 @@ const FinanceModule: React.FC = () => {
         : await fetchApi(`/admin/finance/export?type=${type}&format=csv`);
 
       const rows = result.data?.rows || result.data?.data || [];
-      if (rows.length === 0) { await dialog.alert({ title: "No data", message: "There is no data to export for the selected range.", tone: "info" }); return; }
-      const headers = Object.keys(rows[0]);
-      const csv = [headers.join(","), ...rows.map((r: any) => headers.map((h) => JSON.stringify(r[h] ?? "")).join(","))].join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `movezy_${type}_export_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (!rowsToCsvDownload(rows, type)) {
+        await dialog.alert({ title: "No data", message: "There is no data to export for the selected range.", tone: "info" });
+      }
     } catch {
       await dialog.alert({ title: "Export failed", message: "We couldn't generate the export. Please try again.", tone: "danger" });
     }
@@ -841,7 +865,7 @@ const FinanceModule: React.FC = () => {
                     </p>
                   ) : (
                     <div className="h-72">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" initialDimension={initialChartSize(288)}>
                         <AreaChart data={dailySeries} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                           <defs>
                             <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
@@ -881,7 +905,7 @@ const FinanceModule: React.FC = () => {
                   ) : (
                     <>
                       <div className="h-56">
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" initialDimension={initialChartSize(224)}>
                           <RechartsPie>
                             <Pie
                               data={paymentMethodRows.map((pm: any) => ({ name: pm._id || "Other", value: pm.total }))}
@@ -1120,7 +1144,7 @@ const FinanceModule: React.FC = () => {
                     Unpaid invoices raised in the last 90 days, by age
                   </p>
                   <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" initialDimension={initialChartSize(256)}>
                       <BarChart data={agingBuckets}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                         <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
@@ -1319,7 +1343,7 @@ interface DriverEarningsRow {
  * records the UTR. Rejecting refunds the customer's coins, so it is safe to
  * reject anything that looks wrong.
  */
-const CoinPayoutsSection: React.FC = () => {
+export const CoinPayoutsSection: React.FC = () => {
   const dialog = useDialog();
   const [payouts, setPayouts] = useState<CoinPayoutItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1585,7 +1609,7 @@ const CoinPayoutsSection: React.FC = () => {
   );
 };
 
-const SmartPayoutsSection: React.FC<{
+export const SmartPayoutsSection: React.FC<{
   onExport: () => void;
   payouts: PayoutItem[];
   pendingAmount: number | null;

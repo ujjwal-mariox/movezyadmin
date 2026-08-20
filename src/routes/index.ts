@@ -158,8 +158,8 @@ export const adminRoutes = [
     element: FinanceModule,
   },
   {
-    // Direct landing on the payout approval queues (FinanceModule reads ?tab=,
-    // and PayoutApprovals just redirects there).
+    // The approval queues own this route. /admin/finance?tab=payouts still
+    // shows them too, for anyone holding that link.
     path: "payouts",
     element: PayoutApprovals,
   },

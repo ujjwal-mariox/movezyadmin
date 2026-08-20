@@ -168,7 +168,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     if (!isAuthenticated) return;
     inactivityTimerRef.current = setTimeout(() => {
-      console.log("[Auth] Auto-logout due to inactivity");
       performLogout();
       window.location.href = "/login";
     }, INACTIVITY_TIMEOUT);

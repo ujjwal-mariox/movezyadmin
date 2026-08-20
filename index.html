@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="shortcut icon" href="logo.png" type="image/x-icon">
+    <!-- Absolute: a relative href resolves against the current route, so every
+         /admin/* page asked for /admin/logo.png and 404'd. -->
+    <link rel="shortcut icon" href="/logo.png" type="image/png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Movezy Admin Panel - Speed Meets Reliability</title>
   </head>

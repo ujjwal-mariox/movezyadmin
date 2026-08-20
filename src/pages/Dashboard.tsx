@@ -46,6 +46,7 @@ import {
   Pie,
   Legend,
 } from "recharts";
+import { initialChartSize } from "../utils/chart";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -1475,7 +1476,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="h-40">
               {orderBreakdown ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" initialDimension={initialChartSize(160)}>
                   <BarChart data={orderBreakdown} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#F3F4F6" />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6B7280" }} />
@@ -1512,7 +1513,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="h-40">
               {driverBreakdown ? (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" initialDimension={initialChartSize(160)}>
                   <PieChart>
                     <Pie
                       data={driverBreakdown}

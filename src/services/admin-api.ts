@@ -3,6 +3,20 @@ import { dialog } from "../components/Layout/Dialog";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 
+/*
+ * There is deliberately no per-request console tracing here.
+ *
+ * This wrapper used to log the URL, a slice of the session JWT, and the status
+ * of every single call. The token line was the serious one — that is a live
+ * credential, written somewhere it gets screenshotted and pasted into bug
+ * reports. The other two were merely noise: the browser's Network tab already
+ * shows every request with its status, timing, headers and body, so the logs
+ * added nothing and buried the messages that do matter.
+ *
+ * Real failures below still log via console.error, and those are worth keeping:
+ * when an admin sends us their console, that is the part we need.
+ */
+
 // Helper function to get auth token
 const getAuthToken = () => localStorage.getItem("adminToken");
 
@@ -16,9 +30,6 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
     throw new Error("No authentication token. Please login.");
   }
 
-  console.log(`[API] Calling: ${API_URL}${endpoint}`);
-  console.log(`[API] Token (first 50 chars): ${token.substring(0, 50)}...`);
-
   try {
     const response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
@@ -28,8 +39,6 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
         ...options.headers,
       },
     });
-
-    console.log(`[API] Response status: ${response.status}`);
 
     // Handle 401 Unauthorized - token expired or invalid
     if (response.status === 401) {
