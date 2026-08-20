@@ -917,17 +917,20 @@ const Dashboard: React.FC = () => {
             label: "Open Tickets",
             value: totals.openTickets !== null ? totals.openTickets : NO_VALUE,
             hint: "Open + in-progress support tickets",
-            // Deliberately unfiltered: this card counts OPEN + IN_PROGRESS
-            // together, and the list filters one status at a time — landing on
-            // ?status=OPEN would show fewer rows than the number just clicked.
-            // The urgent card below is the one that deep-links.
-            path: "/admin/support",
+            // Lands on exactly the rows this number counts. The list used to
+            // filter one status at a time, so this tile had to link to the
+            // unfiltered page (RESOLVED and CLOSED rows included); the API and
+            // the filter now accept the combined slice.
+            path: "/admin/support?status=OPEN,IN_PROGRESS",
           },
           {
             label: "Pending Driver Verifications",
             value: totals.pendingVerification !== null ? totals.pendingVerification : NO_VALUE,
             hint: "Documents awaiting review",
-            path: "/admin/riders?status=document_not_complete",
+            // Matches this tile's own count (documents_uploaded +
+            // under_verification). It used to link to document_not_complete,
+            // a superset that also pulls in draft/vehicle_added/rejected.
+            path: "/admin/riders?status=pending_verification",
           },
         ].map((c) => (
           <button

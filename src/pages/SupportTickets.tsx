@@ -117,7 +117,16 @@ const SupportTickets: React.FC = () => {
   const urlTicketPriority = (urlParams.get("priority") || "").toUpperCase();
   const urlTicketType = (urlParams.get("type") || "").toUpperCase();
   const [statusFilter, setStatusFilter] = useState<string>(
-    ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"].includes(urlTicketStatus)
+    [
+      "OPEN",
+      "IN_PROGRESS",
+      "WAITING_FOR_USER",
+      "RESOLVED",
+      "CLOSED",
+      // Combined slice, so the dashboard's OPEN+IN_PROGRESS tile can deep-link
+      // to exactly the rows it counted.
+      "OPEN,IN_PROGRESS",
+    ].includes(urlTicketStatus)
       ? urlTicketStatus
       : "ALL",
   );
@@ -593,6 +602,10 @@ const SupportTickets: React.FC = () => {
                 className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
               >
                 <option value="ALL">All Status</option>
+                {/* Matches the dashboard's "Open Tickets" figure, which counts
+                    OPEN + IN_PROGRESS — so clicking that tile lands on exactly
+                    the rows it counted. */}
+                <option value="OPEN,IN_PROGRESS">Open + In Progress</option>
                 <option value="OPEN">Open</option>
                 <option value="IN_PROGRESS">In Progress</option>
                 <option value="WAITING_FOR_USER">Waiting</option>

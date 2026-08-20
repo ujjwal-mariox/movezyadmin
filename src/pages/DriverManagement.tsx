@@ -57,7 +57,14 @@ type DriverStatus =
   | "rejected"
   | "suspended";
 
-type ApprovalFilter = "all" | "approved" | "document_not_complete" | "blocked";
+type ApprovalFilter =
+  | "all"
+  | "approved"
+  | "document_not_complete"
+  // Exactly the set the dashboard tile counts (documents_uploaded +
+  // under_verification), so its link lands on the number it advertised.
+  | "pending_verification"
+  | "blocked";
 type AccountFilter = "all" | "active" | "inactive" | "deleted";
 
 interface DriverBankDetails {
@@ -391,7 +398,10 @@ const DriverManagement: React.FC = () => {
   const [urlParams] = useSearchParams();
   const urlApproval = urlParams.get("status") as ApprovalFilter | null;
   const [statusFilter, setStatusFilter] = useState<ApprovalFilter>(
-    urlApproval && ["all", "approved", "document_not_complete", "blocked"].includes(urlApproval)
+    urlApproval &&
+      ["all", "approved", "document_not_complete", "pending_verification", "blocked"].includes(
+        urlApproval,
+      )
       ? urlApproval
       : "all",
   );
@@ -1547,6 +1557,9 @@ const DriverManagement: React.FC = () => {
               <option value="approved">Approved</option>
               <option value="document_not_complete">
                 Document Not Complete
+              </option>
+              <option value="pending_verification">
+                Awaiting Verification
               </option>
               <option value="blocked">Blocked</option>
             </select>
