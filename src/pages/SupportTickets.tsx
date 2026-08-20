@@ -90,11 +90,15 @@ const subCategoriesByType: Record<TicketType, string[]> = {
   TECHNICAL: ["App Crash", "Login", "GPS", "Notification"],
 };
 
+// slaMin is only a FALLBACK for rows with no stored slaMinutes. It must match
+// the server's PRIORITY_SLA_MINUTES (support.service.ts) or the console shows
+// a different deadline than the one the ticket is actually judged against —
+// MEDIUM and LOW were double the server's figures here.
 const priorityConfig: Record<string, { dot: string; label: string; slaMin: number; pill: string }> = {
   URGENT: { dot: "bg-red-500", label: "Urgent", slaMin: 30, pill: "bg-red-100 text-red-800" },
   HIGH: { dot: "bg-orange-500", label: "High", slaMin: 120, pill: "bg-orange-100 text-orange-800" },
-  MEDIUM: { dot: "bg-yellow-500", label: "Medium", slaMin: 480, pill: "bg-yellow-100 text-yellow-800" },
-  LOW: { dot: "bg-green-500", label: "Low", slaMin: 1440, pill: "bg-green-100 text-green-800" },
+  MEDIUM: { dot: "bg-yellow-500", label: "Medium", slaMin: 240, pill: "bg-yellow-100 text-yellow-800" },
+  LOW: { dot: "bg-green-500", label: "Low", slaMin: 480, pill: "bg-green-100 text-green-800" },
 };
 
 const DEFAULT_QUICK_REPLIES = [
