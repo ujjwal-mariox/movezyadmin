@@ -42,6 +42,7 @@ import {
   fetchSupportStats,
   replySupportTicket,
   updateSupportTicketStatus,
+  updateSupportTicketPriority,
   escalateSupportTicket,
   assignSupportTicket,
   fetchQuickReplies,
@@ -369,6 +370,22 @@ const SupportTickets: React.FC = () => {
       if (t) setSelectedTicket(t as ExtTicket);
     } catch (e) {
       console.error("[Support] resolve failed", e);
+    }
+  };
+
+  // Correct the ticket's priority. The server derives an initial priority
+  // from the ticket text — a guess. The admin reading the thread knows better,
+  // and the SLA clock is recomputed at the new level server-side.
+  const handlePriorityChange = async (priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT") => {
+    if (!selectedTicket || priority === selectedTicket.priority) return;
+    try {
+      await updateSupportTicketPriority(selectedTicket.ticketId, priority);
+      await loadTickets();
+      const fresh = await fetchSupportTicket(selectedTicket.ticketId, channel);
+      const t = fresh?.data?.ticket ?? fresh?.ticket;
+      if (t) setSelectedTicket(t as ExtTicket);
+    } catch (e) {
+      console.error("[Support] priority change failed", e);
     }
   };
 
@@ -706,9 +723,21 @@ const SupportTickets: React.FC = () => {
                           {typeMeta[selectedTicket.type].label}
                         </span>
                       )}
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${getPriorityColor(selectedTicket.priority)}`}>
+                      {/* Editable: the derived priority is a guess from the
+                          ticket text; the admin reading it can correct it. */}
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${getPriorityColor(selectedTicket.priority)}`}>
                         <span className={`inline-block w-2 h-2 rounded-full mr-1 ${priorityConfig[selectedTicket.priority]?.dot}`} />
-                        {selectedTicket.priority}
+                        <select
+                          value={selectedTicket.priority}
+                          onChange={(e) => handlePriorityChange(e.target.value as "LOW" | "MEDIUM" | "HIGH" | "URGENT")}
+                          className="bg-transparent text-xs font-medium focus:outline-none cursor-pointer"
+                          title="Change priority — the SLA deadline is recomputed at the new level"
+                        >
+                          <option value="LOW">LOW</option>
+                          <option value="MEDIUM">MEDIUM</option>
+                          <option value="HIGH">HIGH</option>
+                          <option value="URGENT">URGENT</option>
+                        </select>
                       </span>
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(selectedTicket.status)}`}>
                         {selectedTicket.status.replace("_", " ")}

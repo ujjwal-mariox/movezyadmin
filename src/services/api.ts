@@ -931,6 +931,16 @@ export const updateSupportTicketStatus = async (
   return ensureOk(res);
 };
 
+export const updateSupportTicketPriority = async (
+  ticketId: string,
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT",
+) => {
+  const res = await fetch(`${API_URL}/admin/support/tickets/${ticketId}/priority`, {
+    method: "PUT", headers: getHeaders(), body: JSON.stringify({ priority }),
+  });
+  return ensureOk(res);
+};
+
 export const replySupportTicket = async (
   ticketId: string,
   data: { message: string; channel?: SupportChannel; attachments?: string[] },
