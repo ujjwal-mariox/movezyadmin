@@ -110,15 +110,27 @@ const SupportTickets: React.FC = () => {
   const [tickets, setTickets] = useState<ExtTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  // Deep-linkable filters, so dashboard tiles can land straight on the slice
+  // they advertise (?status=OPEN, ?priority=URGENT, ?type=PAYMENT).
   const [urlParams] = useSearchParams();
   const urlTicketStatus = (urlParams.get("status") || "").toUpperCase();
+  const urlTicketPriority = (urlParams.get("priority") || "").toUpperCase();
+  const urlTicketType = (urlParams.get("type") || "").toUpperCase();
   const [statusFilter, setStatusFilter] = useState<string>(
     ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"].includes(urlTicketStatus)
       ? urlTicketStatus
       : "ALL",
   );
-  const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
-  const [typeFilter, setTypeFilter] = useState<"ALL" | TicketType>("ALL");
+  const [priorityFilter, setPriorityFilter] = useState<string>(
+    ["LOW", "MEDIUM", "HIGH", "URGENT"].includes(urlTicketPriority)
+      ? urlTicketPriority
+      : "ALL",
+  );
+  const [typeFilter, setTypeFilter] = useState<"ALL" | TicketType>(
+    ["CUSTOMER", "DRIVER", "PAYMENT", "TECHNICAL"].includes(urlTicketType)
+      ? (urlTicketType as TicketType)
+      : "ALL",
+  );
   const [selectedTicket, setSelectedTicket] = useState<ExtTicket | null>(null);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");

@@ -162,7 +162,34 @@ interface TimelineEvent {
   module: string;
   description: string;
   createdAt: string;
+  // Audit entries carry what they acted on; used to deep-link a row.
+  targetId?: string;
+  targetType?: string;
 }
+
+/**
+ * Where an activity/timeline row leads. Prefers the audit entry's own target
+ * so a booking event opens THAT booking, then falls back to the module's list
+ * and finally the audit log — every row goes somewhere, which is the point of
+ * the client's "hyperlinks should be consistent across dashboard sections".
+ */
+const eventPath = (ev: TimelineEvent): string => {
+  const mod = (ev.module || "").toLowerCase();
+  const targetType = (ev.targetType || "").toLowerCase();
+  if (ev.targetId && targetType === "booking") {
+    return `/admin/orders?bookingId=${ev.targetId}`;
+  }
+  if (mod.includes("sos")) return "/admin/sos";
+  if (mod.includes("refund")) return "/admin/refunds";
+  if (mod.includes("payment") || mod.includes("payout") || mod.includes("finance")) {
+    return "/admin/payouts";
+  }
+  if (mod.includes("support") || mod.includes("ticket")) return "/admin/support";
+  if (mod.includes("driver") || mod.includes("rider")) return "/admin/riders";
+  if (mod.includes("user") || mod.includes("customer")) return "/admin/app-users";
+  if (mod.includes("booking") || mod.includes("order")) return "/admin/orders";
+  return "/admin/audit-logs";
+};
 
 interface DriverLocation {
   _id: string;
@@ -890,9 +917,10 @@ const Dashboard: React.FC = () => {
             label: "Open Tickets",
             value: totals.openTickets !== null ? totals.openTickets : NO_VALUE,
             hint: "Open + in-progress support tickets",
-            // No status filter: the card counts OPEN + IN_PROGRESS and the
-            // list can only filter one status at a time, so filtering to OPEN
-            // showed fewer rows than the number the admin just clicked.
+            // Deliberately unfiltered: this card counts OPEN + IN_PROGRESS
+            // together, and the list filters one status at a time — landing on
+            // ?status=OPEN would show fewer rows than the number just clicked.
+            // The urgent card below is the one that deep-links.
             path: "/admin/support",
           },
           {
@@ -1432,12 +1460,20 @@ const Dashboard: React.FC = () => {
               return { Icon: Activity, color: "text-gray-600", bg: "bg-gray-50" };
             };
 
+
             return (
               <div className="divide-y divide-gray-100 max-h-96 overflow-y-auto">
                 {filtered.map((ev) => {
                   const { Icon, color, bg } = eventVisuals(ev);
                   return (
-                    <div key={ev._id} className="p-3 hover:bg-gray-50 transition flex items-start gap-3">
+                    <button
+                      key={ev._id}
+                      // Every row now leads somewhere — these were plain divs,
+                      // the one dashboard section that looked interactive and
+                      // wasn't. Route by the module the event belongs to.
+                      onClick={() => navigate(eventPath(ev))}
+                      className="w-full text-left p-3 hover:bg-gray-50 transition flex items-start gap-3"
+                    >
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bg} ${color}`}>
                         <Icon className="w-4 h-4" />
                       </div>
@@ -1453,7 +1489,7 @@ const Dashboard: React.FC = () => {
                           <span>{formatTimeAgo(ev.createdAt)} ago</span>
                         </div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -1590,7 +1626,11 @@ const Dashboard: React.FC = () => {
                 : "text-gray-600 bg-gray-100";
 
               return (
-                <div key={event._id} className="flex items-center gap-3 p-3 hover:bg-gray-50 transition">
+                <button
+                  key={event._id}
+                  onClick={() => navigate(eventPath(event))}
+                  className="w-full text-left flex items-center gap-3 p-3 hover:bg-gray-50 transition"
+                >
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}>
                     <Icon className="w-4 h-4" />
                   </div>
@@ -1604,7 +1644,7 @@ const Dashboard: React.FC = () => {
                     </p>
                   </div>
                   <span className="text-xs text-gray-400 flex-shrink-0">{formatTimeAgo(event.createdAt)}</span>
-                </div>
+                </button>
               );
             })
           )}
