@@ -153,6 +153,10 @@ const FinanceModule: React.FC = () => {
   // show what the platform owes drivers (pendingAmount), not COD float.
   const [payouts, setPayouts] = useState<PayoutItem[]>([]);
   const [pendingPayoutAmount, setPendingPayoutAmount] = useState<number | null>(null);
+  // Whether the four-eyes rule (requester ≠ approver ≠ payer) is enforced.
+  // Comes from the API with each payout list; when off — the default for a
+  // single-admin operation — one admin can run the whole lifecycle.
+  const [fourEyes, setFourEyes] = useState(false);
   // Deep-linkable tabs (?tab=payouts). The approval queues used to be
   // reachable ONLY by clicking through to the 4th/5th tab by hand, which is
   // exactly how "payout approval section is not visible" happened.
@@ -186,6 +190,7 @@ const FinanceModule: React.FC = () => {
       }
       setPayouts(res.data?.payouts || []);
       setPendingPayoutAmount(numOrNull(res.data?.pendingAmount) ?? 0);
+      setFourEyes(res.data?.fourEyes === true);
       return true;
     } catch {
       setPendingPayoutAmount(null);
@@ -1197,6 +1202,7 @@ const FinanceModule: React.FC = () => {
               payouts={payouts}
               pendingAmount={pendingPayoutAmount}
               reloadPayouts={loadPayouts}
+              fourEyes={fourEyes}
             />
           )}
 
@@ -1257,7 +1263,7 @@ const FinanceModule: React.FC = () => {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-gray-100">
-                          <th className="text-left py-3 px-4 font-medium text-gray-500">Driver ID</th>
+                          <th className="text-left py-3 px-4 font-medium text-gray-500">Driver</th>
                           <th className="text-right py-3 px-4 font-medium text-gray-500">Unsettled cash</th>
                           <th className="text-right py-3 px-4 font-medium text-gray-500">Orders</th>
                           <th className="text-right py-3 px-4 font-medium text-gray-500">Actions</th>
@@ -1266,7 +1272,22 @@ const FinanceModule: React.FC = () => {
                       <tbody>
                         {codData.driverCODBalances.map((d: any, i: number) => (
                           <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="py-3 px-4 font-mono text-xs text-gray-600">{d._id}</td>
+                            {/* Name + short code; the raw ObjectId told an admin
+                                nothing about whose cash this is. Falls back to
+                                the id for legacy rows the lookup can't match. */}
+                            <td className="py-3 px-4">
+                              <span className="text-gray-800 font-medium">
+                                {d.driverName || d._id}
+                              </span>
+                              {d.driverCode && (
+                                <span className="ml-2 px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] font-mono font-semibold">
+                                  {d.driverCode}
+                                </span>
+                              )}
+                              {d.driverPhone && (
+                                <span className="block text-xs text-gray-400">{d.driverPhone}</span>
+                              )}
+                            </td>
                             <td className="py-3 px-4 text-right font-medium text-gray-800">
                               {money(d.floatingCash)}
                             </td>
@@ -1614,20 +1635,26 @@ export const SmartPayoutsSection: React.FC<{
   payouts: PayoutItem[];
   pendingAmount: number | null;
   reloadPayouts: () => Promise<boolean>;
-}> = ({ onExport, payouts, pendingAmount, reloadPayouts }) => {
+  /** Whether the API enforces requester ≠ approver ≠ payer (four-eyes). */
+  fourEyes?: boolean;
+}> = ({ onExport, payouts, pendingAmount, reloadPayouts, fourEyes = false }) => {
   const dialog = useDialog();
   const { user } = useAuth();
   const [selected, setSelected] = useState<DriverEarningsRow | null>(null);
 
-  // Separation of duties, as enforced by payout.controller.ts. Only an Admin
-  // requester counts — a driver-initiated withdrawal is never "your" request.
+  // Separation of duties, as enforced by payout.controller.ts — but only when
+  // the payout_four_eyes_enabled switch is on. When it's off (the default,
+  // for a single-admin operation) nothing is "own": every action is allowed.
+  // Only an Admin requester counts — a driver-initiated withdrawal is never
+  // "your" request.
   const meId = user?._id ? String(user._id) : "";
   const isOwnRequest = (p: PayoutItem) =>
+    fourEyes &&
     !!meId &&
     p.requestedByType === "Admin" &&
     String(p.requestedBy ?? "") === meId;
   const isOwnApproval = (p: PayoutItem) =>
-    !!meId && String(p.approvedBy ?? "") === meId;
+    fourEyes && !!meId && String(p.approvedBy ?? "") === meId;
 
   // Real driver earnings from bookings (was MOCK_DRIVER_EARNINGS).
   const [rows, setRows] = useState<DriverEarningsRow[]>([]);

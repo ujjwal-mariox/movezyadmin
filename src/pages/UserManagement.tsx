@@ -45,6 +45,8 @@ interface UserAddress {
 
 interface ApiUser {
   _id: string;
+  /** Short display ID ("CUS-0042") — searchable, read out on support calls. */
+  userCode?: string;
   fullName: string;
   email: string;
   profileImage?: string;
@@ -614,7 +616,7 @@ const UserManagement: React.FC = () => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && loadUsers(0)}
-            placeholder="Search by name, phone, or email..."
+            placeholder="Search by name, phone, email, or ID (CUS-0042)…"
             className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -685,8 +687,13 @@ const UserManagement: React.FC = () => {
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900">
+                          <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                             {user.fullName || "Unnamed User"}
+                            {user.userCode && (
+                              <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] font-mono font-semibold">
+                                {user.userCode}
+                              </span>
+                            )}
                           </p>
                           {user.gender && (
                             <p className="text-xs text-gray-500">
@@ -894,8 +901,13 @@ const UserManagement: React.FC = () => {
                   )}
                 </div>
                 <div>
-                  <h4 className="text-lg font-semibold text-gray-900">
+                  <h4 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                     {selectedUser.fullName || "Unnamed"}
+                    {selectedUser.userCode && (
+                      <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs font-mono font-semibold">
+                        {selectedUser.userCode}
+                      </span>
+                    )}
                   </h4>
                   <p className="text-sm text-gray-500">
                     {selectedUser.countryCode} {selectedUser.mobileNumber}

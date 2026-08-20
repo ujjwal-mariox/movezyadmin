@@ -28,6 +28,7 @@ const PayoutApprovals: React.FC = () => {
   const [tab, setTab] = useState<"drivers" | "coins">("drivers");
   const [payouts, setPayouts] = useState<PayoutItem[]>([]);
   const [pendingAmount, setPendingAmount] = useState<number | null>(null);
+  const [fourEyes, setFourEyes] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
 
@@ -44,6 +45,7 @@ const PayoutApprovals: React.FC = () => {
       }
       setPayouts(res.data?.payouts || []);
       setPendingAmount(Number(res.data?.pendingAmount ?? 0));
+      setFourEyes(res.data?.fourEyes === true);
       setLoadFailed(false);
       return true;
     } catch {
@@ -142,6 +144,7 @@ const PayoutApprovals: React.FC = () => {
           payouts={payouts}
           pendingAmount={pendingAmount}
           reloadPayouts={loadPayouts}
+          fourEyes={fourEyes}
         />
       ) : (
         <CoinPayoutsSection />

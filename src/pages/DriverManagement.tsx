@@ -142,6 +142,8 @@ interface DriverVehicle {
 
 interface Driver {
   _id: string;
+  /** Short display ID ("DRV-0042") — searchable, read out on support calls. */
+  driverCode?: string;
   fullName: string;
   email?: string;
   mobileNumber: string;
@@ -1520,7 +1522,7 @@ const DriverManagement: React.FC = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by name, phone, or email..."
+              placeholder="Search by name, phone, email, or ID (DRV-0042)…"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -1646,6 +1648,11 @@ const DriverManagement: React.FC = () => {
                       <p className="font-semibold text-gray-900 truncate">
                         {driver.fullName || "No Name"}
                       </p>
+                      {driver.driverCode && (
+                        <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10px] font-mono font-semibold">
+                          {driver.driverCode}
+                        </span>
+                      )}
                       <span
                         className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${
                           driver.isOnline
@@ -2164,9 +2171,16 @@ const DriverManagement: React.FC = () => {
                   </div>
                 )}
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">
-                    {selectedDriver.fullName}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-gray-900">
+                      {selectedDriver.fullName}
+                    </h2>
+                    {selectedDriver.driverCode && (
+                      <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs font-mono font-semibold">
+                        {selectedDriver.driverCode}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-3 mt-1">
                     <span className="text-sm text-gray-500">
                       {selectedDriver.countryCode} {selectedDriver.mobileNumber}
