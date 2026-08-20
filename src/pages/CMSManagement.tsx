@@ -3,7 +3,7 @@
 // Content & Policies index — lists the REAL legal content documents (Content
 // collection) with live version/updated info. The old page was unrouted and
 // rendered hardcoded "Updated 2 hours ago" cards.
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FileText,
@@ -189,18 +189,42 @@ const FaqManagerSection: React.FC = () => {
   const [order, setOrder] = useState("0");
   const [notice, setNotice] = useState<string | null>(null);
 
+  // The category ids the apps bucket FAQs into. This field is free text, and
+  // on a fresh database the datalist would be empty — so an operator inventing
+  // "Payment Issues" would write FAQs neither app ever shows. Offering the real
+  // ids as suggestions keeps admin copy and app tiles aligned.
+  // Driver tiles: payment · customer · app · accident · account.
+  // Customer tiles: driver_late · payment · account · cancellation · damaged · other.
+  const APP_FAQ_CATEGORIES = useMemo(
+    () => [
+      "payment",
+      "account",
+      "app",
+      "customer",
+      "accident",
+      "driver_late",
+      "cancellation",
+      "damaged",
+      "other",
+    ],
+    [],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchAdminFaqs();
       setFaqs(res?.data?.faqs || []);
-      setCategories(res?.data?.categories || []);
+      const existing: string[] = res?.data?.categories || [];
+      setCategories(
+        Array.from(new Set([...existing, ...APP_FAQ_CATEGORIES])).sort(),
+      );
     } catch {
       setFaqs([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [APP_FAQ_CATEGORIES]);
   useEffect(() => { load(); }, [load]);
 
   const openCreate = () => {
