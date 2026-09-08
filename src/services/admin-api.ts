@@ -922,7 +922,7 @@ export const vehicleTypesApi = {
     if (imageFile) {
       const formData = new FormData();
       Object.entries(data).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) formData.append(key, String(value));
+        if (value !== undefined && value !== null) formData.append(key, value instanceof Blob ? value : typeof value === "object" ? JSON.stringify(value) : String(value));
       });
       formData.append("image", imageFile);
       return fetchFormData("/admin/config/vehicle-types", formData, "POST");
@@ -938,7 +938,7 @@ export const vehicleTypesApi = {
     if (imageFile) {
       const formData = new FormData();
       Object.entries(data).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) formData.append(key, String(value));
+        if (value !== undefined && value !== null) formData.append(key, value instanceof Blob ? value : typeof value === "object" ? JSON.stringify(value) : String(value));
       });
       formData.append("image", imageFile);
       return fetchFormData(`/admin/config/vehicle-types/${id}`, formData, "PUT");
@@ -994,7 +994,7 @@ export const trainingApi = {
   create: (data: Record<string, any>, file?: File) => {
     const formData = new FormData();
     Object.entries(data).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) formData.append(key, String(value));
+      if (value !== undefined && value !== null) formData.append(key, value instanceof Blob ? value : typeof value === "object" ? JSON.stringify(value) : String(value));
     });
     if (file) formData.append("file", file);
     return fetchFormData("/admin/training", formData, "POST");
@@ -1004,7 +1004,7 @@ export const trainingApi = {
     if (file) {
       const formData = new FormData();
       Object.entries(data).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) formData.append(key, String(value));
+        if (value !== undefined && value !== null) formData.append(key, value instanceof Blob ? value : typeof value === "object" ? JSON.stringify(value) : String(value));
       });
       formData.append("file", file);
       return fetchFormData(`/admin/training/${id}`, formData, "PUT");
@@ -1450,6 +1450,95 @@ export const sessionApi = {
     if (params?.page) query.set("page", String(params.page));
     if (params?.status) query.set("status", params.status);
     return fetchWithAuth(`/admin/security/login-attempts?${query.toString()}`);
+  },
+};
+
+
+// ==================== COMPLIANCE (document expiry) ====================
+export interface ExpiryRow {
+  kind: "vehicle" | "driver";
+  driverId: string;
+  driverName: string;
+  driverCode?: string;
+  mobileNumber?: string;
+  vehicleId?: string;
+  vehicleNumber?: string;
+  doc: string;
+  docLabel: string;
+  expiryDate: string;
+  daysRemaining: number;
+  status: "expired" | "expiring" | "valid";
+  blocked: boolean;
+}
+
+export const complianceApi = {
+  /** Cached server summary of documents expiring within `days` (default 30). */
+  getExpirySummary: (days?: number) =>
+    fetchWithAuth(`/admin/compliance/expiry${days ? `?days=${days}` : ""}`),
+  /** Run the nightly reminder/enforcement job right now. */
+  runExpiryNow: () =>
+    fetchWithAuth("/admin/compliance/expiry/run", { method: "POST" }),
+  /** RC / insurance / PUC dates for one of a driver's vehicles (ISO strings or null to clear). */
+  updateVehicleDocuments: (
+    driverId: string,
+    vehicleId: string,
+    data: { rcExpiryDate?: string | null; insuranceExpiryDate?: string | null; pucExpiryDate?: string | null },
+  ) =>
+    fetchWithAuth(`/admin/drivers/${driverId}/vehicles/${vehicleId}/documents`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  updateDriverLicenceExpiry: (driverId: string, expiryDate: string) =>
+    fetchWithAuth(`/admin/drivers/${driverId}/licence-expiry`, {
+      method: "PUT",
+      body: JSON.stringify({ expiryDate }),
+    }),
+};
+
+// ==================== EXPORTS (Excel / PDF) ====================
+export interface ExportDatasetInfo {
+  key: string;
+  title: string;
+  scope: "finance" | "ops";
+  columns: string[];
+}
+
+export const exportsApi = {
+  list: () => fetchWithAuth("/admin/exports"),
+  /**
+   * Download a server-generated file. A plain <a href> can't carry the
+   * Bearer token, so the file is fetched with the header and handed to the
+   * browser as a blob.
+   */
+  download: async (
+    dataset: string,
+    format: "xlsx" | "pdf",
+    range?: { dateFrom?: string; dateTo?: string },
+  ): Promise<void> => {
+    const token = getAuthToken();
+    if (!token) throw new Error("No authentication token. Please login.");
+    const q = new URLSearchParams({ format });
+    if (range?.dateFrom) q.set("dateFrom", range.dateFrom);
+    if (range?.dateTo) q.set("dateTo", range.dateTo);
+    const res = await fetch(`${API_URL}/admin/exports/${dataset}?${q}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: "Export failed" }));
+      throw new Error(err.message || `Export failed (${res.status})`);
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match?.[1] || `movezy-${dataset}.${format}`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   },
 };
 

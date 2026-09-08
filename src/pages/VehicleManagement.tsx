@@ -22,6 +22,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { vehicleTypesApi } from "../services/admin-api";
+import CityRateCardsEditor, { type CityOverride } from "../components/Config/CityRateCardsEditor";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import { useDialog } from "../components/Layout/Dialog";
@@ -46,6 +47,15 @@ interface VehicleType {
   isActive: boolean;
   avgSpeedKmph?: number;
   loadTypes?: ("FRAGILE" | "HEAVY" | "LIQUID")[];
+  categoryCode?: "2W" | "3W" | "4W" | "HV";
+  lengthFt?: number | null;
+  breadthFt?: number | null;
+  heightFt?: number | null;
+  /// null = inherit the global value from Commission & Charges.
+  minimumFare?: number | null;
+  freeWaitingMinutes?: number | null;
+  commissionPercent?: number | null;
+  cityOverrides?: CityOverride[];
   /// Orders/revenue/avg-delivery attached by the list endpoint.
   usage?: {
     orders: number;
@@ -66,6 +76,14 @@ interface FormData {
   perMinuteRate: number | string;
   avgSpeedKmph: number | string;
   loadTypes: string[];
+  categoryCode: string;
+  lengthFt: number | string;
+  breadthFt: number | string;
+  heightFt: number | string;
+  minimumFare: number | string;
+  freeWaitingMinutes: number | string;
+  commissionPercent: number | string;
+  cityOverrides: CityOverride[];
   minDistanceKm: number | string;
   minRangeKm: number | string;
   maxRangeKm: number | string;
@@ -77,6 +95,14 @@ interface FormData {
 }
 
 const initialFormData: FormData = {
+  categoryCode: "",
+  lengthFt: "",
+  breadthFt: "",
+  heightFt: "",
+  minimumFare: "",
+  freeWaitingMinutes: "",
+  commissionPercent: "",
+  cityOverrides: [],
   name: "",
   description: "",
   maxWeightKg: 0,
@@ -186,6 +212,14 @@ const VehicleManagement: React.FC = () => {
       perMinuteRate: vehicleType.perMinuteRate,
       avgSpeedKmph: vehicleType.avgSpeedKmph ?? 25,
       loadTypes: vehicleType.loadTypes ?? [],
+      categoryCode: vehicleType.categoryCode || "",
+      lengthFt: vehicleType.lengthFt ?? "",
+      breadthFt: vehicleType.breadthFt ?? "",
+      heightFt: vehicleType.heightFt ?? "",
+      minimumFare: vehicleType.minimumFare ?? "",
+      freeWaitingMinutes: vehicleType.freeWaitingMinutes ?? "",
+      commissionPercent: vehicleType.commissionPercent ?? "",
+      cityOverrides: (vehicleType.cityOverrides ?? []).map((row) => ({ ...row, cities: [...(row.cities || [])] })),
       minDistanceKm: vehicleType.minDistanceKm || 1,
       minRangeKm: vehicleType.minRangeKm || 1,
       maxRangeKm: vehicleType.maxRangeKm || 100,
@@ -215,6 +249,14 @@ const VehicleManagement: React.FC = () => {
         perMinuteRate: Number(formData.perMinuteRate) || 0,
         avgSpeedKmph: Number(formData.avgSpeedKmph) || 25,
         loadTypes: formData.loadTypes,
+        categoryCode: formData.categoryCode || "",
+        lengthFt: formData.lengthFt === "" ? "" : Number(formData.lengthFt),
+        breadthFt: formData.breadthFt === "" ? "" : Number(formData.breadthFt),
+        heightFt: formData.heightFt === "" ? "" : Number(formData.heightFt),
+        minimumFare: formData.minimumFare === "" ? "" : Number(formData.minimumFare),
+        freeWaitingMinutes: formData.freeWaitingMinutes === "" ? "" : Number(formData.freeWaitingMinutes),
+        commissionPercent: formData.commissionPercent === "" ? "" : Number(formData.commissionPercent),
+        cityOverrides: formData.cityOverrides.filter((row) => row.cities.length > 0),
         minDistanceKm: Number(formData.minDistanceKm) || 0,
         minRangeKm: Number(formData.minRangeKm) || 0,
         maxRangeKm: Number(formData.maxRangeKm) || 0,
@@ -516,6 +558,25 @@ const VehicleManagement: React.FC = () => {
 
               {/* Card Body */}
               <div className="p-4 space-y-3">
+                {(vt.categoryCode || vt.lengthFt || (vt.cityOverrides?.length ?? 0) > 0) ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {vt.categoryCode ? (
+                      <span className="px-2 py-0.5 text-[11px] font-semibold text-gray-700 bg-gray-100 rounded-full">
+                        {vt.categoryCode}
+                      </span>
+                    ) : null}
+                    {vt.lengthFt && vt.breadthFt && vt.heightFt ? (
+                      <span className="px-2 py-0.5 text-[11px] text-gray-600 bg-gray-100 rounded-full">
+                        {vt.lengthFt} × {vt.breadthFt} × {vt.heightFt} ft
+                      </span>
+                    ) : null}
+                    {(vt.cityOverrides?.length ?? 0) > 0 ? (
+                      <span className="px-2 py-0.5 text-[11px] text-blue-700 bg-blue-50 rounded-full">
+                        {vt.cityOverrides!.length} city rate card{vt.cityOverrides!.length > 1 ? "s" : ""}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {/* Fare Info */}
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Base Fare</span>
@@ -795,6 +856,54 @@ const VehicleManagement: React.FC = () => {
                 />
               </div>
 
+              {/* Category & dimensions */}
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-700">
+                    Category
+                  </label>
+                  <select
+                    value={formData.categoryCode}
+                    onChange={(e) => setFormData({ ...formData, categoryCode: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Not set</option>
+                    <option value="2W">2W — Scooter / Bike</option>
+                    <option value="3W">3W — Auto / Tempo</option>
+                    <option value="4W">4W — Mini truck / Van</option>
+                    <option value="HV">Heavy vehicle</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    Partners registering a 2W pick Scooter or Bike with Petrol/Electric only.
+                  </p>
+                </div>
+                {(
+                  [
+                    ["lengthFt", "Length (ft)"],
+                    ["breadthFt", "Width (ft)"],
+                    ["heightFt", "Height (ft)"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <div key={key}>
+                    <label className="block mb-1 text-sm font-medium text-gray-700">{label}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={formData[key]}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          [key]: e.target.value === "" ? "" : Number(e.target.value),
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="—"
+                    />
+                  </div>
+                ))}
+              </div>
+
               {/* Weight & Image */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -915,6 +1024,51 @@ const VehicleManagement: React.FC = () => {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Per-vehicle charges (blank = inherit global) */}
+              <div className="pt-4 border-t border-gray-100">
+                <h3 className="mb-1 text-sm font-semibold text-gray-700">
+                  Minimum fare, free waiting &amp; commission
+                </h3>
+                <p className="mb-3 text-xs text-gray-500">
+                  Leave a field blank to inherit the global value from Commission &amp; Charges.
+                </p>
+                <div className="grid grid-cols-3 gap-4">
+                  {(
+                    [
+                      ["minimumFare", "Minimum fare (₹)", "1"],
+                      ["freeWaitingMinutes", "Free waiting (min)", "1"],
+                      ["commissionPercent", "Commission (%)", "0.5"],
+                    ] as const
+                  ).map(([key, label, step]) => (
+                    <div key={key}>
+                      <label className="block mb-1 text-sm font-medium text-gray-700">{label}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step={step}
+                        value={formData[key]}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            [key]: e.target.value === "" ? "" : Number(e.target.value),
+                          })
+                        }
+                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Inherit global"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* City rate cards */}
+              <div className="pt-4 border-t border-gray-100">
+                <CityRateCardsEditor
+                  value={formData.cityOverrides}
+                  onChange={(rows) => setFormData({ ...formData, cityOverrides: rows })}
+                />
               </div>
 
               {/* ETA + load types */}

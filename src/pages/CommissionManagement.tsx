@@ -7,18 +7,17 @@
 import React, { useEffect, useState } from "react";
 import {
   Percent,
-  Clock,
   Moon,
   CloudRain,
   TrendingUp,
   Save,
   RefreshCw,
   AlertTriangle,
-  IndianRupee,
   Undo2,
 } from "lucide-react";
 import { fetchFareConfig, updateFareConfig } from "../services/api";
-import type { FareConfigItem } from "../services/api";
+import type { FareConfigItem, SurgeWindow } from "../services/api";
+import SurgeWindowsEditor from "../components/Config/SurgeWindowsEditor";
 
 type Draft = Partial<FareConfigItem>;
 
@@ -37,17 +36,7 @@ type Rail = {
 const RAILS: Rail[] = [
   { key: "driverCommissionPercent", label: "Driver commission", min: 0, max: 50 },
   { key: "gstPercentage", label: "GST", min: 0, max: 28 },
-  { key: "insuranceFee", label: "Insurance fee", min: 0 },
-  { key: "minimumFare", label: "Minimum fare", min: 0 },
-  { key: "waitingChargePerMin", label: "Waiting charge", min: 0 },
-  { key: "freeWaitingMinutes", label: "Free waiting", min: 0 },
-  { key: "nightSurgeMultiplier", label: "Night surge multiplier", min: 1 },
-  { key: "nightSurgeStartHour", label: "Night surge start hour", min: 0, max: 23 },
-  { key: "nightSurgeEndHour", label: "Night surge end hour", min: 0, max: 23 },
   { key: "rainSurgeMultiplier", label: "Rain surge multiplier", min: 1 },
-  { key: "peakHourSurgeMultiplier", label: "Peak hour multiplier", min: 1 },
-  { key: "peakHourStart", label: "Peak hour start", min: 0, max: 23 },
-  { key: "peakHourEnd", label: "Peak hour end", min: 0, max: 23 },
   { key: "refundBeforeAssignPercent", label: "Refund before assignment", min: 0, max: 100 },
   { key: "refundAfterAssignPercent", label: "Refund after assignment", min: 0, max: 100 },
   { key: "refundAfterPickupPercent", label: "Refund after pickup", min: 0, max: 100 },
@@ -84,10 +73,13 @@ const CommissionManagement: React.FC = () => {
   const set = (key: keyof FareConfigItem, value: string) =>
     setDraft((d) => ({ ...(d || {}), [key]: value === "" ? "" : Number(value) }));
 
+  const setWindows = (key: "peakWindows" | "nightWindows", rows: SurgeWindow[]) =>
+    setDraft((d) => ({ ...(d || {}), [key]: rows }));
+
   const save = async () => {
     if (!draft) return;
 
-    const payload: Record<string, number> = {};
+    const payload: Record<string, unknown> = {};
     const blank: string[] = [];
     const invalid: string[] = [];
 
@@ -116,6 +108,21 @@ const CommissionManagement: React.FC = () => {
       }
       payload[rail.key] = n;
     }
+
+    // Surge windows: every row needs a sane multiplier and hours; labels are free text.
+    const cleanWindows = (rows: SurgeWindow[] | undefined, name: string): SurgeWindow[] =>
+      (rows || []).map((w, i) => {
+        const m = Number(w.multiplier);
+        if (!Number.isFinite(m) || m < 1 || m > 5)
+          invalid.push(`${name} window ${i + 1}: multiplier must be between 1 and 5`);
+        const sh = Number(w.startHour);
+        const eh = Number(w.endHour);
+        if (!Number.isInteger(sh) || sh < 0 || sh > 23 || !Number.isInteger(eh) || eh < 0 || eh > 23)
+          invalid.push(`${name} window ${i + 1}: hours must be 0–23`);
+        return { label: (w.label || "").trim(), startHour: sh, endHour: eh, multiplier: m };
+      });
+    payload.peakWindows = cleanWindows(draft.peakWindows, "Peak");
+    payload.nightWindows = cleanWindows(draft.nightWindows, "Night");
 
     if (blank.length) {
       setError(
@@ -292,62 +299,46 @@ const CommissionManagement: React.FC = () => {
             </>,
           )}
 
-          {card(
-            "Base Charges",
-            IndianRupee,
-            "text-emerald-500",
-            <>
-              {field("Minimum fare", "minimumFare", { suffix: "₹" })}
-              {field("Insurance fee (fixed)", "insuranceFee", {
-                suffix: "₹",
-                hint: "Percentage-priced insurance add-ons are configured in Add-on Services.",
-              })}
-            </>,
-          )}
+          <div className="md:col-span-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
+            Minimum fare, free waiting minutes and commission can also be set per vehicle type
+            (Operations → Vehicles), including city-specific rate cards; a vehicle type left blank
+            inherits the values here. Waiting beyond the free minutes is billed at the vehicle
+            type's per-minute rate, so there is no separate waiting charge.
+          </div>
 
           {card(
-            "Waiting",
-            Clock,
-            "text-orange-500",
-            <>
-              {field("Free waiting", "freeWaitingMinutes", {
-                suffix: "min",
-                hint: "Also shown to customers on the review screen — quoted and billed from the same value.",
-              })}
-              {field("Waiting charge", "waitingChargePerMin", { suffix: "₹/min" })}
-            </>,
+            "Peak Hours",
+            TrendingUp,
+            "text-rose-500",
+            <div className="md:col-span-2 space-y-3">
+              <p className="text-xs text-gray-400">
+                As many windows as you need, each with its own multiplier — e.g. Morning 8–10 AM
+                ×1.5, Evening 6–8 PM ×1.8. The first window also defines the driver Peak
+                Performer badge hours.
+              </p>
+              <SurgeWindowsEditor
+                value={draft?.peakWindows || []}
+                onChange={(rows) => setWindows("peakWindows", rows)}
+                placeholderLabel="e.g. Morning"
+              />
+            </div>,
           )}
 
           {card(
             "Night Surge",
             Moon,
             "text-indigo-500",
-            <>
-              {field("Multiplier", "nightSurgeMultiplier", {
-                suffix: "×",
-                hint: "1 = off",
-              })}
-              <div className="grid grid-cols-2 gap-3">
-                {field("From hour", "nightSurgeStartHour", { suffix: "0–23" })}
-                {field("To hour", "nightSurgeEndHour", { suffix: "0–23" })}
-              </div>
-            </>,
-          )}
-
-          {card(
-            "Peak Hours",
-            TrendingUp,
-            "text-rose-500",
-            <>
-              {field("Multiplier", "peakHourSurgeMultiplier", {
-                suffix: "×",
-                hint: "Also defines the window for the driver Peak Performer badge.",
-              })}
-              <div className="grid grid-cols-2 gap-3">
-                {field("From hour", "peakHourStart", { suffix: "0–23" })}
-                {field("To hour", "peakHourEnd", { suffix: "0–23" })}
-              </div>
-            </>,
+            <div className="md:col-span-2 space-y-3">
+              <p className="text-xs text-gray-400">
+                Windows may cross midnight (10 PM → 5 AM). Where a night window and a peak
+                window overlap, the higher multiplier applies — they never compound.
+              </p>
+              <SurgeWindowsEditor
+                value={draft?.nightWindows || []}
+                onChange={(rows) => setWindows("nightWindows", rows)}
+                placeholderLabel="e.g. Late night"
+              />
+            </div>,
           )}
 
           {card(

@@ -29,6 +29,7 @@ import {
   Award,
   GraduationCap,
   BarChart3,
+  Download,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
@@ -64,7 +65,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: "dashboard", label: "Dashboard", icon: Gauge },
         { id: "tracking", label: "Live Tracking", icon: MapPin },
-        { id: "sos", label: "SOS", icon: AlertTriangle },
       ],
     },
     {
@@ -74,7 +74,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: "riders", label: "Drivers", icon: Bike },
         { id: "vehicle-management", label: "Vehicles", icon: Truck },
         { id: "categories", label: "Delivery Categories", icon: Package },
-        { id: "compliance", label: "Document Compliance", icon: FileCheck },
       ],
     },
     {
@@ -85,6 +84,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
+      label: "Safety & Compliance",
+      items: [
+        { id: "sos", label: "SOS", icon: AlertTriangle },
+        { id: "compliance", label: "Document Compliance", icon: FileCheck },
+      ],
+    },
+    {
       label: "Finance",
       items: [
         { id: "finance", label: "Finance & Insights", icon: DollarSign },
@@ -92,6 +98,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         // unlabeled tabs — this entry lands directly on them.
         { id: "payouts", label: "Payout Approvals", icon: Wallet },
         { id: "reports", label: "Reports & BI", icon: BarChart3 },
+        { id: "exports", label: "Exports", icon: Download },
         { id: "payments", label: "Payments", icon: Wallet },
         { id: "wallet", label: "Wallet", icon: Wallet },
         { id: "refunds", label: "Refund Approval", icon: Wallet },

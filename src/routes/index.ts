@@ -44,6 +44,7 @@ const RefundApproval = lazy(() => import("../pages/RefundApproval"));
 const CommissionManagement = lazy(() => import("../pages/CommissionManagement"));
 const CMSManagement = lazy(() => import("../pages/CMSManagement"));
 const ReportsPage = lazy(() => import("../pages/ReportsPage"));
+const ExportsPage = lazy(() => import("../pages/ExportsPage"));
 
 export const authRoutes = [
   {
@@ -68,6 +69,10 @@ export const adminRoutes = [
   {
     path: "dashboard",
     element: Dashboard,
+  },
+  {
+    path: "exports",
+    element: ExportsPage,
   },
   {
     path: "app-users",

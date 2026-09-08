@@ -1,0 +1,129 @@
+import React from "react";
+import { Plus, Trash2 } from "lucide-react";
+import type { SurgeWindow } from "../../services/api";
+
+/**
+ * Multi-row surge editor: each row is a labelled hour window with its own
+ * multiplier ("Morning 8–10 AM ×1.5", "Evening 6–8 PM ×1.8"). Windows may
+ * cross midnight (22 → 5). When several windows cover the same hour the
+ * highest multiplier applies — they never compound.
+ */
+interface Props {
+  value: SurgeWindow[];
+  onChange: (rows: SurgeWindow[]) => void;
+  placeholderLabel?: string;
+  minMultiplier?: number;
+  maxMultiplier?: number;
+}
+
+const hourLabel = (h: number) => {
+  const n = ((h % 24) + 24) % 24;
+  const suffix = n < 12 ? "AM" : "PM";
+  const display = n % 12 === 0 ? 12 : n % 12;
+  return `${display} ${suffix}`;
+};
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+const SurgeWindowsEditor: React.FC<Props> = ({
+  value,
+  onChange,
+  placeholderLabel = "e.g. Morning",
+  minMultiplier = 1,
+  maxMultiplier = 5,
+}) => {
+  const update = (i: number, patch: Partial<SurgeWindow>) =>
+    onChange(value.map((w, idx) => (idx === i ? { ...w, ...patch } : w)));
+  const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i));
+  const add = () =>
+    onChange([...value, { label: "", startHour: 8, endHour: 10, multiplier: 1.5 }]);
+
+  return (
+    <div className="space-y-2">
+      {value.length === 0 && (
+        <p className="text-xs text-gray-400">No windows — normal pricing all day.</p>
+      )}
+      {value.map((w, i) => {
+        const wraps = w.endHour <= w.startHour;
+        return (
+          <div key={i} className="grid grid-cols-12 gap-2 items-end">
+            <label className="col-span-4 text-xs text-gray-500">
+              Label
+              <input
+                type="text"
+                value={w.label}
+                placeholder={placeholderLabel}
+                onChange={(e) => update(i, { label: e.target.value })}
+                className="block w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </label>
+            <label className="col-span-2 text-xs text-gray-500">
+              From
+              <select
+                value={w.startHour}
+                onChange={(e) => update(i, { startHour: Number(e.target.value) })}
+                className="block w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              >
+                {HOURS.map((h) => (
+                  <option key={h} value={h}>
+                    {hourLabel(h)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="col-span-2 text-xs text-gray-500">
+              To
+              <select
+                value={w.endHour}
+                onChange={(e) => update(i, { endHour: Number(e.target.value) })}
+                className="block w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              >
+                {HOURS.map((h) => (
+                  <option key={h} value={h}>
+                    {hourLabel(h)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="col-span-3 text-xs text-gray-500">
+              Multiplier
+              <input
+                type="number"
+                step="0.05"
+                min={minMultiplier}
+                max={maxMultiplier}
+                value={w.multiplier}
+                onChange={(e) =>
+                  update(i, { multiplier: e.target.value === "" ? ("" as unknown as number) : Number(e.target.value) })
+                }
+                className="block w-full mt-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="col-span-1 p-2 mb-0.5 text-red-500 rounded-lg hover:bg-red-50"
+              title="Remove window"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+            {wraps && (
+              <p className="col-span-12 -mt-1 text-[11px] text-gray-400">
+                Runs overnight: {hourLabel(w.startHour)} → {hourLabel(w.endHour)} next day.
+              </p>
+            )}
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        onClick={add}
+        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+      >
+        <Plus className="w-4 h-4" /> Add window
+      </button>
+    </div>
+  );
+};
+
+export default SurgeWindowsEditor;

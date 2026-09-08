@@ -2049,6 +2049,14 @@ export interface AppConfigItem {
   isEditable?: boolean;
 }
 
+/** One surge window: hours are 0–23, endHour <= startHour means it crosses midnight. */
+export interface SurgeWindow {
+  label: string;
+  startHour: number;
+  endHour: number;
+  multiplier: number;
+}
+
 export interface FareConfigItem {
   _id: string;
   name: string;
@@ -2072,6 +2080,10 @@ export interface FareConfigItem {
   peakHourSurgeMultiplier: number;
   peakHourStart: number;
   peakHourEnd: number;
+  // Multi-row surge (replaces the single night/peak window above, which the
+  // server keeps in sync with the first row for older clients).
+  peakWindows?: SurgeWindow[];
+  nightWindows?: SurgeWindow[];
   isActive: boolean;
 }
 

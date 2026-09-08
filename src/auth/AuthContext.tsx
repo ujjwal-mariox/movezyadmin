@@ -115,6 +115,8 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   payouts: [PERMISSIONS.FINANCE_VIEW],
   // GET /admin/reports/* is gated on reports:view, not finance:view.
   reports: [PERMISSIONS.REPORTS_VIEW],
+  // Excel/PDF downloads are gated server-side on reports:export.
+  exports: [PERMISSIONS.REPORTS_EXPORT, PERMISSIONS.FINANCE_EXPORT],
   "audit-logs": [PERMISSIONS.AUDIT_VIEW],
   automation: [PERMISSIONS.AUTOMATION_VIEW],
   compliance: [PERMISSIONS.DRIVERS_VIEW],

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import DocumentExpiryPanel from "../components/Compliance/DocumentExpiryPanel";
 import {
   FileCheck,
   AlertTriangle,
@@ -893,6 +894,8 @@ const DocumentCompliancePage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <DocumentExpiryPanel />
 
       {/* Compliance Health Strip */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
