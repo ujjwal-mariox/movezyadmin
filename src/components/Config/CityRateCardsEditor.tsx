@@ -1,15 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Plus, Trash2, MapPin } from "lucide-react";
-import { masterDataApi } from "../../services/admin-api";
+import CityMultiSelect from "./CityMultiSelect";
 
 /**
  * City rate cards for one vehicle type.
  *
- * Each row names one or more cities and the fields it overrides. A blank
- * field falls through to the vehicle type's Default rate, so "Mumbai: per-km
- * 18" only changes the per-km rate there. Cities are matched against the
- * pickup address city, so a row for "Pune" also covers "Pune City" /
- * "Pimpri-Chinchwad, Pune". Bookings from cities with no row use Default.
+ * Each row names one or more cities (picked from System Configuration →
+ * Cities, never typed) and the fields it overrides. A blank field falls
+ * through to the vehicle type's Default rate, so "Mumbai: per-km 18" only
+ * changes the per-km rate there. The server maps whatever the phone reports
+ * for a pickup onto the same master names, so a card for "Mumbai" also covers
+ * a pickup the map calls "Mumbai Suburban" — and any alias the admin adds to
+ * the city. Bookings from cities with no card use Default.
  */
 export interface CityOverride {
   cities: string[];
@@ -39,43 +41,10 @@ interface Props {
 }
 
 const CityRateCardsEditor: React.FC<Props> = ({ value, onChange }) => {
-  const [knownCities, setKnownCities] = useState<string[]>([]);
-  const [cityInput, setCityInput] = useState<Record<number, string>>({});
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await masterDataApi.getCities({ limit: 200, activeOnly: "true" });
-        const raw = res?.data?.cities || res?.data?.items || res?.data?.data || res?.data || [];
-        const names = (Array.isArray(raw) ? raw : [])
-          .map((c: any) => (typeof c === "string" ? c : c?.name))
-          .filter(Boolean);
-        setKnownCities(Array.from(new Set(names)).sort());
-      } catch {
-        // Datalist is a convenience only; free text still works.
-      }
-    })();
-  }, []);
-
   const update = (i: number, patch: Partial<CityOverride>) =>
     onChange(value.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i));
   const add = () => onChange([...value, { cities: [], isActive: true }]);
-
-  const addCity = (i: number) => {
-    const name = (cityInput[i] || "").trim();
-    if (!name) return;
-    const row = value[i];
-    if (row.cities.some((c) => c.toLowerCase() === name.toLowerCase())) {
-      setCityInput({ ...cityInput, [i]: "" });
-      return;
-    }
-    update(i, { cities: [...row.cities, name] });
-    setCityInput({ ...cityInput, [i]: "" });
-  };
-
-  const removeCity = (i: number, name: string) =>
-    update(i, { cities: value[i].cities.filter((c) => c !== name) });
 
   return (
     <div className="space-y-3">
@@ -86,7 +55,8 @@ const CityRateCardsEditor: React.FC<Props> = ({ value, onChange }) => {
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">
             The fields above are the <strong>Default</strong> rates. Add a card to charge
-            differently in specific cities; blank fields on a card inherit Default.
+            differently in specific cities; blank fields on a card inherit Default. Cities come
+            from System Configuration → Cities.
           </p>
         </div>
         <button
@@ -98,49 +68,17 @@ const CityRateCardsEditor: React.FC<Props> = ({ value, onChange }) => {
         </button>
       </div>
 
-      <datalist id="city-rate-card-cities">
-        {knownCities.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
-
       {value.map((row, i) => (
         <div key={i} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-1.5 flex-1">
-              {row.cities.map((c) => (
-                <span
-                  key={c}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full"
-                >
-                  {c}
-                  <button
-                    type="button"
-                    onClick={() => removeCity(i, c)}
-                    className="text-blue-500 hover:text-blue-800"
-                    aria-label={`Remove ${c}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-              <input
-                type="text"
-                list="city-rate-card-cities"
-                value={cityInput[i] || ""}
-                onChange={(e) => setCityInput({ ...cityInput, [i]: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addCity(i);
-                  }
-                }}
-                onBlur={() => addCity(i)}
-                placeholder={row.cities.length ? "Add another city" : "City name (Enter to add)"}
-                className="px-2 py-1 text-sm border border-gray-200 rounded-lg min-w-[180px]"
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <CityMultiSelect
+                value={row.cities}
+                onChange={(cities) => update(i, { cities })}
+                emptyLabel="Pick at least one city"
               />
             </div>
-            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+            <label className="flex items-center gap-1.5 text-xs text-gray-600 mt-1">
               <input
                 type="checkbox"
                 checked={row.isActive !== false}

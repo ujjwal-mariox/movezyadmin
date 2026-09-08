@@ -23,6 +23,7 @@ interface CityItem {
   _id: string;
   name: string;
   state: string;
+  aliases?: string[];
   isActive: boolean;
   sortOrder: number;
 }
@@ -40,7 +41,7 @@ const MasterDataManagement: React.FC = () => {
 
   // Cities
   const [cities, setCities] = useState<CityItem[]>([]);
-  const [cityForm, setCityForm] = useState({ name: "", state: "", sortOrder: "0" });
+  const [cityForm, setCityForm] = useState({ name: "", state: "", sortOrder: "0", aliases: "" });
 
   // Body types
   const [bodyTypes, setBodyTypes] = useState<NameItem[]>([]);
@@ -110,7 +111,7 @@ const MasterDataManagement: React.FC = () => {
   const handleAdd = () => {
     setIsEditing(false);
     setEditingId(null);
-    if (activeTab === "cities") setCityForm({ name: "", state: "", sortOrder: "0" });
+    if (activeTab === "cities") setCityForm({ name: "", state: "", sortOrder: "0", aliases: "" });
     else if (activeTab === "bodyTypes") setBodyTypeForm({ name: "", sortOrder: "0" });
     else setFuelTypeForm({ name: "", sortOrder: "0" });
     setIsModalOpen(true);
@@ -121,7 +122,7 @@ const MasterDataManagement: React.FC = () => {
     setEditingId(item._id);
     if (activeTab === "cities") {
       const city = item as CityItem;
-      setCityForm({ name: city.name, state: city.state, sortOrder: String(city.sortOrder) });
+      setCityForm({ name: city.name, state: city.state, sortOrder: String(city.sortOrder), aliases: (city.aliases || []).join(", ") });
     } else if (activeTab === "bodyTypes") {
       setBodyTypeForm({ name: item.name, sortOrder: String(item.sortOrder) });
     } else {
@@ -135,7 +136,12 @@ const MasterDataManagement: React.FC = () => {
       setActionLoading("submit");
       if (activeTab === "cities") {
         if (!cityForm.name || !cityForm.state) { showNotification("error", "Name and state are required"); return; }
-        const payload = { ...cityForm, sortOrder: Number(cityForm.sortOrder) || 0 };
+        const payload = {
+          name: cityForm.name,
+          state: cityForm.state,
+          sortOrder: Number(cityForm.sortOrder) || 0,
+          aliases: cityForm.aliases.split(",").map((a) => a.trim()).filter(Boolean),
+        };
         if (isEditing && editingId) await masterDataApi.updateCity(editingId, payload);
         else await masterDataApi.createCity(payload);
       } else if (activeTab === "bodyTypes") {
@@ -264,7 +270,12 @@ const MasterDataManagement: React.FC = () => {
               {activeTab === "cities" &&
                 cities.map((city) => (
                   <tr key={city._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-800">{city.name}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-800">
+                      {city.name}
+                      {(city.aliases?.length ?? 0) > 0 && (
+                        <div className="text-xs font-normal text-gray-400">also: {city.aliases!.join(", ")}</div>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{city.state}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{city.sortOrder}</td>
                     <td className="px-6 py-4">
@@ -401,6 +412,24 @@ const MasterDataManagement: React.FC = () => {
                     onChange={(e) => setCityForm({ ...cityForm, state: e.target.value })}
                     placeholder="e.g. Delhi"
                   />
+                </div>
+              )}
+
+              {/* Aliases (cities only) */}
+              {activeTab === "cities" && (
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-700">Also known as</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-movezy-500 focus:border-movezy-500"
+                    value={cityForm.aliases}
+                    onChange={(e) => setCityForm({ ...cityForm, aliases: e.target.value })}
+                    placeholder="e.g. Bengaluru, Bangalore Urban"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Comma-separated. Whatever the phone's map reports for a pickup is matched to this city by
+                    its name or any of these, so rate cards and weather surges apply correctly.
+                  </p>
                 </div>
               )}
 

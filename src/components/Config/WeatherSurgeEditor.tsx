@@ -1,16 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Plus, Trash2, CloudRain, Power } from "lucide-react";
-import { masterDataApi } from "../../services/admin-api";
+import CityMultiSelect from "./CityMultiSelect";
 import type { WeatherSurge } from "../../services/api";
 
 /**
  * Weather surge — switched ON by an admin when it rains, per region.
  *
  * Each row is a named surge ("Rain — Mumbai") with the cities it applies to
- * (none = everywhere), a multiplier, an ON/OFF switch and an optional auto-off
- * time so a surge cannot be forgotten. While ON it applies to every new quote
- * whose pickup city matches; where it overlaps a peak or night window the
- * higher multiplier applies — they never compound.
+ * (picked from the city master; none = everywhere), a multiplier, an ON/OFF
+ * switch and an optional auto-off time so a surge cannot be forgotten. While
+ * ON it applies to every new quote whose pickup city matches; where it
+ * overlaps a peak or night window the higher multiplier applies — they never
+ * compound.
  */
 interface Props {
   value: WeatherSurge[];
@@ -37,40 +38,13 @@ export const weatherRowIsLive = (w: WeatherSurge, now = Date.now()): boolean =>
   !!w.isActive && (!w.activeUntil || new Date(w.activeUntil).getTime() > now);
 
 const WeatherSurgeEditor: React.FC<Props> = ({ value, onChange }) => {
-  const [knownCities, setKnownCities] = useState<string[]>([]);
-  const [cityInput, setCityInput] = useState<Record<number, string>>({});
   const [autoOff, setAutoOff] = useState<Record<number, number | null>>({});
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await masterDataApi.getCities({ limit: 200, activeOnly: "true" });
-        const raw = res?.data?.cities || res?.data?.items || res?.data?.data || res?.data || [];
-        const names = (Array.isArray(raw) ? raw : [])
-          .map((c: any) => (typeof c === "string" ? c : c?.name))
-          .filter(Boolean);
-        setKnownCities(Array.from(new Set(names)).sort());
-      } catch {
-        /* datalist is a convenience */
-      }
-    })();
-  }, []);
 
   const update = (i: number, patch: Partial<WeatherSurge>) =>
     onChange(value.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i));
   const add = () =>
     onChange([...value, { label: "", cities: [], multiplier: 1.3, isActive: false, activeUntil: null }]);
-
-  const addCity = (i: number) => {
-    const name = (cityInput[i] || "").trim();
-    if (!name) return;
-    const row = value[i];
-    if (!row.cities.some((c) => c.toLowerCase() === name.toLowerCase())) {
-      update(i, { cities: [...row.cities, name] });
-    }
-    setCityInput({ ...cityInput, [i]: "" });
-  };
 
   const toggle = (i: number) => {
     const row = value[i];
@@ -89,8 +63,9 @@ const WeatherSurgeEditor: React.FC<Props> = ({ value, onChange }) => {
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-4">
         <p className="text-xs text-gray-400">
-          Switch a surge ON when the weather turns; pick the cities it covers (none = all cities) and
-          how long it stays on. Applies to new quotes only, never to trips already booked.
+          Switch a surge ON when the weather turns; pick the cities it covers from the city master
+          (none = all cities) and how long it stays on. Applies to new quotes only, never to trips
+          already booked.
         </p>
         <button
           type="button"
@@ -100,12 +75,6 @@ const WeatherSurgeEditor: React.FC<Props> = ({ value, onChange }) => {
           <Plus className="w-4 h-4" /> Add surge
         </button>
       </div>
-
-      <datalist id="weather-surge-cities">
-        {knownCities.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
 
       {value.length === 0 && <p className="text-xs text-gray-400">No weather surges configured.</p>}
 
@@ -176,32 +145,16 @@ const WeatherSurgeEditor: React.FC<Props> = ({ value, onChange }) => {
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              <CloudRain className="w-3.5 h-3.5 text-cyan-600" />
-              {row.cities.length === 0 && <span className="text-xs text-gray-500">All cities</span>}
-              {row.cities.map((c) => (
-                <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800 rounded-full">
-                  {c}
-                  <button type="button" onClick={() => update(i, { cities: row.cities.filter((x) => x !== c) })} className="text-cyan-600 hover:text-cyan-900" aria-label={`Remove ${c}`}>
-                    ×
-                  </button>
-                </span>
-              ))}
-              <input
-                type="text"
-                list="weather-surge-cities"
-                value={cityInput[i] || ""}
-                onChange={(e) => setCityInput({ ...cityInput, [i]: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
-                    e.preventDefault();
-                    addCity(i);
-                  }
-                }}
-                onBlur={() => addCity(i)}
-                placeholder="Add city (Enter)"
-                className="px-2 py-1 text-sm border border-gray-200 rounded-lg min-w-[160px] bg-white"
-              />
+            <div className="flex items-start gap-2">
+              <CloudRain className="w-3.5 h-3.5 text-cyan-600 mt-1.5" />
+              <div className="flex-1">
+                <CityMultiSelect
+                  value={row.cities}
+                  onChange={(cities) => update(i, { cities })}
+                  emptyLabel="All cities"
+                  chipClassName="bg-cyan-100 text-cyan-800"
+                />
+              </div>
             </div>
 
             <p className="text-[11px] text-gray-500">

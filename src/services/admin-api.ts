@@ -1121,7 +1121,7 @@ export const masterDataApi = {
     if (params?.activeOnly) query.set("activeOnly", params.activeOnly);
     return fetchWithAuth(`/admin/config/cities?${query.toString()}`);
   },
-  createCity: (data: { name: string; state: string; sortOrder?: number }) =>
+  createCity: (data: { name: string; state: string; sortOrder?: number; aliases?: string[] }) =>
     fetchWithAuth("/admin/config/cities", { method: "POST", body: JSON.stringify(data) }),
   updateCity: (id: string, data: Record<string, unknown>) =>
     fetchWithAuth(`/admin/config/cities/${id}`, { method: "PUT", body: JSON.stringify(data) }),
