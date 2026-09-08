@@ -392,7 +392,7 @@ const CategoryManagement: React.FC = () => {
                 </div>
 
                 <div>
-                  <span className="text-xs text-gray-500">Allowed Vehicles</span>
+                  <span className="text-xs text-gray-500">Recommended vehicles</span>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {cat.allowedVehicleTypes && cat.allowedVehicleTypes.length > 0 ? (
                       cat.allowedVehicleTypes.map((vt) => (
@@ -498,8 +498,8 @@ const CategoryManagement: React.FC = () => {
 
               {/* Allowed Vehicle Types */}
               <div className="pt-4 border-t border-gray-100">
-                <h3 className="mb-3 text-sm font-semibold text-gray-700">Allowed Vehicle Types</h3>
-                <p className="mb-2 text-xs text-gray-500">Select which vehicles can carry this category. Leave empty to allow all.</p>
+                <h3 className="mb-3 text-sm font-semibold text-gray-700">Recommended vehicles</h3>
+                <p className="mb-2 text-xs text-gray-500">Ranked first for this category; every vehicle stays available to the customer. Leave empty for no preference.</p>
                 <div className="grid grid-cols-2 gap-2">
                   {vehicleTypes.filter((vt) => !vt.isDeleted && vt.isActive).map((vt) => (
                     <label key={vt._id} className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-blue-50">

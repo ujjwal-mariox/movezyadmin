@@ -1129,9 +1129,12 @@ const VehicleManagement: React.FC = () => {
 
               {/* Range Section */}
               <div className="pt-4 border-t border-gray-100">
-                <h3 className="mb-3 text-sm font-semibold text-gray-700">
-                  Booking Range Limits
+                <h3 className="mb-1 text-sm font-semibold text-gray-700">
+                  Distance limits
                 </h3>
+                <p className="mb-3 text-xs text-gray-500">
+                  Max distance hides this vehicle on longer trips. Min distance only affects ranking.
+                </p>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block mb-1 text-sm font-medium text-gray-700">
@@ -1192,9 +1195,13 @@ const VehicleManagement: React.FC = () => {
 
               {/* Service Area Section */}
               <div className="pt-4 border-t border-gray-100">
-                <h3 className="mb-3 text-sm font-semibold text-gray-700">
-                  Service Area Settings
+                <h3 className="mb-1 text-sm font-semibold text-gray-700">
+                  Best fit (ranking only)
                 </h3>
+                <p className="mb-3 text-xs text-gray-500">
+                  These only affect recommendation order. Every vehicle type is offered for both trip
+                  types, except two-wheelers on outstation.
+                </p>
                 <div className="flex gap-6">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input

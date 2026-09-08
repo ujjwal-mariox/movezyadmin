@@ -1,16 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import QuickRepliesCard from "../components/Config/QuickRepliesCard";
 import {
   Settings as SettingsIcon,
   Save,
-  Bell,
   Shield,
-  Palette,
   User,
   Mail,
   Phone,
-  Globe,
-  Moon,
   Lock,
   Loader2,
 } from "lucide-react";
@@ -26,9 +22,6 @@ const KEYS = {
   companyName: "general.company_name",
   contactEmail: "general.contact_email",
   phoneNumber: "general.phone_number",
-  notifyEmail: "notifications.email_enabled",
-  notifySms: "notifications.sms_enabled",
-  notifyPush: "notifications.push_enabled",
   appDownloadUrl: "APP_DOWNLOAD_URL",
   joiningFee: "joining_fee",
   supportPhone: "SUPPORT_PHONE",
@@ -36,11 +29,8 @@ const KEYS = {
   dispatchParallelOffers: "DISPATCH_PARALLEL_OFFERS",
   hideContactNumbers: "HIDE_CONTACT_NUMBERS",
   callFallbackDirect: "CALL_MASKING_FALLBACK_DIRECT",
-  theme: "appearance.theme",
-  language: "appearance.language",
+  fourEyes: "payout_four_eyes_enabled",
 } as const;
-
-type NotificationChannel = "email" | "sms" | "push";
 
 const DEFAULTS = {
   appDownloadUrl: "",
@@ -53,11 +43,7 @@ const DEFAULTS = {
   companyName: "Movezy",
   contactEmail: "admin@movezy.com",
   phoneNumber: "",
-  notifyEmail: true,
-  notifySms: false,
-  notifyPush: true,
-  theme: "Light Mode",
-  language: "English",
+  fourEyes: false,
 };
 
 function readString(items: AppConfigItem[], key: string, fallback: string) {
@@ -92,13 +78,7 @@ const Settings: React.FC = () => {
   const [hideContactNumbers, setHideContactNumbers] = useState(DEFAULTS.hideContactNumbers);
   const [callFallbackDirect, setCallFallbackDirect] = useState(DEFAULTS.callFallbackDirect);
   const [joiningFee, setJoiningFee] = useState(DEFAULTS.joiningFee);
-  const [notifications, setNotifications] = useState<Record<NotificationChannel, boolean>>({
-    email: DEFAULTS.notifyEmail,
-    sms: DEFAULTS.notifySms,
-    push: DEFAULTS.notifyPush,
-  });
-  const [theme, setTheme] = useState(DEFAULTS.theme);
-  const [language, setLanguage] = useState(DEFAULTS.language);
+  const [fourEyes, setFourEyes] = useState(DEFAULTS.fourEyes);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -116,13 +96,7 @@ const Settings: React.FC = () => {
       setHideContactNumbers(readBool(items, KEYS.hideContactNumbers, DEFAULTS.hideContactNumbers));
       setCallFallbackDirect(readBool(items, KEYS.callFallbackDirect, DEFAULTS.callFallbackDirect));
       setJoiningFee(readString(items, KEYS.joiningFee, DEFAULTS.joiningFee));
-      setNotifications({
-        email: readBool(items, KEYS.notifyEmail, DEFAULTS.notifyEmail),
-        sms: readBool(items, KEYS.notifySms, DEFAULTS.notifySms),
-        push: readBool(items, KEYS.notifyPush, DEFAULTS.notifyPush),
-      });
-      setTheme(readString(items, KEYS.theme, DEFAULTS.theme));
-      setLanguage(readString(items, KEYS.language, DEFAULTS.language));
+      setFourEyes(readBool(items, KEYS.fourEyes, DEFAULTS.fourEyes));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to load settings";
       setError(msg);
@@ -142,9 +116,6 @@ const Settings: React.FC = () => {
       upsertAppSetting({ key: KEYS.companyName, value: companyName, type: "STRING", category: "general", description: "Company display name" }),
       upsertAppSetting({ key: KEYS.contactEmail, value: contactEmail, type: "STRING", category: "general", description: "Admin contact email" }),
       upsertAppSetting({ key: KEYS.phoneNumber, value: phoneNumber, type: "STRING", category: "general", description: "Admin contact phone" }),
-      upsertAppSetting({ key: KEYS.notifyEmail, value: notifications.email, type: "BOOLEAN", category: "notifications", description: "Email notifications enabled" }),
-      upsertAppSetting({ key: KEYS.notifySms, value: notifications.sms, type: "BOOLEAN", category: "notifications", description: "SMS notifications enabled" }),
-      upsertAppSetting({ key: KEYS.notifyPush, value: notifications.push, type: "BOOLEAN", category: "notifications", description: "Push notifications enabled" }),
       upsertAppSetting({ key: KEYS.appDownloadUrl, value: appDownloadUrl, type: "STRING", category: "general", description: "App store link used in referral share messages" }),
       upsertAppSetting({ key: KEYS.supportPhone, value: supportPhone, type: "STRING", category: "general", description: "Number shown on the apps' Call Support card" }),
       upsertAppSetting({ key: KEYS.dispatchOfferSeconds, value: Math.min(120, Math.max(10, Number(dispatchOfferSeconds) || 30)), type: "NUMBER", category: "dispatch", description: "Seconds a driver has to answer an offer before it moves to the next nearest driver" }),
@@ -154,8 +125,7 @@ const Settings: React.FC = () => {
       ...(joiningFee.trim() !== "" && Number.isFinite(Number(joiningFee)) && Number(joiningFee) > 0
         ? [upsertAppSetting({ key: KEYS.joiningFee, value: Number(joiningFee), type: "NUMBER", category: "driver", description: "Driver onboarding/joining fee (INR) — the amount Razorpay actually charges" })]
         : []),
-      upsertAppSetting({ key: KEYS.theme, value: theme, type: "STRING", category: "appearance", description: "Admin UI theme" }),
-      upsertAppSetting({ key: KEYS.language, value: language, type: "STRING", category: "appearance", description: "Admin UI language" }),
+      upsertAppSetting({ key: KEYS.fourEyes, value: fourEyes, type: "BOOLEAN", category: "finance", description: "Payouts need a second admin: requester, approver and payer must differ" }),
     ];
     try {
       await Promise.all(jobs);
@@ -167,16 +137,7 @@ const Settings: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [companyName, contactEmail, phoneNumber, appDownloadUrl, supportPhone, dispatchOfferSeconds, dispatchParallelOffers, hideContactNumbers, callFallbackDirect, joiningFee, notifications, theme, language, loadSettings]);
-
-  const toggleItems = useMemo(
-    () => [
-      { id: "email" as const, label: "Email Notifications", desc: "Receive updates via email" },
-      { id: "sms" as const, label: "SMS Notifications", desc: "Receive updates via SMS" },
-      { id: "push" as const, label: "Push Notifications", desc: "Receive browser notifications" },
-    ],
-    [],
-  );
+  }, [companyName, contactEmail, phoneNumber, appDownloadUrl, supportPhone, dispatchOfferSeconds, dispatchParallelOffers, hideContactNumbers, callFallbackDirect, fourEyes, joiningFee, loadSettings]);
 
   return (
     <div className="p-6 space-y-6">
@@ -218,7 +179,7 @@ const Settings: React.FC = () => {
             </div>
             <div>
               <h3 className="text-lg font-bold text-gray-900">General Settings</h3>
-              <p className="text-sm text-gray-500">Basic platform information</p>
+              <p className="text-sm text-gray-500">Printed on customer invoices and used as the platform's contact identity</p>
             </div>
           </div>
 
@@ -313,45 +274,6 @@ const Settings: React.FC = () => {
                 same setting, so what you save here is exactly what Razorpay charges.
               </p>
             </div>
-          </div>
-        </div>
-
-        {/* Notification Settings */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-300">
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
-              <Bell className="w-6 h-6 text-green-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">Notifications</h3>
-              <p className="text-sm text-gray-500">Manage alert preferences</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {toggleItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-xl transition-colors"
-              >
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{item.label}</p>
-                  <p className="text-xs text-gray-500">{item.desc}</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={notifications[item.id]}
-                    disabled={loading}
-                    onChange={(e) =>
-                      setNotifications((prev) => ({ ...prev, [item.id]: e.target.checked }))
-                    }
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-movezy-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-movezy-600"></div>
-                </label>
-              </div>
-            ))}
           </div>
         </div>
 
@@ -485,59 +407,28 @@ const Settings: React.FC = () => {
                 </span>
               </span>
             </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={fourEyes}
+                onChange={(e) => setFourEyes(e.target.checked)}
+                disabled={loading}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-700">Payouts need a second admin (four-eyes)</span>
+                <span className="block text-xs text-gray-500">
+                  The admin who requests a payout cannot approve it, and the approver cannot pay it. Leave off
+                  while a single admin runs finance, or no payout can complete.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
 
         <QuickRepliesCard />
 
-        {/* Appearance Settings */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-300">
-          <div className="flex items-center space-x-4 mb-6">
-            <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-              <Palette className="w-6 h-6 text-purple-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">Appearance</h3>
-              <p className="text-sm text-gray-500">Customize look and feel</p>
-            </div>
-          </div>
 
-          <div className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
-              <div className="relative">
-                <Moon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <select
-                  value={theme}
-                  onChange={(e) => setTheme(e.target.value)}
-                  disabled={loading}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 appearance-none bg-white cursor-pointer hover:border-gray-300 transition-colors disabled:bg-gray-50"
-                >
-                  <option>Light Mode</option>
-                  <option>Dark Mode</option>
-                  <option>Auto</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Language</label>
-              <div className="relative">
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  disabled={loading}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 appearance-none bg-white cursor-pointer hover:border-gray-300 transition-colors disabled:bg-gray-50"
-                >
-                  <option>English</option>
-                  <option>Hindi</option>
-                  <option>Spanish</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -122,7 +122,13 @@ const CommissionManagement: React.FC = () => {
         const eh = Number(w.endHour);
         if (!Number.isInteger(sh) || sh < 0 || sh > 23 || !Number.isInteger(eh) || eh < 0 || eh > 23)
           invalid.push(`${name} window ${i + 1}: hours must be 0–23`);
-        return { label: (w.label || "").trim(), startHour: sh, endHour: eh, multiplier: m };
+        return {
+          label: (w.label || "").trim(),
+          startHour: sh,
+          endHour: eh,
+          multiplier: m,
+          cities: (w.cities || []).map((c) => c.trim()).filter(Boolean),
+        };
       });
     payload.peakWindows = cleanWindows(draft.peakWindows, "Peak");
     payload.nightWindows = cleanWindows(draft.nightWindows, "Night");

@@ -2109,6 +2109,8 @@ export interface SurgeWindow {
   startHour: number;
   endHour: number;
   multiplier: number;
+  /** Cities the window applies to; empty = everywhere. */
+  cities?: string[];
 }
 
 /** Region-based weather surge an admin switches on and off. */

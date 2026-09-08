@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import TimeSlotsPanel from "../components/Config/TimeSlotsPanel";
 import {
   Plus,
   Edit2,
@@ -11,13 +12,14 @@ import {
   MapPin,
   Car,
   Fuel,
+  Clock,
 } from "lucide-react";
 import { type PageSize } from "../hooks/usePagination";
 import Pagination from "../components/Pagination";
 import { masterDataApi } from "../services/admin-api";
 import { useDialog } from "../components/Layout/Dialog";
 
-type Tab = "cities" | "bodyTypes" | "fuelTypes";
+type Tab = "cities" | "bodyTypes" | "fuelTypes" | "timeSlots";
 
 interface CityItem {
   _id: string;
@@ -76,6 +78,10 @@ const MasterDataManagement: React.FC = () => {
   const loadData = useCallback(
     async (p: number, l: number) => {
       try {
+        if (activeTab === "timeSlots") {
+          setLoading(false);
+          return;
+        }
         setLoading(true);
         if (activeTab === "cities") {
           const res = await masterDataApi.getCities({ page: p, limit: l });
@@ -85,7 +91,7 @@ const MasterDataManagement: React.FC = () => {
           const res = await masterDataApi.getBodyTypes({ page: p, limit: l });
           setBodyTypes(res.data?.bodyTypes || []);
           if (res.data?.pagination) setPaginationMeta({ total: res.data.pagination.total, pages: res.data.pagination.pages });
-        } else {
+        } else if (activeTab === "fuelTypes") {
           const res = await masterDataApi.getFuelTypes({ page: p, limit: l });
           setFuelTypes(res.data?.fuelTypes || []);
           if (res.data?.pagination) setPaginationMeta({ total: res.data.pagination.total, pages: res.data.pagination.pages });
@@ -109,6 +115,7 @@ const MasterDataManagement: React.FC = () => {
 
   // ── Handlers ──
   const handleAdd = () => {
+    if (activeTab === "timeSlots") return;
     setIsEditing(false);
     setEditingId(null);
     if (activeTab === "cities") setCityForm({ name: "", state: "", sortOrder: "0", aliases: "" });
@@ -203,6 +210,7 @@ const MasterDataManagement: React.FC = () => {
     { key: "cities", label: "Cities", icon: MapPin },
     { key: "bodyTypes", label: "Body Types", icon: Car },
     { key: "fuelTypes", label: "Fuel Types", icon: Fuel },
+    { key: "timeSlots", label: "Time Slots", icon: Clock },
   ];
 
   return (
@@ -218,12 +226,14 @@ const MasterDataManagement: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">System Configuration</h1>
-          <p className="text-sm text-gray-500">Core reference data — cities, vehicle body types, and fuel types used across the platform</p>
+          <p className="text-sm text-gray-500">Core reference data — cities, vehicle body types, fuel types and scheduled-pickup time slots used across the platform</p>
         </div>
-        <button onClick={handleAdd} className="flex items-center gap-2 px-4 py-2 text-white rounded-lg bg-movezy-500 hover:bg-movezy-600">
-          <Plus className="w-4 h-4" />
-          Add {activeTab === "cities" ? "City" : activeTab === "bodyTypes" ? "Body Type" : "Fuel Type"}
-        </button>
+        {activeTab !== "timeSlots" && (
+          <button onClick={handleAdd} className="flex items-center gap-2 px-4 py-2 text-white rounded-lg bg-movezy-500 hover:bg-movezy-600">
+            <Plus className="w-4 h-4" />
+            Add {activeTab === "cities" ? "City" : activeTab === "bodyTypes" ? "Body Type" : "Fuel Type"}
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -247,6 +257,9 @@ const MasterDataManagement: React.FC = () => {
         })}
       </div>
 
+      {activeTab === "timeSlots" && <TimeSlotsPanel />}
+
+      <div className={activeTab === "timeSlots" ? "hidden" : ""}>
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -369,6 +382,7 @@ const MasterDataManagement: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
 
       {/* Modal */}
       {isModalOpen && (

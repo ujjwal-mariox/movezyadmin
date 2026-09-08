@@ -1128,6 +1128,18 @@ export const masterDataApi = {
   deleteCity: (id: string) =>
     fetchWithAuth(`/admin/config/cities/${id}`, { method: "DELETE" }),
 
+  // Time slots (scheduled pickups) + scheduling rules
+  getTimeSlots: (all = false) =>
+    fetchWithAuth(`/admin/config/time-slots${all ? "?all=true" : ""}`),
+  createTimeSlot: (data: Record<string, unknown>) =>
+    fetchWithAuth("/admin/config/time-slots", { method: "POST", body: JSON.stringify(data) }),
+  updateTimeSlot: (id: string, data: Record<string, unknown>) =>
+    fetchWithAuth(`/admin/config/time-slots/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteTimeSlot: (id: string) =>
+    fetchWithAuth(`/admin/config/time-slots/${id}`, { method: "DELETE" }),
+  updateScheduleConfig: (data: Record<string, unknown>) =>
+    fetchWithAuth("/admin/config/schedule", { method: "PUT", body: JSON.stringify(data) }),
+
   // Body Types
   getBodyTypes: (params?: { page?: number; limit?: number; search?: string; activeOnly?: string }) => {
     const query = new URLSearchParams();
