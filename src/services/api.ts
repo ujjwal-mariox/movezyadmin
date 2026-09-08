@@ -2111,6 +2111,15 @@ export interface SurgeWindow {
   multiplier: number;
 }
 
+/** Region-based weather surge an admin switches on and off. */
+export interface WeatherSurge {
+  label: string;
+  cities: string[];
+  multiplier: number;
+  isActive: boolean;
+  activeUntil?: string | null;
+}
+
 export interface FareConfigItem {
   _id: string;
   name: string;
@@ -2138,6 +2147,7 @@ export interface FareConfigItem {
   // server keeps in sync with the first row for older clients).
   peakWindows?: SurgeWindow[];
   nightWindows?: SurgeWindow[];
+  weatherSurges?: WeatherSurge[];
   isActive: boolean;
 }
 

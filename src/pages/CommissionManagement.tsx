@@ -16,7 +16,8 @@ import {
   Undo2,
 } from "lucide-react";
 import { fetchFareConfig, updateFareConfig } from "../services/api";
-import type { FareConfigItem, SurgeWindow } from "../services/api";
+import type { FareConfigItem, SurgeWindow, WeatherSurge } from "../services/api";
+import WeatherSurgeEditor, { weatherRowIsLive } from "../components/Config/WeatherSurgeEditor";
 import SurgeWindowsEditor from "../components/Config/SurgeWindowsEditor";
 import TaxSettingsCard from "../components/Config/TaxSettingsCard";
 
@@ -37,7 +38,6 @@ type Rail = {
 const RAILS: Rail[] = [
   { key: "driverCommissionPercent", label: "Driver commission", min: 0, max: 50 },
   { key: "gstPercentage", label: "GST", min: 0, max: 28 },
-  { key: "rainSurgeMultiplier", label: "Rain surge multiplier", min: 1 },
   { key: "refundBeforeAssignPercent", label: "Refund before assignment", min: 0, max: 100 },
   { key: "refundAfterAssignPercent", label: "Refund after assignment", min: 0, max: 100 },
   { key: "refundAfterPickupPercent", label: "Refund after pickup", min: 0, max: 100 },
@@ -76,6 +76,8 @@ const CommissionManagement: React.FC = () => {
 
   const setWindows = (key: "peakWindows" | "nightWindows", rows: SurgeWindow[]) =>
     setDraft((d) => ({ ...(d || {}), [key]: rows }));
+  const setWeather = (rows: WeatherSurge[]) =>
+    setDraft((d) => ({ ...(d || {}), weatherSurges: rows }));
 
   const save = async () => {
     if (!draft) return;
@@ -124,6 +126,19 @@ const CommissionManagement: React.FC = () => {
       });
     payload.peakWindows = cleanWindows(draft.peakWindows, "Peak");
     payload.nightWindows = cleanWindows(draft.nightWindows, "Night");
+    payload.weatherSurges = (draft.weatherSurges || []).map((w, i) => {
+      const m = Number(w.multiplier);
+      if (!Number.isFinite(m) || m < 1 || m > 5)
+        invalid.push(`Weather surge ${i + 1}: multiplier must be between 1 and 5`);
+      if (!(w.label || "").trim()) invalid.push(`Weather surge ${i + 1}: give it a name`);
+      return {
+        label: (w.label || "").trim(),
+        cities: (w.cities || []).map((c) => c.trim()).filter(Boolean),
+        multiplier: m,
+        isActive: !!w.isActive,
+        activeUntil: w.activeUntil || null,
+      };
+    });
 
     if (blank.length) {
       setError(
@@ -345,16 +360,17 @@ const CommissionManagement: React.FC = () => {
           )}
 
           {card(
-            "Weather",
+            (draft.weatherSurges || []).some((w) => weatherRowIsLive(w))
+              ? "Weather surge — ACTIVE"
+              : "Weather surge",
             CloudRain,
             "text-cyan-600",
-            <>
-              {field("Rain surge multiplier", "rainSurgeMultiplier", {
-                suffix: "×",
-                hint: "Applied manually/by automation when rain mode is on; 1 = off.",
-              })}
-              <div />
-            </>,
+            <div className="md:col-span-2">
+              <WeatherSurgeEditor
+                value={draft.weatherSurges || []}
+                onChange={setWeather}
+              />
+            </div>,
           )}
         </div>
       )}
