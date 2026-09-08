@@ -21,7 +21,7 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:9050/v1/api";
 const getAuthToken = () => localStorage.getItem("adminToken");
 
 // Generic fetch wrapper with auth
-const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
+export const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
   const token = getAuthToken();
 
   // If no token exists, throw error but don't redirect

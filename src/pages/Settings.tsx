@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import QuickRepliesCard from "../components/Config/QuickRepliesCard";
 import {
   Settings as SettingsIcon,
   Save,
@@ -31,6 +32,10 @@ const KEYS = {
   appDownloadUrl: "APP_DOWNLOAD_URL",
   joiningFee: "joining_fee",
   supportPhone: "SUPPORT_PHONE",
+  dispatchOfferSeconds: "DISPATCH_OFFER_SECONDS",
+  dispatchParallelOffers: "DISPATCH_PARALLEL_OFFERS",
+  hideContactNumbers: "HIDE_CONTACT_NUMBERS",
+  callFallbackDirect: "CALL_MASKING_FALLBACK_DIRECT",
   theme: "appearance.theme",
   language: "appearance.language",
 } as const;
@@ -40,6 +45,10 @@ type NotificationChannel = "email" | "sms" | "push";
 const DEFAULTS = {
   appDownloadUrl: "",
   supportPhone: "",
+  dispatchOfferSeconds: "30",
+  dispatchParallelOffers: "1",
+  hideContactNumbers: false,
+  callFallbackDirect: true,
   joiningFee: "",
   companyName: "Movezy",
   contactEmail: "admin@movezy.com",
@@ -78,6 +87,10 @@ const Settings: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState(DEFAULTS.phoneNumber);
   const [appDownloadUrl, setAppDownloadUrl] = useState(DEFAULTS.appDownloadUrl);
   const [supportPhone, setSupportPhone] = useState(DEFAULTS.supportPhone);
+  const [dispatchOfferSeconds, setDispatchOfferSeconds] = useState(DEFAULTS.dispatchOfferSeconds);
+  const [dispatchParallelOffers, setDispatchParallelOffers] = useState(DEFAULTS.dispatchParallelOffers);
+  const [hideContactNumbers, setHideContactNumbers] = useState(DEFAULTS.hideContactNumbers);
+  const [callFallbackDirect, setCallFallbackDirect] = useState(DEFAULTS.callFallbackDirect);
   const [joiningFee, setJoiningFee] = useState(DEFAULTS.joiningFee);
   const [notifications, setNotifications] = useState<Record<NotificationChannel, boolean>>({
     email: DEFAULTS.notifyEmail,
@@ -98,6 +111,10 @@ const Settings: React.FC = () => {
       setPhoneNumber(readString(items, KEYS.phoneNumber, DEFAULTS.phoneNumber));
       setAppDownloadUrl(readString(items, KEYS.appDownloadUrl, DEFAULTS.appDownloadUrl));
       setSupportPhone(readString(items, KEYS.supportPhone, DEFAULTS.supportPhone));
+      setDispatchOfferSeconds(readString(items, KEYS.dispatchOfferSeconds, DEFAULTS.dispatchOfferSeconds));
+      setDispatchParallelOffers(readString(items, KEYS.dispatchParallelOffers, DEFAULTS.dispatchParallelOffers));
+      setHideContactNumbers(readBool(items, KEYS.hideContactNumbers, DEFAULTS.hideContactNumbers));
+      setCallFallbackDirect(readBool(items, KEYS.callFallbackDirect, DEFAULTS.callFallbackDirect));
       setJoiningFee(readString(items, KEYS.joiningFee, DEFAULTS.joiningFee));
       setNotifications({
         email: readBool(items, KEYS.notifyEmail, DEFAULTS.notifyEmail),
@@ -130,6 +147,10 @@ const Settings: React.FC = () => {
       upsertAppSetting({ key: KEYS.notifyPush, value: notifications.push, type: "BOOLEAN", category: "notifications", description: "Push notifications enabled" }),
       upsertAppSetting({ key: KEYS.appDownloadUrl, value: appDownloadUrl, type: "STRING", category: "general", description: "App store link used in referral share messages" }),
       upsertAppSetting({ key: KEYS.supportPhone, value: supportPhone, type: "STRING", category: "general", description: "Number shown on the apps' Call Support card" }),
+      upsertAppSetting({ key: KEYS.dispatchOfferSeconds, value: Math.min(120, Math.max(10, Number(dispatchOfferSeconds) || 30)), type: "NUMBER", category: "dispatch", description: "Seconds a driver has to answer an offer before it moves to the next nearest driver" }),
+      upsertAppSetting({ key: KEYS.dispatchParallelOffers, value: Math.min(10, Math.max(1, Number(dispatchParallelOffers) || 1)), type: "NUMBER", category: "dispatch", description: "How many nearest drivers are rung at once (1 = strictly one at a time)" }),
+      upsertAppSetting({ key: KEYS.hideContactNumbers, value: hideContactNumbers ? "true" : "false", type: "STRING", category: "privacy", description: "Mask customer/driver numbers in the apps even without a call-bridging provider" }),
+      upsertAppSetting({ key: KEYS.callFallbackDirect, value: callFallbackDirect ? "true" : "false", type: "STRING", category: "privacy", description: "When the masked-call bridge is unavailable, let the app dial the real number directly" }),
       ...(joiningFee.trim() !== "" && Number.isFinite(Number(joiningFee)) && Number(joiningFee) > 0
         ? [upsertAppSetting({ key: KEYS.joiningFee, value: Number(joiningFee), type: "NUMBER", category: "driver", description: "Driver onboarding/joining fee (INR) — the amount Razorpay actually charges" })]
         : []),
@@ -146,7 +167,7 @@ const Settings: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [companyName, contactEmail, phoneNumber, appDownloadUrl, supportPhone, joiningFee, notifications, theme, language, loadSettings]);
+  }, [companyName, contactEmail, phoneNumber, appDownloadUrl, supportPhone, dispatchOfferSeconds, dispatchParallelOffers, hideContactNumbers, callFallbackDirect, joiningFee, notifications, theme, language, loadSettings]);
 
   const toggleItems = useMemo(
     () => [
@@ -392,6 +413,82 @@ const Settings: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Dispatch & calling */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-300">
+          <div className="flex items-center space-x-4 mb-6">
+            <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
+              <Phone className="w-6 h-6 text-orange-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">Dispatch &amp; calling</h3>
+              <p className="text-sm text-gray-500">Nearest-driver offers and number privacy</p>
+            </div>
+          </div>
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Offer window (seconds)</label>
+                <input
+                  type="number"
+                  min={10}
+                  max={120}
+                  value={dispatchOfferSeconds}
+                  onChange={(e) => setDispatchOfferSeconds(e.target.value)}
+                  disabled={loading}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 disabled:bg-gray-50"
+                />
+                <p className="mt-1.5 text-xs text-gray-500">A driver who does not answer in time loses the offer to the next nearest driver.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Drivers rung at once</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={dispatchParallelOffers}
+                  onChange={(e) => setDispatchParallelOffers(e.target.value)}
+                  disabled={loading}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 disabled:bg-gray-50"
+                />
+                <p className="mt-1.5 text-xs text-gray-500">1 = strictly one driver at a time, nearest first.</p>
+              </div>
+            </div>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hideContactNumbers}
+                onChange={(e) => setHideContactNumbers(e.target.checked)}
+                disabled={loading}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-700">Hide phone numbers in the apps</span>
+                <span className="block text-xs text-gray-500">
+                  Customers and drivers see XXXXXX1234 and call each other through the Movezy number. Turns on
+                  automatically when a call-bridging provider is configured on the server.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={callFallbackDirect}
+                onChange={(e) => setCallFallbackDirect(e.target.checked)}
+                disabled={loading}
+                className="mt-1"
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-700">Allow direct dialling when the bridge is unavailable</span>
+                <span className="block text-xs text-gray-500">
+                  Off = calling is unavailable until the bridge works (chat and support remain).
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <QuickRepliesCard />
 
         {/* Appearance Settings */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-300">
