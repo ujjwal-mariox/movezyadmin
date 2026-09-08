@@ -498,7 +498,7 @@ const StaffManagement: React.FC = () => {
           page,
           limit,
           search: searchQuery || undefined,
-          role: roleFilter !== "ALL" ? roleFilter : undefined,
+          roleId: roleFilter !== "ALL" ? roleFilter : undefined,
           status: statusFilter !== "ALL" ? statusFilter.toLowerCase() : undefined,
         }),
         rolesApi.getAll(),
@@ -1236,10 +1236,18 @@ const StaffManagement: React.FC = () => {
                 <p className="mb-4 text-sm text-gray-500">{role.description}</p>
 
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRoleFilter(role._id);
+                      setActiveTab("staff");
+                    }}
+                    className="text-gray-500 hover:text-blue-600 hover:underline underline-offset-2"
+                    title="Show the staff members in this role"
+                  >
                     <Users className="inline-block w-4 h-4 mr-1" />
                     {role.staffCount} members
-                  </span>
+                  </button>
                   <span className="text-gray-500">
                     <Key className="inline-block w-4 h-4 mr-1" />
                     {role.permissions.length} permissions

@@ -18,6 +18,7 @@ import {
 import { fetchFareConfig, updateFareConfig } from "../services/api";
 import type { FareConfigItem, SurgeWindow } from "../services/api";
 import SurgeWindowsEditor from "../components/Config/SurgeWindowsEditor";
+import TaxSettingsCard from "../components/Config/TaxSettingsCard";
 
 type Draft = Partial<FareConfigItem>;
 
@@ -268,6 +269,8 @@ const CommissionManagement: React.FC = () => {
               })}
             </>,
           )}
+
+          <TaxSettingsCard />
 
           {/* Cancellation refund ceilings. These live on the same FareConfig
               document as everything else on this page and decide what every

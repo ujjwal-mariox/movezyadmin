@@ -454,16 +454,23 @@ export const coinsApi = {
 export const staffApi = {
   // Get all staff members
   getAll: (params?: {
-    role?: string;
+    roleId?: string;
     status?: string;
     page?: number;
     limit?: number;
     search?: string;
   }) => {
-    const query = new URLSearchParams(
-      params as Record<string, string>,
-    ).toString();
-    return fetchWithAuth(`/admin/staff?${query}`);
+    // Skip empty values: URLSearchParams turns `undefined` into the literal
+    // string "undefined", which the server searched for and found nobody.
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          query.append(key, String(value));
+        }
+      });
+    }
+    return fetchWithAuth(`/admin/staff?${query.toString()}`);
   },
 
   // Get single staff member
@@ -514,10 +521,15 @@ export const staffApi = {
 
   // Get activity log
   getActivityLog: (id: string, params?: { page?: number; limit?: number }) => {
-    const query = new URLSearchParams(
-      params as Record<string, string>,
-    ).toString();
-    return fetchWithAuth(`/admin/staff/${id}/activity?${query}`);
+    const query = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          query.append(key, String(value));
+        }
+      });
+    }
+    return fetchWithAuth(`/admin/staff/${id}/activity?${query.toString()}`);
   },
 };
 

@@ -1939,6 +1939,60 @@ export interface BookingRow {
    * fully PAID.
    */
   pendingCashTopUp?: number;
+  // Bill, commission and timing — present in the list payload (no .select()),
+  // previously undeclared so the detail panel could not show them.
+  baseFare?: number;
+  distanceCharge?: number;
+  timeCharge?: number;
+  surgeFare?: number;
+  surgeMultiplier?: number;
+  addonTotal?: number;
+  addons?: Array<{ name?: string; price?: number; quantity?: number }>;
+  stopCharges?: number;
+  loadingUnloading?: { charge?: number };
+  waitingMinutes?: number;
+  waitingCharge?: number;
+  tollCharges?: number;
+  parkingCharges?: number;
+  subtotal?: number;
+  gstAmount?: number;
+  gstPercentage?: number;
+  gstin?: string;
+  gstBusinessName?: string;
+  taxBreakdown?: TaxBreakdown;
+  promoCode?: string;
+  promoDiscount?: number;
+  coinDiscount?: number;
+  userDiscount?: number;
+  enterpriseDiscount?: number;
+  totalDiscount?: number;
+  commissionPercent?: number;
+  commissionAmount?: number;
+  driverEarnings?: number;
+  cancellationFee?: number;
+  refundAmount?: number;
+  refundStatus?: string;
+  cancelledBy?: string;
+  startedAt?: string;
+  invoiceId?: string | { _id: string; invoiceNumber?: string };
+  vehicleNumber?: string;
+}
+
+/** CGST+SGST / IGST split as stored on the booking (tax.service). */
+export interface TaxBreakdown {
+  supplyType: "INTRA_STATE" | "INTER_STATE" | "UNKNOWN";
+  placeOfSupplyCode: string | null;
+  placeOfSupplyName: string | null;
+  supplierStateCode: string | null;
+  gstPercentage: number;
+  cgstRate: number;
+  sgstRate: number;
+  igstRate: number;
+  cgstAmount: number;
+  sgstAmount: number;
+  igstAmount: number;
+  totalTax: number;
+  basis?: "RECIPIENT_GSTIN" | "PICKUP" | "NONE";
 }
 
 export interface BookingsListResponse {
@@ -2205,6 +2259,35 @@ export const fetchFareConfig = async () => {
 
 export const updateFareConfig = async (data: Partial<FareConfigItem>) => {
   const res = await fetch(`${API_URL}/admin/config/fare`, {
+    method: "PUT",
+    headers: getHeaders(),
+    body: JSON.stringify(data),
+  });
+  return ensureOk(res);
+};
+
+// ── Tax identity (GST split) ──
+export interface TaxJurisdiction {
+  _id: string;
+  code: string;
+  name: string;
+  aliases: string[];
+  isUnionTerritory: boolean;
+  isActive: boolean;
+}
+
+export const fetchTaxSettings = async () => {
+  const res = await fetch(`${API_URL}/admin/config/tax`, { headers: getHeaders() });
+  return ensureOk(res);
+};
+
+export const updateTaxSettings = async (data: {
+  companyGstin: string;
+  companyState: string;
+  companyLegalName: string;
+  companyAddress: string;
+}) => {
+  const res = await fetch(`${API_URL}/admin/config/tax`, {
     method: "PUT",
     headers: getHeaders(),
     body: JSON.stringify(data),

@@ -150,6 +150,74 @@ const computeWaitingMinutes = (o: BookingRow): number => {
 // the uncollected difference on the booking as pendingCashTopUp, cleared by the
 // driver's cash-collected call. Without this the admin showed the raised fare as
 // fully PAID.
+const fmtMoney = (n?: number | null) =>
+  (Number(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+const fmtDateTime = (iso?: string | null) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+};
+
+const durationLabel = (startIso?: string | null, endIso?: string | null) => {
+  if (!startIso || !endIso) return null;
+  const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins} min`;
+  return `${Math.floor(mins / 60)} h ${mins % 60} min`;
+};
+
+type BillRow = [label: string, amount: number, kind: "charge" | "subtotal" | "tax" | "discount" | "total"];
+
+/** Every non-zero line of the bill, in receipt order — the server's own figures. */
+const billRows = (o: BookingRow): BillRow[] => {
+  const rows: BillRow[] = [];
+  const charge = (label: string, amount?: number | null) => {
+    if (Number(amount) > 0) rows.push([label, Number(amount), "charge"]);
+  };
+  charge("Base fare", o.baseFare);
+  charge("Distance charge", o.distanceCharge);
+  charge("Time charge", o.timeCharge);
+  charge(
+    o.surgeMultiplier && o.surgeMultiplier > 1 ? `Surge (×${o.surgeMultiplier})` : "Surge",
+    o.surgeFare,
+  );
+  charge("Add-on services", o.addonTotal);
+  charge("Extra stops", o.stopCharges);
+  charge("Loading / unloading", o.loadingUnloading?.charge);
+  charge(o.waitingMinutes ? `Waiting (${o.waitingMinutes} min)` : "Waiting", o.waitingCharge);
+  charge("Toll charges", o.tollCharges);
+  charge("Parking", o.parkingCharges);
+  if (o.subtotal != null) rows.push(["Subtotal", Number(o.subtotal), "subtotal"]);
+  const t = o.taxBreakdown;
+  if (t && t.supplyType === "INTRA_STATE") {
+    rows.push([`CGST (${t.cgstRate}%)`, t.cgstAmount, "tax"]);
+    rows.push([`SGST (${t.sgstRate}%)`, t.sgstAmount, "tax"]);
+  } else if (t && t.supplyType === "INTER_STATE") {
+    rows.push([`IGST (${t.igstRate}%)`, t.igstAmount, "tax"]);
+  } else if (Number(o.gstAmount) > 0) {
+    rows.push([`GST (${o.gstPercentage ?? 0}%)`, Number(o.gstAmount), "tax"]);
+  }
+  const discount = (label: string, amount?: number | null) => {
+    if (Number(amount) > 0) rows.push([label, Number(amount), "discount"]);
+  };
+  discount(o.promoCode ? `Promo ${o.promoCode}` : "Promo discount", o.promoDiscount);
+  discount("Coin discount", o.coinDiscount);
+  discount("Customer discount", o.userDiscount);
+  discount("Enterprise discount", o.enterpriseDiscount);
+  rows.push(["Total", Number(o.finalFare) || 0, "total"]);
+  return rows;
+};
+
 const cashDue = (o: BookingRow): number => {
   const v = o.pendingCashTopUp;
   return typeof v === "number" && v > 0 ? v : 0;
@@ -1092,6 +1160,121 @@ const OrderDetailPanel: React.FC<{
             </p>
           )}
         </section>
+
+        {(status === "COMPLETED" || status === "CANCELLED") && (
+          <>
+            <section className="p-4 border-b border-gray-100">
+              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Bill details
+              </h4>
+              <dl className="space-y-1">
+                {billRows(order).map(([label, amount, kind]) => (
+                  <div
+                    key={label}
+                    className={`flex items-center justify-between text-sm ${
+                      kind === "total"
+                        ? "pt-2 mt-1 border-t border-gray-100 font-bold text-gray-900"
+                        : kind === "subtotal"
+                          ? "font-semibold text-gray-800"
+                          : kind === "discount"
+                            ? "text-emerald-700"
+                            : "text-gray-600"
+                    }`}
+                  >
+                    <dt>{label}</dt>
+                    <dd className="tabular-nums">
+                      {kind === "discount" ? "−" : ""}₹{fmtMoney(amount)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {order.taxBreakdown?.placeOfSupplyName && (
+                <p className="mt-2 text-[11px] text-gray-400">
+                  Place of supply: {order.taxBreakdown.placeOfSupplyName} ({order.taxBreakdown.placeOfSupplyCode})
+                  {order.gstin ? ` · Customer GSTIN ${order.gstin}` : ""}
+                </p>
+              )}
+              {status === "CANCELLED" && (
+                <div className="mt-3 rounded-lg border border-red-100 bg-red-50 p-3 text-xs text-red-800 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Cancellation fee</span>
+                    <span>₹{fmtMoney(order.cancellationFee)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Refund</span>
+                    <span>
+                      ₹{fmtMoney(order.refundAmount)}
+                      {order.refundStatus ? ` · ${order.refundStatus}` : ""}
+                    </span>
+                  </div>
+                  {order.cancelledBy && (
+                    <div className="flex justify-between">
+                      <span>Cancelled by</span>
+                      <span>{order.cancelledBy}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="p-4 border-b border-gray-100">
+              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Commission
+              </h4>
+              {status === "COMPLETED" && (order.commissionAmount != null || order.driverEarnings != null) ? (
+                <dl className="space-y-1 text-sm">
+                  <div className="flex justify-between text-gray-600">
+                    <dt>Platform commission{order.commissionPercent != null ? ` (${order.commissionPercent}%)` : ""}</dt>
+                    <dd className="tabular-nums font-semibold text-gray-900">₹{fmtMoney(order.commissionAmount)}</dd>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <dt>Driver earnings</dt>
+                    <dd className="tabular-nums">₹{fmtMoney(order.driverEarnings)}</dd>
+                  </div>
+                  <p className="text-[11px] text-gray-400 pt-1">
+                    Commission is taken on the pre-tax subtotal at completion; the driver keeps the rest.
+                  </p>
+                </dl>
+              ) : (
+                <p className="text-sm text-gray-400">
+                  {status === "CANCELLED" ? "No commission — the trip was cancelled." : "Not settled yet."}
+                </p>
+              )}
+            </section>
+
+            <section className="p-4 border-b border-gray-100">
+              <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Timing
+              </h4>
+              <dl className="space-y-1 text-sm">
+                {(
+                  [
+                    ["Created", order.createdAt],
+                    ["Accepted", order.assignedAt],
+                    ["Driver arrived", order.driverArrivedAt],
+                    order.startedAt ? ["Trip started", order.startedAt] : ["Picked up", order.pickedAt],
+                    status === "COMPLETED" ? ["Completed", order.completedAt] : ["Cancelled", order.cancelledAt],
+                  ] as Array<[string, string | undefined]>
+                )
+                  .filter(([, at]) => !!at)
+                  .map(([label, at]) => (
+                    <div key={label} className="flex justify-between text-gray-600">
+                      <dt>{label}</dt>
+                      <dd className="tabular-nums text-gray-800">{fmtDateTime(at)}</dd>
+                    </div>
+                  ))}
+                {durationLabel(order.startedAt || order.pickedAt, order.completedAt) && (
+                  <div className="flex justify-between text-gray-600 pt-1 border-t border-gray-100">
+                    <dt>Trip duration</dt>
+                    <dd className="font-semibold text-gray-900">
+                      {durationLabel(order.startedAt || order.pickedAt, order.completedAt)}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </section>
+          </>
+        )}
 
         <section className="p-4 border-b border-gray-100">
           <h4 className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
