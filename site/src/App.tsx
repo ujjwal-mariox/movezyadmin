@@ -9,6 +9,7 @@ import Download from "./pages/Download";
 import Contact from "./pages/Contact";
 import Policy from "./pages/Policy";
 import NotFound from "./pages/NotFound";
+import AdminRedirect from "./components/AdminRedirect";
 
 /** Start every page at the top; a hash jumps to its section. */
 function ScrollManager() {
@@ -48,6 +49,8 @@ export default function App() {
           <Route path="/refund-policy" element={<Policy type="REFUND" />} />
           <Route path="/terms-of-use" element={<Policy type="TERMS" />} />
           <Route path="/policies" element={<Policy type="PRIVACY" />} />
+          {/* The panel lives at /admin/index.html; a host without an /admin rewrite lands here. */}
+          <Route path="/admin/*" element={<AdminRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import React, { Suspense, useEffect } from "react";
 import { AuthProvider } from "./auth/AuthContext";
 import PrivateRoute from "./routes/privateRoute";
@@ -12,6 +12,22 @@ import { DialogProvider, useDialog, setImperativeDialog } from "./components/Lay
 
 
 const LoadingSpinner = () => <div>Loading...</div>;
+
+/**
+ * A host without an "/admin/*" rewrite serves the marketing site for admin
+ * deep links; the site then loads /admin/?redirect=<path>. Restore that path
+ * here so "/admin/orders" still ends up on the orders page (after login).
+ */
+const DeepLinkRestore: React.FC = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const target = new URLSearchParams(window.location.search).get("redirect");
+    if (target && target.startsWith("/") && !target.startsWith("//")) {
+      navigate(target, { replace: true });
+    }
+  }, [navigate]);
+  return null;
+};
 
 const DialogBridge: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const d = useDialog();
@@ -28,6 +44,7 @@ const App = () => {
     <DialogBridge>
     <AuthProvider>
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <DeepLinkRestore />
         <Routes>
           {/* Auth routes */}
           <Route element={<AuthLayout />}>
