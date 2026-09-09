@@ -1,0 +1,10 @@
+{
+  "name": "Movezy",
+  "short_name": "Movezy",
+  "description": "On-demand goods transport — book two-wheelers, tempos and trucks.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#ffffff",
+  "theme_color": "#FF6200",
+  "icons": [{ "src": "/logo.png", "sizes": "242x182", "type": "image/png" }]
+}

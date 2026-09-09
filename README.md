@@ -72,18 +72,21 @@ export default defineConfig([
 ])
 ```
 
-## Deployment: part of the website, at /admin only
+## Deployment: one bundle, one domain
 
-The panel is not deployed on its own. It is built for `/admin/` (see
-`vite.config.ts`; `npm run build` lays the output out as `dist/admin/*`) and
-shipped inside the marketing website's bundle: `website/movezy-website`
-`npm run build:site` builds this project and copies `dist/admin` next to the
-site, so one domain serves the site at `/` and the panel at `/admin/`.
+`npm run build` here produces the complete web bundle in `dist/`:
 
-- Deploy through the website (`website/movezy-website/README.md`, S3 +
-  CloudFront); the CloudFront function there routes `/admin/*` deep links to
-  `/admin/index.html`.
-- The old standalone admin service on Render should be deleted once the site
-  is live; nothing should answer at a separate admin origin.
-- Backend env: `CORS_ORIGIN=https://www.movezy.in` (single origin for both
-  apps) and `ADMIN_BASE_URL=https://www.movezy.in/admin` (password-reset links).
+- `dist/admin/*` — this admin panel, built for `/admin/` (base path fixed in
+  `vite.config.ts`, laid out by `scripts/postbuild.mjs`);
+- `dist/*` — the public marketing website from `site/` (`scripts/build-site.mjs`),
+  served at `/`.
+
+Deploy `dist` as a static site (Render: publish directory `dist`; AWS:
+`deploy/aws-deploy.sh` + `deploy/cloudfront-rewrite.js`). Rewrite rules the
+host needs, in this order:
+
+1. `/admin/*` → `/admin/index.html` (admin deep links)
+2. `/*` → `/index.html` (site fallback; prerendered pages are served directly)
+
+Backend env: `CORS_ORIGIN` = the site's origin, `ADMIN_BASE_URL` = that origin
+plus `/admin`. The panel is never served from a separate origin.

@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /404
+
+Sitemap: https://www.movezy.in/sitemap.xml
