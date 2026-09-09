@@ -171,7 +171,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (!isAuthenticated) return;
     inactivityTimerRef.current = setTimeout(() => {
       performLogout();
-      window.location.href = "/login";
+      window.location.href = `${import.meta.env.BASE_URL}login`;
     }, INACTIVITY_TIMEOUT);
   }, [isAuthenticated, performLogout]);
 

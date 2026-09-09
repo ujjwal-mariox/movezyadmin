@@ -328,7 +328,7 @@ const DriverTracking: React.FC = () => {
           <span style="font-size:12px">${driver.vehicleType} • ${driver.vehicleNumber}</span><br/>
           <span style="color:${driver.status === "ACTIVE" ? "#22c55e" : driver.status === "IDLE" ? "#eab308" : driver.status === "DELAYED" ? "#ef4444" : "#9ca3af"};font-weight:500">${driver.status}</span>
           ${driver.speed ? ` • ${driver.speed} km/h` : ""}
-          ${driver.currentBookingId ? `<br/><a href="/admin/orders/${driver.currentBookingId}" style="color:#f97316;font-size:11px">View Order →</a>` : ""}
+          ${driver.currentBookingId ? `<br/><a href="${import.meta.env.BASE_URL}orders/${driver.currentBookingId}" style="color:#f97316;font-size:11px">View Order →</a>` : ""}
         </div>
       `);
 

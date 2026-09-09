@@ -27,7 +27,7 @@ const App = () => {
     <DialogProvider>
     <DialogBridge>
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
         <Routes>
           {/* Auth routes */}
           <Route element={<AuthLayout />}>
