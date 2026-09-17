@@ -1232,7 +1232,7 @@ const OrderDetailPanel: React.FC<{
                     <dd className="tabular-nums">₹{fmtMoney(order.driverEarnings)}</dd>
                   </div>
                   <p className="text-[11px] text-gray-400 pt-1">
-                    Commission is taken on the pre-tax subtotal at completion; the driver keeps the rest.
+                    Commission is taken on the pre-tax subtotal at completion, excluding tolls and parking (paid to the driver in full); the driver keeps the rest.
                   </p>
                 </dl>
               ) : (
