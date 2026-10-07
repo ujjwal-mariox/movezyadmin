@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
+    fs: { allow: [".."] },
     // Local convenience: with the admin dev server running on 5173 with
     // VITE_BASE_PATH=/admin/, http://localhost:5178/admin shows it, mirroring
     // production where both apps share one host.

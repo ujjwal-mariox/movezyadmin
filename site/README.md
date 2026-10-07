@@ -32,8 +32,10 @@ This folder lives inside the admin repository. The **repository root's** `npm ru
 
 ## Content that comes from the platform
 
-- **Policies** (`/privacy-policy`, `/refund-policy`, `/terms-of-use`) load from the backend CMS (`GET /content/PRIVACY|REFUND|TERMS`), the same text the apps show. Edit them in the admin panel under Content & Policies. The bundled copy in `src/content/policies.tsx` is only a fallback when the API is unreachable.
-- **Contact form** posts to `POST /contact` on the backend, which stores the message and emails the address configured in the admin Settings (needs `SMTP_*` on the server; until then messages are stored and logged).
+- **Policies** (`/privacy-policy`, `/refund-policy`, `/terms-of-use`) load from the backend CMS (`GET /content/PRIVACY|REFUND|TERMS`). Publish only client-approved text through Content & Policies. A publication date and at least 400 visible characters are required to distinguish a full policy from bootstrap stubs. Unavailable or unpublished content shows contact/retry actions and `noindex`; no invented legal fallback is published. CMS HTML is sanitized before rendering.
+- **Contact form** posts one of eight enquiry categories to `POST /contact`. The API stores the enquiry and returns its reference before waiting for SMTP, then records notification delivery flags. Enquiries remain available without SMTP through **Website Enquiries** in admin. Viewing requires `support:view`; status changes require `support:resolve` and are audited. Status changes do not send email.
+- **SEO** uses one route metadata source (`src/content/page-meta.json`) for static HTML and live navigation. Startup removes static tags before React 19 hoists its current tags, preventing duplicate descriptions and canonical URLs. `postbuild` reads the same production environment files as Vite.
+- **Availability** advertises Pune only. Store links, confirmed contact details and the final domain come from client-provided `VITE_*` values. Blank contacts are hidden and missing store listings show “Coming soon”. Public website booking-ID tracking, new Business/Partner/Fleet pages and analytics events remain outside this implementation's approved scope.
 
 ## Hosting on AWS (S3 + CloudFront)
 

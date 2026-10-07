@@ -137,6 +137,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: "automation", label: "Automation Rules", icon: Zap },
         { id: "audit-logs", label: "Audit Logs", icon: ScrollText },
         { id: "support", label: "Support Tickets", icon: TicketCheck },
+        { id: "website-enquiries", label: "Website Enquiries", icon: FileText },
         { id: "settings", label: "Settings", icon: SlidersHorizontal },
       ],
     },

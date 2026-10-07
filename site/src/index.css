@@ -5,6 +5,7 @@
 @layer base {
   html {
     scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
   }
   body {
     @apply bg-white text-ink font-sans antialiased;
@@ -37,7 +38,22 @@
     @apply text-base leading-relaxed text-muted sm:text-lg;
   }
   .field {
-    @apply w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-ink placeholder:text-gray-400 focus:border-movezy-400 focus:outline-none focus:ring-4 focus:ring-movezy-100;
+    @apply min-h-11 w-full min-w-0 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-ink placeholder:text-gray-400 focus:border-movezy-400 focus:outline-none focus:ring-4 focus:ring-movezy-100;
+  }
+  .journey-link { @apply inline-flex min-h-11 items-center justify-center rounded-lg px-3 py-2 text-sm font-semibold text-movezy-700 hover:bg-movezy-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand; }
+  .prose-policy {
+    overflow-wrap: anywhere;
+  }
+  .prose-policy table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+  .prose-policy th,
+  .prose-policy td {
+    padding: 0.5rem;
+    border: 1px solid #e5e7eb;
   }
   .prose-policy h2 {
     @apply mt-8 text-xl font-bold text-ink;
@@ -53,3 +69,7 @@
     @apply list-disc pl-5;
   }
 }
+
+.mobile-actions { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+@media (max-width: 767px) { .site-shell { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }

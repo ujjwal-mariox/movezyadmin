@@ -48,12 +48,12 @@ export default function Footer() {
         <div>
           <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500">Contact</h3>
           <ul className="mt-4 space-y-3 text-sm text-gray-700">
-            <li className="flex items-start gap-2">
+            {SITE.email && <li className="flex min-w-0 items-start gap-2">
               <Mail className="mt-0.5 h-4 w-4 text-brand" />
-              <a href={`mailto:${SITE.email}`} className="hover:text-brand">
+              <a href={`mailto:${SITE.email}`} className="break-all hover:text-brand">
                 {SITE.email}
               </a>
-            </li>
+            </li>}
             {SITE.phone && (
               <li className="flex items-start gap-2">
                 <Phone className="mt-0.5 h-4 w-4 text-brand" />
@@ -67,13 +67,13 @@ export default function Footer() {
               <span>{SITE.address}</span>
             </li>
           </ul>
-          <p className="mt-6 text-xs text-gray-500">Serving {SITE.cities.join(", ")} and expanding.</p>
+          <p className="mt-6 text-sm text-gray-500">Currently available: {SITE.cities.join(", ")}. Expanding to more cities.</p>
         </div>
       </div>
       <div className="border-t border-gray-200">
         <div className="container-x flex flex-col items-center justify-between gap-2 py-5 text-xs text-gray-500 sm:flex-row">
           <span>
-            © {year} {SITE.legalName}. All rights reserved.
+            © {year} {SITE.name}. All rights reserved.
           </span>
           <span className="flex items-center gap-3">
             Made for movers, drivers and businesses across India.

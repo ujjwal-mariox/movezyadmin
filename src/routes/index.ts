@@ -19,6 +19,7 @@ const DriverTracking = lazy(() => import("../pages/DriverTracking"));
 const NotificationCenter = lazy(() => import("../pages/NotificationCenter"));
 const PromoManagement = lazy(() => import("../pages/PromoManagement"));
 const SupportTickets = lazy(() => import("../pages/SupportTickets"));
+const WebsiteEnquiries = lazy(() => import("../pages/WebsiteEnquiries"));
 const StaffManagement = lazy(() => import("../pages/StaffManagement"));
 const UserManagement = lazy(() => import("../pages/UserManagement"));
 const VehicleManagement = lazy(() => import("../pages/VehicleManagement"));
@@ -114,6 +115,7 @@ export const adminRoutes = [
     path: "support",
     element: SupportTickets,
   },
+  { path: "website-enquiries", element: WebsiteEnquiries },
   {
     path: "staff",
     element: StaffManagement,

@@ -4,26 +4,25 @@
  */
 export const SITE = {
   name: "Movezy",
-  legalName: "Movezy Logistics",
-  tagline: "Move anything across the city, on demand",
+  tagline: "Book vehicles. Move goods. Track your trip.",
   description:
-    "Movezy is an on-demand goods transport app: book two-wheelers, three-wheelers, mini trucks and heavy vehicles for courier, cargo, e-commerce and business logistics — live tracking, verified partners and GST invoices.",
-  url: (import.meta.env.VITE_SITE_URL as string | undefined)?.replace(/\/$/, "") || "https://www.movezy.in",
+    "Movezy connects customers and businesses with driver partners for goods transport in Pune. Book a vehicle, review the fare and track your trip in the app.",
+  url: (import.meta.env.VITE_SITE_URL as string | undefined)?.trim().replace(/\/+$/, "") || "https://www.movezy.in",
   apiUrl:
-    (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
+    (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/+$/, "") ||
     "https://movezybackend.onrender.com/v1/api",
-  email: (import.meta.env.VITE_CONTACT_EMAIL as string | undefined) || "hello@movezy.in",
+  email: (import.meta.env.VITE_CONTACT_EMAIL as string | undefined)?.trim() || "",
   phone: (import.meta.env.VITE_CONTACT_PHONE as string | undefined) || "",
   address: (import.meta.env.VITE_CONTACT_ADDRESS as string | undefined) || "Pune, Maharashtra, India",
-  playStoreUrl: (import.meta.env.VITE_PLAY_STORE_URL as string | undefined) || "",
-  appStoreUrl: (import.meta.env.VITE_APP_STORE_URL as string | undefined) || "",
-  driverPlayStoreUrl: (import.meta.env.VITE_DRIVER_PLAY_STORE_URL as string | undefined) || "",
+  playStoreUrl: (import.meta.env.VITE_PLAY_STORE_URL as string | undefined)?.trim() || "",
+  appStoreUrl: (import.meta.env.VITE_APP_STORE_URL as string | undefined)?.trim() || "",
+  driverPlayStoreUrl: (import.meta.env.VITE_DRIVER_PLAY_STORE_URL as string | undefined)?.trim() || "",
   social: {
     instagram: (import.meta.env.VITE_INSTAGRAM_URL as string | undefined) || "",
     linkedin: (import.meta.env.VITE_LINKEDIN_URL as string | undefined) || "",
     facebook: (import.meta.env.VITE_FACEBOOK_URL as string | undefined) || "",
   },
-  cities: ["Pune", "Mumbai", "Nagpur", "Delhi NCR"],
+  cities: ["Pune"],
 };
 
 export const NAV = [

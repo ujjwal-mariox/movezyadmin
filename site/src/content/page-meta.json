@@ -1,0 +1,10 @@
+[
+  {"path":"/","priority":"1.0","title":"Movezy — Book vehicles. Move goods. Track your trip.","description":"Movezy connects customers and businesses with driver partners for goods transport in Pune. Book a vehicle, review the fare and track your trip in the app."},
+  {"path":"/about","priority":"0.8","title":"About Us | Movezy","description":"Learn how Movezy connects customers and businesses with driver partners, starting in Pune. Understand the booking journey and our approach to pricing and support."},
+  {"path":"/services","priority":"0.9","title":"Services | Movezy","description":"Explore parcel delivery, cargo transport, seller deliveries and business logistics in Pune. Review vehicle eligibility and pricing in the Movezy app."},
+  {"path":"/download","priority":"0.9","title":"Download App | Movezy","description":"Check Movezy customer and partner app availability, supported Android devices, and how to book and track a trip in the app."},
+  {"path":"/contact","priority":"0.7","title":"Contact Us | Movezy","description":"Contact Movezy about bookings, business, driver or fleet partnership, billing or technical issues. Choose an enquiry category."},
+  {"path":"/privacy-policy","priority":"0.4","title":"Privacy Policy | Movezy","description":"Read the privacy information published by Movezy for its services."},
+  {"path":"/refund-policy","priority":"0.4","title":"Refund Policy | Movezy","description":"Read the cancellation and refund information published by Movezy."},
+  {"path":"/terms-of-use","priority":"0.4","title":"Terms of Use | Movezy","description":"Read the terms published by Movezy for its apps, website and services."}
+]

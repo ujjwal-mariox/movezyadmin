@@ -104,6 +104,7 @@ export const SIDEBAR_PERMISSION_MAP: Record<string, string[]> = {
   ],
   promos: [PERMISSIONS.PROMOS_VIEW],
   support: [PERMISSIONS.SUPPORT_VIEW],
+  "website-enquiries": [PERMISSIONS.SUPPORT_VIEW],
   staff: [PERMISSIONS.STAFF_VIEW, PERMISSIONS.ROLES_VIEW],
   wallet: [PERMISSIONS.PAYMENTS_VIEW],
   settings: [PERMISSIONS.SETTINGS_VIEW],

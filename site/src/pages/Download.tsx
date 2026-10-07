@@ -3,6 +3,7 @@ import Seo from "../components/Seo";
 import PageHero from "../components/PageHero";
 import StoreBadges from "../components/StoreBadges";
 import { SITE } from "../config/site";
+import { Link } from "react-router-dom";
 
 export default function Download() {
   const driverLive = Boolean(SITE.driverPlayStoreUrl);
@@ -10,18 +11,18 @@ export default function Download() {
     <>
       <Seo
         title="Download App"
-        description="Download the Movezy customer app on Google Play and the App Store to book two-wheelers, tempos and trucks on demand. Driver partners: get the Movezy Partner app."
+        description="Find Movezy customer and driver app availability, supported Android versions and instructions for following your booking in the app."
         path="/download"
-        schema={[
+        schema={SITE.playStoreUrl ? [
           {
             "@context": "https://schema.org",
             "@type": "MobileApplication",
             name: "Movezy",
-            operatingSystem: "Android, iOS",
+            operatingSystem: "Android",
             applicationCategory: "BusinessApplication",
             offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },
           },
-        ]}
+        ] : []}
       />
       <PageHero
         eyebrow="Download"
@@ -30,14 +31,14 @@ export default function Download() {
       />
 
       <section className="container-x grid gap-8 py-16 lg:grid-cols-2">
-        <div className="card">
+        <div id="customer" className="card scroll-mt-24">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-movezy-50 text-movezy-600">
             <Smartphone className="h-6 w-6" />
           </div>
           <h2 className="mt-4 text-2xl font-bold text-ink">Movezy — Customer app</h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted">Book instantly or schedule, choose from every vehicle size, track live and pay by UPI, card, wallet or cash.</p>
+          <p className="mt-2 text-sm leading-relaxed text-muted">Start a booking, select an eligible vehicle and review the fare and supported payment options. Sign in to view your booking history and active trip.</p>
           <ul className="mt-5 space-y-2">
-            {["Upfront fares with city pricing", "Dimension and capacity on every vehicle", "Live map, chat and masked calling", "GST invoices and booking history"].map((t) => (
+            {["Estimated fare before confirmation", "Configured vehicle load limits", "In-app tracking and chat", "Completed-trip invoices and booking history"].map((t) => (
               <li key={t} className="flex items-center gap-2 text-sm text-gray-700">
                 <CheckCircle2 className="h-4 w-4 text-leaf" /> {t}
               </li>
@@ -47,7 +48,7 @@ export default function Download() {
             <StoreBadges />
           </div>
           {!SITE.playStoreUrl && !SITE.appStoreUrl && (
-            <p className="mt-3 text-xs text-gray-500">Store listings go live soon. Until then, ask us for the early-access build via the contact page.</p>
+            <p className="mt-3 text-sm text-gray-500">Store listings are coming soon. <Link to="/contact?category=NEW_BOOKING" className="text-brand underline">Ask about app availability</Link>.</p>
           )}
         </div>
 
@@ -56,9 +57,9 @@ export default function Download() {
             <Bike className="h-6 w-6" />
           </div>
           <h2 className="mt-4 text-2xl font-bold">Movezy Partner — Driver app</h2>
-          <p className="mt-2 text-sm leading-relaxed text-gray-300">Register your vehicle, get verified and start receiving nearby jobs — nearest driver first, with a ring you won't miss even with the screen locked.</p>
+          <p className="mt-2 text-sm leading-relaxed text-gray-300">Register your vehicle and submit documents for review. Approved partners can go online, receive eligible jobs and view trip history and earnings.</p>
           <ul className="mt-5 space-y-2">
-            {["One active vehicle at a time, switch anytime", "Earnings and trip history per vehicle", "Document expiry reminders", "Call customer care or chat during a trip"].map((t) => (
+            {["One active vehicle at a time; switching is restricted during a trip", "Earnings and trip history per vehicle", "Document review and expiry reminders", "Help & Support in the app"].map((t) => (
               <li key={t} className="flex items-center gap-2 text-sm text-gray-200">
                 <CheckCircle2 className="h-4 w-4 text-movezy-300" /> {t}
               </li>
@@ -80,10 +81,19 @@ export default function Download() {
 
       <section className="container-x pb-8">
         <div className="rounded-3xl bg-gray-50 px-8 py-10 text-center">
-          <h2 className="text-xl font-bold text-ink">Requirements</h2>
+          <h2 className="text-xl font-bold text-ink">App compatibility</h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm text-muted">
-            Android 8.0 or later, or iOS 15 or later. Location access is needed to place bookings and, for partners, to receive nearby jobs. The partner app keeps a small "online" notification running so you stay reachable while your phone is locked.
+            Customer Android app: Android 10 or later. Partner Android app: Android 7 or later.
+            Location access is used for booking and trip features. Partners need the requested background and notification permissions while online.
+            iOS availability and compatibility will be confirmed when an App Store listing is published.
           </p>
+        </div>
+      </section>
+      <section id="tracking" className="container-x scroll-mt-24 py-12">
+        <div className="card"><h2 className="text-2xl font-bold text-ink">Track your booking in the app</h2>
+          <ol className="mt-5 space-y-3 text-sm text-gray-700"><li>1. Sign in to the Movezy customer app.</li><li>2. Open your bookings and select the active trip.</li><li>3. View its status and the in-app map as location updates arrive.</li></ol>
+          <p className="mt-4 text-sm text-muted">Website tracking by Booking ID is coming soon. This website does not currently provide a public tracking portal.</p>
+          <Link to="/contact?category=EXISTING_BOOKING" className="btn-secondary mt-5">Get help with an existing booking</Link>
         </div>
       </section>
     </>

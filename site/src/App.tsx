@@ -10,6 +10,7 @@ import Contact from "./pages/Contact";
 import Policy from "./pages/Policy";
 import NotFound from "./pages/NotFound";
 import AdminRedirect from "./components/AdminRedirect";
+import MobileActions from "./components/MobileActions";
 
 /** Start every page at the top; a hash jumps to its section. */
 function ScrollManager() {
@@ -18,7 +19,7 @@ function ScrollManager() {
     if (hash) {
       const el = document.getElementById(hash.slice(1));
       if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
         return;
       }
     }
@@ -29,7 +30,7 @@ function ScrollManager() {
 
 export default function App() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="site-shell flex min-h-screen flex-col">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:shadow-card"
@@ -45,16 +46,17 @@ export default function App() {
           <Route path="/services" element={<Services />} />
           <Route path="/download" element={<Download />} />
           <Route path="/contact" element={<Contact />} />
-          <Route path="/privacy-policy" element={<Policy type="PRIVACY" />} />
-          <Route path="/refund-policy" element={<Policy type="REFUND" />} />
-          <Route path="/terms-of-use" element={<Policy type="TERMS" />} />
-          <Route path="/policies" element={<Policy type="PRIVACY" />} />
+          <Route path="/privacy-policy" element={<Policy key="PRIVACY" type="PRIVACY" />} />
+          <Route path="/refund-policy" element={<Policy key="REFUND" type="REFUND" />} />
+          <Route path="/terms-of-use" element={<Policy key="TERMS" type="TERMS" />} />
+          <Route path="/policies" element={<Policy key="PRIVACY" type="PRIVACY" />} />
           {/* The panel lives at /admin/index.html; a host without an /admin rewrite lands here. */}
           <Route path="/admin/*" element={<AdminRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
       <Footer />
+      <MobileActions />
     </div>
   );
 }

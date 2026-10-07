@@ -1,17 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { Menu, X, Smartphone } from "lucide-react";
 import logo from "../assets/logo.png";
 import { NAV } from "../config/site";
 
 export default function Header() {
-  const [open, setOpen] = useState(false);
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
+  const menuButton = useRef<HTMLButtonElement>(null);
+
+  const open = openKey === location.key;
 
   useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
+    if (!open) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpenKey(null); menuButton.current?.focus(); } };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [open]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -58,9 +64,10 @@ export default function Header() {
         </div>
 
         <button
+          ref={menuButton}
           type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="rounded-lg p-2 text-gray-700 hover:bg-movezy-50 md:hidden"
+          onClick={() => setOpenKey(open ? null : location.key)}
+          className="min-h-11 min-w-11 rounded-lg p-2 text-gray-700 hover:bg-movezy-50 md:hidden"
           aria-expanded={open}
           aria-controls="mobile-nav"
           aria-label={open ? "Close menu" : "Open menu"}

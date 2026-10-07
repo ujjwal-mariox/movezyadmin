@@ -3,11 +3,12 @@ import { Target, Compass, HeartHandshake, Leaf, ShieldCheck, Users, ArrowRight }
 import Seo from "../components/Seo";
 import PageHero from "../components/PageHero";
 import { SITE } from "../config/site";
+import BookingJourney from "../components/BookingJourney";
 
 const GOALS = [
-  { icon: Users, title: "A fair deal for partners", text: "One active vehicle, nearest-first jobs, weekly settlements and document reminders — drivers should never be surprised by the platform." },
-  { icon: ShieldCheck, title: "Trust you can see", text: "Verified documents, OTP-confirmed handovers, masked calling and live tracking on every trip." },
-  { icon: Target, title: "Prices that don't move", text: "The fare you see is the fare you pay. City-specific rate cards, clear surge windows, itemised GST invoices." },
+  { icon: Users, title: "A fair deal for partners", text: "Approved partners can choose when to go online and view their trips and earnings in the partner app." },
+  { icon: ShieldCheck, title: "Trust you can see", text: "Document review, OTP confirmation, in-app booking status and support help both sides of the trip." },
+  { icon: Target, title: "Transparent pricing", text: "Review the estimated fare and its breakdown before confirming. Vehicle, route, demand, add-ons and applicable tax can affect pricing." },
   { icon: Leaf, title: "Right-sized vehicles", text: "Matching the load to the smallest vehicle that fits keeps fares down and roads lighter." },
 ];
 
@@ -31,13 +32,13 @@ export default function About() {
           <p className="eyebrow">Our story</p>
           <h2 className="h2 mt-2">From one city to a network</h2>
           <p className="lead mt-4">
-            We began in Pune with a handful of driver partners and a promise: every booking gets a verified vehicle, a fixed fare and a
-            live map. Today the same platform runs two-wheeler couriers, cargo tempos and business logistics, with city-specific
-            pricing for {SITE.cities.join(", ")}.
+            We began in Pune with a practical goal: connect people who need goods moved with suitable driver partners, make the
+            estimated fare visible and help customers follow their booking. {SITE.cities.join(", ")} is our current launch market;
+            we aim to expand to more cities as services become available.
           </p>
           <p className="lead mt-4">
             Movezy is built by people who have loaded the truck themselves. That shows in the details: dimension callouts so you know
-            what fits, receiver details captured with the address, and an alert a driver can't miss.
+            what fits, receiver details captured with the address, and booking updates in the app.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -56,6 +57,14 @@ export default function About() {
             </p>
           </div>
         </div>
+      </section>
+
+      <section className="container-x py-12">
+        <p className="eyebrow">How Movezy works</p><h2 className="h2 mt-2">A marketplace connecting customers and driver partners</h2>
+        <ol className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {["Customer requests goods transport", "Movezy platform checks the booking", "An eligible, approved driver accepts", "Goods are picked up", "Customer follows the live trip", "Delivery is confirmed in the app"].map((step, index) => <li key={step} className="rounded-xl bg-gray-50 p-4 text-sm text-gray-700"><strong className="mr-2 text-brand">{index + 1}.</strong>{step}</li>)}
+        </ol>
+        <div className="mt-10"><BookingJourney /></div>
       </section>
 
       <section className="bg-gray-50 py-16">
