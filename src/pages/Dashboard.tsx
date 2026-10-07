@@ -416,7 +416,8 @@ const Dashboard: React.FC = () => {
     setAutoAssigning(true);
     try {
       const res = await driversApi.autoAssign();
-      const assigned = res?.data?.assigned ?? 0;
+      const offered = res?.data?.offered ?? 0;
+      const awaitingResponse = res?.data?.awaitingResponse ?? 0;
       const evaluated = res?.data?.evaluated ?? 0;
       await loadDashboardData();
       await dialog.alert({
@@ -424,10 +425,10 @@ const Dashboard: React.FC = () => {
         message:
           evaluated === 0
             ? "No unassigned orders to auto-assign right now."
-            : assigned > 0
-              ? `Assigned ${assigned} of ${evaluated} searching order(s) to the nearest available drivers.`
+            : (offered + awaitingResponse) > 0
+              ? `Offered ${offered} order(s) to nearest eligible drivers. ${awaitingResponse} already await a response. Assignment is confirmed when the driver accepts.`
               : `No available online drivers found for ${evaluated} searching order(s).`,
-        tone: evaluated === 0 || assigned > 0 ? "success" : "warning",
+        tone: evaluated === 0 || (offered + awaitingResponse) > 0 ? "success" : "warning",
       });
     } catch (e) {
       await dialog.alert({

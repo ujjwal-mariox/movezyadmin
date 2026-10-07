@@ -842,15 +842,16 @@ const DriverManagement: React.FC = () => {
     setAutoAssigning(true);
     try {
       const res = await driversApi.autoAssign();
-      const assigned = res?.data?.assigned ?? 0;
+      const offered = res?.data?.offered ?? 0;
+      const awaitingResponse = res?.data?.awaitingResponse ?? 0;
       const evaluated = res?.data?.evaluated ?? 0;
       showToast({
-        type: assigned > 0 ? "success" : "warning",
+        type: (offered + awaitingResponse) > 0 ? "success" : "warning",
         message:
           evaluated === 0
             ? "No unassigned orders to auto-assign right now."
-            : assigned > 0
-              ? `Auto-assigned ${assigned} of ${evaluated} order(s) to the nearest available drivers.`
+            : (offered + awaitingResponse) > 0
+              ? `Offered ${offered} order(s) to nearest eligible drivers. ${awaitingResponse} already await a response. Assignment is confirmed when the driver accepts.`
               : `No available online drivers found for ${evaluated} searching order(s).`,
       });
       fetchStats();
@@ -893,7 +894,7 @@ const DriverManagement: React.FC = () => {
         if (res?.success) {
           showToast({
             type: "success",
-            message: `Assigned ${assignDriver.fullName} to the order.`,
+            message: "Offered to the nearest eligible driver. Awaiting driver acceptance.",
           });
           setAssignModalOpen(false);
           setAssignDriver(null);
@@ -3450,15 +3451,15 @@ const DriverManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Manual Assign Modal — pick a pending order for this driver */}
+      {/* Offer a searching order to its nearest eligible driver. */}
       {assignModalOpen && assignDriver && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Assign an Order</h2>
+                <h2 className="text-lg font-bold text-gray-900">Offer an Order</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  To {assignDriver.fullName} · {assignDriver.mobileNumber}
+                  The nearest available driver with the matching vehicle will receive the offer.
                 </p>
               </div>
               <button
@@ -3507,7 +3508,7 @@ const DriverManagement: React.FC = () => {
                         ) : (
                           <CircleDot className="w-3.5 h-3.5" />
                         )}
-                        Assign
+                        Offer
                       </button>
                     </div>
                   ))}
