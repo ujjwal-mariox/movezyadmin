@@ -90,3 +90,9 @@ host needs, in this order:
 
 Backend env: `CORS_ORIGIN` = the site's origin, `ADMIN_BASE_URL` = that origin
 plus `/admin`. The panel is never served from a separate origin.
+
+The website build always runs `npm ci --include=dev` inside `site/` before
+compiling it. This synchronizes cached dependencies with `site/package-lock.json`
+on Render; the root install alone does not install the nested website package.
+Commit both `site/package.json` and `site/package-lock.json` when adding a website
+dependency. A normal redeploy is sufficient after a dependency change.

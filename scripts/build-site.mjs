@@ -37,7 +37,10 @@ const run = (args) => {
   }
 };
 
-if (!(await fs.stat(path.join(site, "node_modules")).catch(() => null))) run(["ci"]);
+// Render restores node_modules between builds. Its presence does not mean it
+// matches the current nested lockfile (new dependencies may be missing).
+// Include build tools even when the host sets NODE_ENV=production.
+run(["ci", "--include=dev"]);
 run(["run", "build"]);
 
 // Everything the site produced goes to the root of dist; the admin folder is
