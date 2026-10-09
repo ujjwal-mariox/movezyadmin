@@ -11,6 +11,8 @@ import Policy from "./pages/Policy";
 import NotFound from "./pages/NotFound";
 import AdminRedirect from "./components/AdminRedirect";
 import MobileActions from "./components/MobileActions";
+import PageAnalytics from "./components/PageAnalytics";
+import { SITE } from "./config/site";
 
 /** Start every page at the top; a hash jumps to its section. */
 function ScrollManager() {
@@ -38,6 +40,8 @@ export default function App() {
         Skip to content
       </a>
       <ScrollManager />
+      <PageAnalytics />
+      {SITE.demo && <div role="note" className="bg-amber-100 px-4 py-3 text-center text-sm font-medium text-amber-950">Demo preview — sample contacts, policies and app images. No enquiries are sent and no analytics are collected.</div>}
       <Header />
       <main id="main" className="flex-1">
         <Routes>

@@ -2,21 +2,20 @@
  * Site-wide constants. Everything an operator may need to change lives here
  * or in `.env` (VITE_*), never scattered through pages.
  */
+import { clientSettings } from './client-settings.mjs';
+const client = clientSettings(import.meta.env);
 export const SITE = {
+  ...client,
   name: "Movezy",
   tagline: "Book vehicles. Move goods. Track your trip.",
   description:
     "Movezy connects customers and businesses with driver partners for goods transport in Pune. Book a vehicle, review the fare and track your trip in the app.",
-  url: (import.meta.env.VITE_SITE_URL as string | undefined)?.trim().replace(/\/+$/, "") || "https://www.movezy.in",
   apiUrl:
     (import.meta.env.VITE_API_URL as string | undefined)?.trim().replace(/\/+$/, "") ||
     "https://movezybackend.onrender.com/v1/api",
-  email: (import.meta.env.VITE_CONTACT_EMAIL as string | undefined)?.trim() || "",
-  phone: (import.meta.env.VITE_CONTACT_PHONE as string | undefined) || "",
+  email: client.demo ? '' : client.channels[0].email,
+  phone: client.demo ? '' : client.channels[0].phone,
   address: (import.meta.env.VITE_CONTACT_ADDRESS as string | undefined) || "Pune, Maharashtra, India",
-  playStoreUrl: (import.meta.env.VITE_PLAY_STORE_URL as string | undefined)?.trim() || "",
-  appStoreUrl: (import.meta.env.VITE_APP_STORE_URL as string | undefined)?.trim() || "",
-  driverPlayStoreUrl: (import.meta.env.VITE_DRIVER_PLAY_STORE_URL as string | undefined)?.trim() || "",
   social: {
     instagram: (import.meta.env.VITE_INSTAGRAM_URL as string | undefined) || "",
     linkedin: (import.meta.env.VITE_LINKEDIN_URL as string | undefined) || "",

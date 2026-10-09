@@ -73,7 +73,7 @@ export default function Footer() {
       <div className="border-t border-gray-200">
         <div className="container-x flex flex-col items-center justify-between gap-2 py-5 text-xs text-gray-500 sm:flex-row">
           <span>
-            © {year} {SITE.name}. All rights reserved.
+            © {year} {SITE.legalName || SITE.name}. {SITE.demo ? 'Demo preview.' : 'All rights reserved.'}
           </span>
           <span className="flex items-center gap-3">
             Made for movers, drivers and businesses across India.

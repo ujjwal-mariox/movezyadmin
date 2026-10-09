@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:demo": "tsc -b && vite build --mode demo --outDir dist-demo && node scripts/postbuild.mjs demo dist-demo",
+    "dev:demo": "vite --mode demo",
+    "test": "node --test tests/*.test.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "postbuild": "node scripts/postbuild.mjs",
@@ -13,6 +16,7 @@
   },
   "dependencies": {
     "lucide-react": "^1.43.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-helmet-async": "^3.0.0",

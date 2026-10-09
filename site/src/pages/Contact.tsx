@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { Mail, Phone, MapPin, Send, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Send, CheckCircle2, AlertTriangle } from "lucide-react";
 import Seo from "../components/Seo";
 import PageHero from "../components/PageHero";
+import SupportChannels from "../components/SupportChannels";
 import { SITE } from "../config/site";
 import { Link, useSearchParams } from "react-router-dom";
 import { CONTACT_CATEGORIES } from "../../../shared/contact-categories";
@@ -39,6 +40,12 @@ export default function Contact() {
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
       setError("That email address doesn't look right.");
+      return;
+    }
+    if (SITE.demo) {
+      setAcknowledged(false);
+      setReference('DEMO-PREVIEW');
+      setStatus('sent');
       return;
     }
     pending.current = true;
@@ -83,10 +90,10 @@ export default function Contact() {
           {status === "sent" ? (
             <div className="card border-emerald-100 bg-emerald-50/60">
               <CheckCircle2 className="h-10 w-10 text-emerald-600" />
-              <h2 className="mt-4 text-xl font-bold text-ink" role="status">Enquiry received</h2>
+              <h2 className="mt-4 text-xl font-bold text-ink" role="status">{SITE.demo ? 'Demo enquiry preview' : 'Enquiry received'}</h2>
               <p className="mt-2 text-sm text-gray-700">
                 Thanks, {form.name.split(" ")[0]}.{" "}
-                {acknowledged
+                {SITE.demo ? 'This is a local preview. Your enquiry has not been sent or saved, and no email has been issued.' : acknowledged
                   ? `We've emailed an acknowledgement to ${form.email}. Your enquiry has been saved for review.`
                   : "Your enquiry has been saved for our team to review."}
               </p>
@@ -145,29 +152,7 @@ export default function Contact() {
         </div>
 
         <aside className="space-y-4 lg:col-span-2">
-          <div className="card">
-            <h2 className="text-base font-semibold text-ink">Reach us directly</h2>
-            <ul className="mt-4 space-y-3 text-sm text-gray-700">
-              {SITE.email && <li className="flex min-w-0 items-start gap-3">
-                <Mail className="mt-0.5 h-4 w-4 text-brand" />
-                <a href={`mailto:${SITE.email}`} className="break-all hover:text-brand">
-                  {SITE.email}
-                </a>
-              </li>}
-              {SITE.phone && (
-                <li className="flex items-start gap-3">
-                  <Phone className="mt-0.5 h-4 w-4 text-brand" />
-                  <a href={`tel:${SITE.phone.replace(/\s/g, "")}`} className="hover:text-brand">
-                    {SITE.phone}
-                  </a>
-                </li>
-              )}
-              <li className="flex items-start gap-3">
-                <MapPin className="mt-0.5 h-4 w-4 text-brand" />
-                <span>{SITE.address}</span>
-              </li>
-            </ul>
-          </div>
+          <SupportChannels />
           <div className="card bg-movezy-50/60">
             <h2 className="text-base font-semibold text-ink">Already booked?</h2>
             <p className="mt-2 text-sm text-gray-700">

@@ -4,6 +4,7 @@ import Seo from "../components/Seo";
 import PageHero from "../components/PageHero";
 import { POLICY_LINKS, SITE } from "../config/site";
 import { isPublishedPolicy, safePolicyHtml } from "../content/policy-content";
+import { POLICY_PREVIEWS } from "../content/review-content";
 
 type PolicyType = "PRIVACY" | "REFUND" | "TERMS";
 
@@ -49,6 +50,7 @@ export default function Policy({ type }: { type: PolicyType }) {
 
   // Cap the CMS request and allow visitors to retry without losing the page.
   useEffect(() => {
+    if (SITE.demo) return;
     let alive = true;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
@@ -92,7 +94,10 @@ export default function Policy({ type }: { type: PolicyType }) {
 
       <section className="container-x py-12">
         <div className="card max-w-4xl">
-          {remote?.content ? (
+          {SITE.demo ? <div className="space-y-6">
+            <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Mock policy — for layout and content review only.</strong><p className="mt-2">{SITE.legalName}. Client and legal approval are pending. This sample is not the current policy.</p></div>
+            {POLICY_PREVIEWS[type].map(([heading, text]) => <section key={heading}><h2 className="text-lg font-semibold">{heading}</h2><p className="mt-2 text-sm leading-relaxed text-muted">{text}</p></section>)}
+          </div> : remote?.content ? (
             looksLikeHtml ? (
               <div className="prose-policy" dangerouslySetInnerHTML={{ __html: safePolicyHtml(remote.content) }} />
             ) : (

@@ -2,6 +2,7 @@ import { Smartphone, Bike, CheckCircle2 } from "lucide-react";
 import Seo from "../components/Seo";
 import PageHero from "../components/PageHero";
 import StoreBadges from "../components/StoreBadges";
+import AppDownloads from "../components/AppDownloads";
 import { SITE } from "../config/site";
 import { Link } from "react-router-dom";
 
@@ -79,6 +80,7 @@ export default function Download() {
         </div>
       </section>
 
+      <AppDownloads />
       <section className="container-x pb-8">
         <div className="rounded-3xl bg-gray-50 px-8 py-10 text-center">
           <h2 className="text-xl font-bold text-ink">App compatibility</h2>

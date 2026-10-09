@@ -15,6 +15,7 @@ const ORGANIZATION = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: SITE.name,
+  ...(!SITE.demo && SITE.legalName ? { legalName: SITE.legalName } : {}),
   url: SITE.url,
   logo: absoluteUrl("/logo.png"),
   ...(SITE.email ? { email: SITE.email } : {}),
@@ -43,7 +44,8 @@ export default function Seo({ title, description, path, schema = [], noIndex }: 
       <title>{pageTitle}</title>
       <meta name="description" content={pageDescription} />
       <link rel="canonical" href={canonical} />
-      <meta name="robots" content={noIndex ? "noindex,nofollow" : "index,follow"} />
+      <meta name="robots" content={noIndex || SITE.demo || !SITE.domainConfirmed ? "noindex,nofollow" : "index,follow"} />
+      {SITE.searchConsoleVerification && <meta name="google-site-verification" content={SITE.searchConsoleVerification} />}
       <meta property="og:type" content="website" />
       <meta property="og:site_name" content={SITE.name} />
       <meta property="og:title" content={pageTitle} />
