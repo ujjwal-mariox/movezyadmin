@@ -1946,6 +1946,10 @@ export interface BookingRow {
   timeCharge?: number;
   surgeFare?: number;
   surgeMultiplier?: number;
+  /** What distanceCharge was priced from; absent on older bookings. */
+  perKmRate?: number;
+  includedKm?: number;
+  minimumFareAdjustment?: number;
   addonTotal?: number;
   addons?: Array<{ name?: string; price?: number; quantity?: number }>;
   stopCharges?: number;

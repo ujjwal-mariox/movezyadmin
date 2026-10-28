@@ -29,7 +29,7 @@ type NumKey = Exclude<keyof CityOverride, "cities" | "isActive">;
 const FIELDS: { key: NumKey; label: string; suffix: string; step?: string }[] = [
   { key: "baseFare", label: "Base fare", suffix: "₹" },
   { key: "perKmRate", label: "Per km", suffix: "₹/km" },
-  { key: "perMinuteRate", label: "Per minute", suffix: "₹/min" },
+  { key: "perMinuteRate", label: "Waiting per min", suffix: "₹/min" },
   { key: "minimumFare", label: "Minimum fare", suffix: "₹" },
   { key: "freeWaitingMinutes", label: "Free waiting", suffix: "min" },
   { key: "commissionPercent", label: "Commission", suffix: "%", step: "0.5" },

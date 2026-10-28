@@ -37,7 +37,7 @@ const ALL_SEARCH_ITEMS: SearchItem[] = [
   // compliance module id is what the backend/sidebar actually gate this page on.
   { id: "compliance", label: "Document Compliance", path: "/admin/compliance", module: "compliance", keywords: ["kyc", "expiry", "documents", "license"] },
   { id: "reports", label: "Reports & BI", path: "/admin/reports", module: "reports", keywords: ["report", "bi", "insights", "export", "analytics"] },
-  { id: "commissions", label: "Commission & Charges", path: "/admin/commissions", module: "commissions", keywords: ["commission", "charges", "fare", "pricing"] },
+  { id: "commissions", label: "Commission, Charges & Surge", path: "/admin/commissions", module: "commissions", keywords: ["commission", "charges", "fare", "pricing", "surge", "peak", "night", "weather"] },
   { id: "cms", label: "Content & Policies", path: "/admin/cms", module: "cms", keywords: ["content", "policy", "terms", "privacy", "faq"] },
   // /admin/cod-management is not a registered route (routes/index.ts) — the
   // catch-all in App.tsx bounced it to the dashboard. COD is a tab of the

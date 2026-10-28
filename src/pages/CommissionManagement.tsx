@@ -224,7 +224,7 @@ const CommissionManagement: React.FC = () => {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">
-            Commission & Charges
+            Commission, Charges & Surge
           </h1>
           <p className="text-sm text-gray-500">
             The live fare configuration — pricing, GST, commission, surge and

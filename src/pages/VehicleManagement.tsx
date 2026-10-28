@@ -121,6 +121,21 @@ const initialFormData: FormData = {
   sortOrder: 0,
 };
 
+/**
+ * A category is the vehicle class ("2 Wheeler"); each vehicle type inside it
+ * is a sub-category with its own rate card (2 Wheeler → Scooter, Bike). The
+ * list is grouped this way so it reads as the client described it.
+ */
+const CATEGORY_GROUPS: { code: string; label: string }[] = [
+  { code: "2W", label: "2 Wheeler" },
+  { code: "3W", label: "3 Wheeler" },
+  { code: "4W", label: "4 Wheeler" },
+  { code: "HV", label: "Heavy Vehicle" },
+  { code: "", label: "No category set" },
+];
+const categoryLabel = (code?: string) =>
+  CATEGORY_GROUPS.find((g) => g.code === (code || ""))?.label || code || "";
+
 const VehicleManagement: React.FC = () => {
   const dialog = useDialog();
   // Data state
@@ -491,9 +506,24 @@ const VehicleManagement: React.FC = () => {
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
         </div>
       ) : (
-        /* Vehicle Types Grid */
+        /* Vehicle types, grouped by category — each card is a sub-category
+           with its own rates. */
+        <div className="space-y-8">
+          {CATEGORY_GROUPS.map((group) => {
+            const items = paginatedVehicleTypes.filter(
+              (v) => (v.categoryCode || "") === group.code,
+            );
+            if (items.length === 0) return null;
+            return (
+              <section key={group.code || "none"}>
+                <div className="flex items-baseline gap-2 mb-3">
+                  <h2 className="text-base font-semibold text-gray-900">{group.label}</h2>
+                  <span className="text-xs text-gray-500">
+                    {items.length} sub-categor{items.length === 1 ? "y" : "ies"}, each priced separately
+                  </span>
+                </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {paginatedVehicleTypes.map((vt) => {
+          {items.map((vt) => {
             // Real declared load types. The old chips were INFERRED from
             // weight ("fragile = under 50kg"), which nobody ever declared —
             // now they render only what the admin actually set on the type.
@@ -562,7 +592,7 @@ const VehicleManagement: React.FC = () => {
                   <div className="flex flex-wrap gap-1.5">
                     {vt.categoryCode ? (
                       <span className="px-2 py-0.5 text-[11px] font-semibold text-gray-700 bg-gray-100 rounded-full">
-                        {vt.categoryCode}
+                        {categoryLabel(vt.categoryCode)}
                       </span>
                     ) : null}
                     {vt.lengthFt && vt.breadthFt && vt.heightFt ? (
@@ -585,7 +615,7 @@ const VehicleManagement: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Per Km / Per Min</span>
+                  <span className="text-gray-500">Per Km / Waiting per Min</span>
                   <span className="font-medium text-gray-900">
                     ₹{vt.perKmRate} / ₹{vt.perMinuteRate}
                   </span>
@@ -746,6 +776,10 @@ const VehicleManagement: React.FC = () => {
             );
           })}
         </div>
+              </section>
+            );
+          })}
+        </div>
       )}
 
       {!loading && paginatedVehicleTypes.length > 0 && (
@@ -868,13 +902,14 @@ const VehicleManagement: React.FC = () => {
                     className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Not set</option>
-                    <option value="2W">2W — Scooter / Bike</option>
-                    <option value="3W">3W — Auto / Tempo</option>
-                    <option value="4W">4W — Mini truck / Van</option>
-                    <option value="HV">Heavy vehicle</option>
+                    <option value="2W">2 Wheeler</option>
+                    <option value="3W">3 Wheeler</option>
+                    <option value="4W">4 Wheeler</option>
+                    <option value="HV">Heavy Vehicle</option>
                   </select>
                   <p className="mt-1 text-[11px] text-gray-400">
-                    Partners registering a 2W pick Scooter or Bike with Petrol/Electric only.
+                    This vehicle type is a sub-category of the category, with its own rates
+                    (e.g. 2 Wheeler → Scooter, Bike).
                   </p>
                 </div>
                 {(
@@ -1005,7 +1040,7 @@ const VehicleManagement: React.FC = () => {
                   </div>
                   <div>
                     <label className="block mb-1 text-sm font-medium text-gray-700">
-                      Per Minute (₹) *
+                      Waiting per Minute (₹) *
                     </label>
                     <input
                       type="number"
@@ -1022,6 +1057,9 @@ const VehicleManagement: React.FC = () => {
                       className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="0"
                     />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Only for waiting beyond the free minutes. The trip fare is base fare + per km.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1032,7 +1070,7 @@ const VehicleManagement: React.FC = () => {
                   Minimum fare, free waiting &amp; commission
                 </h3>
                 <p className="mb-3 text-xs text-gray-500">
-                  Leave a field blank to inherit the global value from Commission &amp; Charges.
+                  Leave a field blank to inherit the global value from Commission, Charges &amp; Surge.
                 </p>
                 <div className="grid grid-cols-3 gap-4">
                   {(

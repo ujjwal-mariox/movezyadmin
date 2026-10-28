@@ -102,7 +102,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         { id: "payments", label: "Payments", icon: Wallet },
         { id: "wallet", label: "Wallet", icon: Wallet },
         { id: "refunds", label: "Refund Approval", icon: Wallet },
-        { id: "commissions", label: "Commission & Charges", icon: DollarSign },
+        { id: "commissions", label: "Commission, Charges & Surge", icon: DollarSign },
       ],
     },
     {

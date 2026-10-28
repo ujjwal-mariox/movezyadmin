@@ -184,8 +184,16 @@ const billRows = (o: BookingRow): BillRow[] => {
   const charge = (label: string, amount?: number | null) => {
     if (Number(amount) > 0) rows.push([label, Number(amount), "charge"]);
   };
-  charge("Base fare", o.baseFare);
-  charge("Distance charge", o.distanceCharge);
+  // Distance spelled out as km × rate when the booking recorded the rate, so
+  // the line can be checked against the vehicle's base + per-km card.
+  const priced = Number(o.perKmRate) > 0 && Number(o.distanceKm) > 0;
+  const includedKm = Number(o.includedKm) || 0;
+  const chargeableKm = Math.max(0, Number(o.distanceKm) - includedKm);
+  charge(priced && includedKm > 0 ? `Base fare (incl. first ${includedKm} km)` : "Base fare", o.baseFare);
+  charge(
+    priced ? `Distance (${chargeableKm.toFixed(2)} km × ₹${o.perKmRate}/km)` : "Distance charge",
+    o.distanceCharge,
+  );
   charge("Time charge", o.timeCharge);
   charge(
     o.surgeMultiplier && o.surgeMultiplier > 1 ? `Surge (×${o.surgeMultiplier})` : "Surge",
@@ -197,6 +205,7 @@ const billRows = (o: BookingRow): BillRow[] => {
   charge(o.waitingMinutes ? `Waiting (${o.waitingMinutes} min)` : "Waiting", o.waitingCharge);
   charge("Toll charges", o.tollCharges);
   charge("Parking", o.parkingCharges);
+  charge("Minimum fare adjustment", o.minimumFareAdjustment);
   if (o.subtotal != null) rows.push(["Subtotal", Number(o.subtotal), "subtotal"]);
   const t = o.taxBreakdown;
   if (t && t.supplyType === "INTRA_STATE") {
