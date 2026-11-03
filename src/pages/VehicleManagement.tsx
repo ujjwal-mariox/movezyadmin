@@ -510,9 +510,16 @@ const VehicleManagement: React.FC = () => {
            with its own rates. */
         <div className="space-y-8">
           {CATEGORY_GROUPS.map((group) => {
-            const items = paginatedVehicleTypes.filter(
-              (v) => (v.categoryCode || "") === group.code,
-            );
+            // Smallest to largest by load capacity, then cargo length — the
+            // same order the apps use.
+            const items = paginatedVehicleTypes
+              .filter((v) => (v.categoryCode || "") === group.code)
+              .sort(
+                (a, b) =>
+                  (Number(a.maxWeightKg) || 0) - (Number(b.maxWeightKg) || 0) ||
+                  (Number(a.lengthFt) || 0) - (Number(b.lengthFt) || 0) ||
+                  String(a.name).localeCompare(String(b.name)),
+              );
             if (items.length === 0) return null;
             return (
               <section key={group.code || "none"}>
@@ -859,6 +866,10 @@ const VehicleManagement: React.FC = () => {
                   <label className="block mb-1 text-sm font-medium text-gray-700">
                     Sort Order
                   </label>
+                  <p className="mb-1 text-xs text-gray-400">
+                    Lists show each category smallest to largest by max weight; this only
+                    nudges which vehicle is recommended.
+                  </p>
                   <input
                     type="number"
                     min="0"
