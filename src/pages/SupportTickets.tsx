@@ -150,6 +150,9 @@ const SupportTickets: React.FC = () => {
   const [channel, setChannel] = useState<ThreadChannel>("CUSTOMER");
   const [now, setNow] = useState(Date.now());
   const [quickReplies, setQuickReplies] = useState<QuickReplyItem[]>([]);
+  // Suggested replies for the issue the customer/driver picked in the app's
+  // guided chat (from the server's support flow), shown before quick replies.
+  const [flowSuggestions, setFlowSuggestions] = useState<{ title: string; body: string }[]>([]);
   const [sending, setSending] = useState(false);
   const [backendStats, setBackendStats] = useState<{
     slaBreached?: number;
@@ -221,9 +224,11 @@ const SupportTickets: React.FC = () => {
       const data = res?.data ?? res;
       if (data?.messages) setMessages(data.messages as SupportMessage[]);
       else setMessages([]);
+      setFlowSuggestions(Array.isArray(data?.flowSuggestions) ? data.flowSuggestions : []);
     } catch (e) {
       console.error("[Support] loadMessages failed", e);
       setMessages([]);
+      setFlowSuggestions([]);
     }
   }, []);
 
@@ -1043,6 +1048,24 @@ const SupportTickets: React.FC = () => {
               {/* Reply Box */}
               {selectedTicket.status !== "RESOLVED" && selectedTicket.status !== "CLOSED" && (
                 <div className="p-4 border-t border-gray-100 space-y-3">
+                  {/* Suggested for the issue picked in the app; not for internal notes */}
+                  {channel !== "INTERNAL" && flowSuggestions.length > 0 && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                      <span className="text-[10px] font-semibold text-orange-600 uppercase tracking-wide whitespace-nowrap">
+                        For this issue:
+                      </span>
+                      {flowSuggestions.map((r) => (
+                        <button
+                          key={r.title}
+                          onClick={() => handleQuickReply(r.body)}
+                          title={r.body}
+                          className="flex-shrink-0 px-2.5 py-1 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-full hover:bg-orange-100 whitespace-nowrap"
+                        >
+                          {r.title.length > 32 ? r.title.slice(0, 30) + "…" : r.title}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {/* Quick Replies */}
                   <div className="flex items-center gap-2 overflow-x-auto pb-1">
                     <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">
