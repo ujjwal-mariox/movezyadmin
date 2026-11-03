@@ -6,5 +6,6 @@
   {"path":"/contact","priority":"0.7","title":"Contact Us | Movezy","description":"Contact Movezy about bookings, business, driver or fleet partnership, billing or technical issues. Choose an enquiry category."},
   {"path":"/privacy-policy","priority":"0.4","title":"Privacy Policy | Movezy","description":"Read the privacy information published by Movezy for its services."},
   {"path":"/refund-policy","priority":"0.4","title":"Refund Policy | Movezy","description":"Read the cancellation and refund information published by Movezy."},
-  {"path":"/terms-of-use","priority":"0.4","title":"Terms of Use | Movezy","description":"Read the terms published by Movezy for its apps, website and services."}
+  {"path":"/terms-of-use","priority":"0.4","title":"Terms of Use | Movezy","description":"Read the terms published by Movezy for its apps, website and services."},
+  {"path":"/delete-account","priority":"0.3","title":"Delete your account | Movezy","description":"How to delete your Movezy or Movezy Partner account and what happens to your data."}
 ]

@@ -36,6 +36,7 @@ export const POLICY_LINKS = [
   { to: "/privacy-policy", label: "Privacy Policy" },
   { to: "/refund-policy", label: "Refund Policy" },
   { to: "/terms-of-use", label: "Terms of Use" },
+  { to: "/delete-account", label: "Delete Account" },
 ];
 
 export const absoluteUrl = (path: string) => `${SITE.url}${path.startsWith("/") ? path : `/${path}`}`;

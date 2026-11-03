@@ -8,6 +8,7 @@ import Services from "./pages/Services";
 import Download from "./pages/Download";
 import Contact from "./pages/Contact";
 import Policy from "./pages/Policy";
+import DeleteAccount from "./pages/DeleteAccount";
 import NotFound from "./pages/NotFound";
 import AdminRedirect from "./components/AdminRedirect";
 import MobileActions from "./components/MobileActions";
@@ -54,6 +55,8 @@ export default function App() {
           <Route path="/refund-policy" element={<Policy key="REFUND" type="REFUND" />} />
           <Route path="/terms-of-use" element={<Policy key="TERMS" type="TERMS" />} />
           <Route path="/policies" element={<Policy key="PRIVACY" type="PRIVACY" />} />
+          {/* Google Play requires a public account-deletion page. */}
+          <Route path="/delete-account" element={<DeleteAccount />} />
           {/* The panel lives at /admin/index.html; a host without an /admin rewrite lands here. */}
           <Route path="/admin/*" element={<AdminRedirect />} />
           <Route path="*" element={<NotFound />} />
