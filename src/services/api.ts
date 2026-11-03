@@ -2142,6 +2142,8 @@ export interface FareConfigItem {
   refundAfterPickupPercent: number;
   waitingChargePerMin: number;
   freeWaitingMinutes: number;
+  /** Cash dues (₹) above which a driver can't go online; 0 = no limit. */
+  driverCashDueLimit?: number;
   nightSurgeMultiplier: number;
   nightSurgeStartHour: number;
   nightSurgeEndHour: number;

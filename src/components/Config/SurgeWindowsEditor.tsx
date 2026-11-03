@@ -42,6 +42,10 @@ const SurgeWindowsEditor: React.FC<Props> = ({
 
   return (
     <div className="space-y-3">
+      <p className="text-xs text-gray-400">
+        The multiplier applies to the base fare only: ×1.5 on a ₹50 base adds ₹25, whatever the
+        distance.
+      </p>
       {value.length === 0 && (
         <p className="text-xs text-gray-400">No windows — normal pricing all day.</p>
       )}

@@ -37,6 +37,7 @@ type Rail = {
 // numbers that drive live settlements and fare quotes.
 const RAILS: Rail[] = [
   { key: "driverCommissionPercent", label: "Driver commission", min: 0, max: 50 },
+  { key: "driverCashDueLimit", label: "Cash dues limit", min: 0, max: 100000 },
   { key: "gstPercentage", label: "GST", min: 0, max: 28 },
   { key: "refundBeforeAssignPercent", label: "Refund before assignment", min: 0, max: 100 },
   { key: "refundAfterAssignPercent", label: "Refund after assignment", min: 0, max: 100 },
@@ -59,7 +60,9 @@ const CommissionManagement: React.FC = () => {
       const res = await fetchFareConfig();
       const cfg = res?.data?.config;
       if (!cfg) throw new Error("No fare configuration returned");
-      setDraft(cfg);
+      // Configs saved before the cash dues limit existed don't carry it; 0 is
+      // its "no limit" default, and a blank would block every save.
+      setDraft({ ...cfg, driverCashDueLimit: cfg.driverCashDueLimit ?? 0 });
     } catch (e: any) {
       setError(e?.message || "Could not load fare configuration");
     } finally {
@@ -283,6 +286,10 @@ const CommissionManagement: React.FC = () => {
               {field("Driver commission", "driverCommissionPercent", {
                 suffix: "%",
                 hint: "Charged on the pre-GST subtotal at trip completion; the driver keeps the rest.",
+              })}
+              {field("Cash dues limit", "driverCashDueLimit", {
+                suffix: "₹",
+                hint: "On cash trips the driver keeps Movezy's commission and the GST, which is netted off their payouts. A driver owing more than this can't go online until they pay it in from Wallet. 0 = no limit.",
               })}
               {field("GST", "gstPercentage", {
                 suffix: "%",
