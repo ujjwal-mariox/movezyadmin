@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
+import { useAdminAlerts } from "./AdminAlerts";
 import logo from "../../assets/logo.png";
 
 interface MenuItem {
@@ -57,6 +58,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navigate = useNavigate();
   const { logout, canAccessModule, user } = useAuth();
+  // Unread admin alerts per section (only sections this role can open).
+  const { counts } = useAdminAlerts();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const menuGroups: MenuGroup[] = [
@@ -207,7 +210,13 @@ const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => toggleGroup(group.label)}
                     className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600 transition-colors"
                   >
-                    {group.label}
+                    <span className="flex items-center gap-1.5">
+                      {group.label}
+                      {isCollapsed &&
+                        visibleItems.some((i) => (counts[i.id] || 0) > 0) && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-movezy-500" />
+                        )}
+                    </span>
                     <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
                   </button>
                   {!isCollapsed && (
@@ -227,8 +236,29 @@ const Sidebar: React.FC<SidebarProps> = ({
                               }`
                             }
                           >
-                            <Icon className="w-4 h-4" />
-                            <span className="font-medium">{item.label}</span>
+                            {({ isActive }) => {
+                              const n = counts[item.id] || 0;
+                              return (
+                                <>
+                                  <Icon className="w-4 h-4" />
+                                  <span className="font-medium flex-1 min-w-0 truncate">{item.label}</span>
+                                  {n > 0 && (
+                                    <span
+                                      title={`${n} unread`}
+                                      className={`ml-auto min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold leading-5 text-center ${
+                                        isActive
+                                          ? "bg-white text-movezy-600"
+                                          : item.id === "sos"
+                                            ? "bg-red-600 text-white"
+                                            : "bg-movezy-100 text-movezy-700"
+                                      }`}
+                                    >
+                                      {n > 99 ? "99+" : n}
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            }}
                           </NavLink>
                         );
                       })}

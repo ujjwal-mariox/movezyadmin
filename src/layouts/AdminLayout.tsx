@@ -3,11 +3,13 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "../components/Layout/Sidebar";
 import Header from "../components/Layout/Header";
 import RouteErrorBoundary from "../components/Layout/RouteErrorBoundary";
+import { AdminAlertsProvider } from "../components/Layout/AdminAlerts";
 
 const AdminLayout: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
+    <AdminAlertsProvider>
     <div className="flex h-screen bg-gray-100">
       <Sidebar
         isMobileMenuOpen={isMobileMenuOpen}
@@ -24,6 +26,7 @@ const AdminLayout: React.FC = () => {
         </main>
       </div>
     </div>
+    </AdminAlertsProvider>
   );
 };
 
