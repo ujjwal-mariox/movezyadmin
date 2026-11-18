@@ -9,6 +9,7 @@ import {
   Phone,
   Lock,
   Loader2,
+  Gift,
 } from "lucide-react";
 import {
   fetchAppSettings,
@@ -16,6 +17,7 @@ import {
   type AppConfigItem,
 } from "../services/api";
 import { useDialog } from "../components/Layout/Dialog";
+import ReferralMessageEditor, { REFERRAL_DEFAULTS } from "../components/Config/ReferralMessageEditor";
 
 // Known configuration keys wired into this page.
 const KEYS = {
@@ -23,6 +25,10 @@ const KEYS = {
   contactEmail: "general.contact_email",
   phoneNumber: "general.phone_number",
   appDownloadUrl: "APP_DOWNLOAD_URL",
+  customerAppStoreUrl: "CUSTOMER_APP_STORE_URL",
+  driverAppDownloadUrl: "DRIVER_APP_DOWNLOAD_URL",
+  referralMessageCustomer: "REFERRAL_MESSAGE_CUSTOMER",
+  referralMessageDriver: "REFERRAL_MESSAGE_DRIVER",
   joiningFee: "joining_fee",
   supportPhone: "SUPPORT_PHONE",
   dispatchOfferSeconds: "DISPATCH_OFFER_SECONDS",
@@ -34,6 +40,8 @@ const KEYS = {
 
 const DEFAULTS = {
   appDownloadUrl: "",
+  customerAppStoreUrl: "",
+  driverAppDownloadUrl: "",
   supportPhone: "",
   dispatchOfferSeconds: "30",
   joiningFee: "",
@@ -69,6 +77,10 @@ const Settings: React.FC = () => {
   const [contactEmail, setContactEmail] = useState(DEFAULTS.contactEmail);
   const [phoneNumber, setPhoneNumber] = useState(DEFAULTS.phoneNumber);
   const [appDownloadUrl, setAppDownloadUrl] = useState(DEFAULTS.appDownloadUrl);
+  const [customerAppStoreUrl, setCustomerAppStoreUrl] = useState(DEFAULTS.customerAppStoreUrl);
+  const [driverAppDownloadUrl, setDriverAppDownloadUrl] = useState(DEFAULTS.driverAppDownloadUrl);
+  const [referralMessageCustomer, setReferralMessageCustomer] = useState(REFERRAL_DEFAULTS.customer);
+  const [referralMessageDriver, setReferralMessageDriver] = useState(REFERRAL_DEFAULTS.driver);
   const [supportPhone, setSupportPhone] = useState(DEFAULTS.supportPhone);
   const [dispatchOfferSeconds, setDispatchOfferSeconds] = useState(DEFAULTS.dispatchOfferSeconds);
   const dispatchParallelOffers = "1";
@@ -87,6 +99,11 @@ const Settings: React.FC = () => {
       setContactEmail(readString(items, KEYS.contactEmail, DEFAULTS.contactEmail));
       setPhoneNumber(readString(items, KEYS.phoneNumber, DEFAULTS.phoneNumber));
       setAppDownloadUrl(readString(items, KEYS.appDownloadUrl, DEFAULTS.appDownloadUrl));
+      setCustomerAppStoreUrl(readString(items, KEYS.customerAppStoreUrl, DEFAULTS.customerAppStoreUrl));
+      setDriverAppDownloadUrl(readString(items, KEYS.driverAppDownloadUrl, DEFAULTS.driverAppDownloadUrl));
+      // An empty saved message means "use the default", same as on the server.
+      setReferralMessageCustomer(readString(items, KEYS.referralMessageCustomer, "") || REFERRAL_DEFAULTS.customer);
+      setReferralMessageDriver(readString(items, KEYS.referralMessageDriver, "") || REFERRAL_DEFAULTS.driver);
       setSupportPhone(readString(items, KEYS.supportPhone, DEFAULTS.supportPhone));
       setDispatchOfferSeconds(readString(items, KEYS.dispatchOfferSeconds, DEFAULTS.dispatchOfferSeconds));
       setJoiningFee(readString(items, KEYS.joiningFee, DEFAULTS.joiningFee));
@@ -110,7 +127,11 @@ const Settings: React.FC = () => {
       upsertAppSetting({ key: KEYS.companyName, value: companyName, type: "STRING", category: "general", description: "Company display name" }),
       upsertAppSetting({ key: KEYS.contactEmail, value: contactEmail, type: "STRING", category: "general", description: "Admin contact email" }),
       upsertAppSetting({ key: KEYS.phoneNumber, value: phoneNumber, type: "STRING", category: "general", description: "Admin contact phone" }),
-      upsertAppSetting({ key: KEYS.appDownloadUrl, value: appDownloadUrl, type: "STRING", category: "general", description: "App store link used in referral share messages" }),
+      upsertAppSetting({ key: KEYS.appDownloadUrl, value: appDownloadUrl.trim(), type: "STRING", category: "referral", description: "Customer app Google Play link, used in referral share messages" }),
+      upsertAppSetting({ key: KEYS.customerAppStoreUrl, value: customerAppStoreUrl.trim(), type: "STRING", category: "referral", description: "Customer app Apple App Store link, used in referral share messages" }),
+      upsertAppSetting({ key: KEYS.driverAppDownloadUrl, value: driverAppDownloadUrl.trim(), type: "STRING", category: "referral", description: "Driver app Google Play link, used in driver referral share messages" }),
+      upsertAppSetting({ key: KEYS.referralMessageCustomer, value: referralMessageCustomer.trim(), type: "STRING", category: "referral", description: "Message customers share from Refer & Earn" }),
+      upsertAppSetting({ key: KEYS.referralMessageDriver, value: referralMessageDriver.trim(), type: "STRING", category: "referral", description: "Message driver partners share from Refer & Earn" }),
       upsertAppSetting({ key: KEYS.supportPhone, value: supportPhone, type: "STRING", category: "general", description: "Number shown on the apps' Call Support card" }),
       upsertAppSetting({ key: KEYS.dispatchOfferSeconds, value: Math.min(120, Math.max(10, Number(dispatchOfferSeconds) || 30)), type: "NUMBER", category: "dispatch", description: "Seconds a driver has to answer an offer before it moves to the next nearest driver" }),
       upsertAppSetting({ key: KEYS.dispatchParallelOffers, value: Math.min(10, Math.max(1, Number(dispatchParallelOffers) || 1)), type: "NUMBER", category: "dispatch", description: "Only the current nearest driver receives an offer" }),
@@ -131,7 +152,7 @@ const Settings: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [companyName, contactEmail, phoneNumber, appDownloadUrl, supportPhone, dispatchOfferSeconds, dispatchParallelOffers, hideContactNumbers, callFallbackDirect, fourEyes, joiningFee, loadSettings]);
+  }, [companyName, contactEmail, phoneNumber, appDownloadUrl, customerAppStoreUrl, driverAppDownloadUrl, referralMessageCustomer, referralMessageDriver, supportPhone, dispatchOfferSeconds, dispatchParallelOffers, hideContactNumbers, callFallbackDirect, fourEyes, joiningFee, loadSettings]);
 
   return (
     <div className="p-6 space-y-6">
@@ -233,23 +254,6 @@ const Settings: React.FC = () => {
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 transition-all disabled:bg-gray-50"
                 />
               </div>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">App Download Link</label>
-              <input
-                type="url"
-                value={appDownloadUrl}
-                onChange={(e) => setAppDownloadUrl(e.target.value)}
-                disabled={loading}
-                placeholder="https://play.google.com/store/apps/details?id=..."
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 transition-all disabled:bg-gray-50"
-              />
-              <p className="mt-1.5 text-xs text-gray-500">
-                Used to build the referral link customers share (the code is appended as
-                <code className="mx-1 px-1 bg-gray-100 rounded">?ref=CODE</code>). Left blank,
-                referral messages go out with the code only — never a broken link.
-              </p>
             </div>
 
             <div>
@@ -417,6 +421,66 @@ const Settings: React.FC = () => {
         </div>
 
         <QuickRepliesCard />
+
+        {/* Referral share messages */}
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-300">
+          <div className="flex items-center space-x-4 mb-6">
+            <div className="w-12 h-12 bg-movezy-50 rounded-xl flex items-center justify-center">
+              <Gift className="w-6 h-6 text-movezy-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">Referral share messages</h3>
+              <p className="text-sm text-gray-500">
+                What customers and driver partners send when they tap Share on Refer &amp; Earn. Each person&apos;s own code and links are filled in for them.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+            {[
+              { label: "Customer app – Google Play link", value: appDownloadUrl, set: setAppDownloadUrl, ph: "https://play.google.com/store/apps/details?id=co.movezy.app" },
+              { label: "Customer app – App Store link", value: customerAppStoreUrl, set: setCustomerAppStoreUrl, ph: "https://apps.apple.com/in/app/..." },
+              { label: "Driver app – Google Play link", value: driverAppDownloadUrl, set: setDriverAppDownloadUrl, ph: "https://play.google.com/store/apps/details?id=co.movezy.partner" },
+            ].map((f) => (
+              <div key={f.label}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{f.label}</label>
+                <input
+                  type="url"
+                  value={f.value}
+                  onChange={(e) => f.set(e.target.value)}
+                  disabled={loading}
+                  placeholder={f.ph}
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-movezy-500 transition-all disabled:bg-gray-50"
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mb-6">
+            The invite link is the Google Play link with
+            <code className="mx-1 px-1 bg-gray-100 rounded">?ref=CODE</code>
+            added. A line whose link is still blank is left out of the message, so friends never see an empty link.
+          </p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ReferralMessageEditor
+              audience="customer"
+              title="Customer message"
+              value={referralMessageCustomer}
+              onChange={setReferralMessageCustomer}
+              playUrl={appDownloadUrl}
+              appStoreUrl={customerAppStoreUrl}
+              disabled={loading}
+            />
+            <ReferralMessageEditor
+              audience="driver"
+              title="Driver partner message"
+              value={referralMessageDriver}
+              onChange={setReferralMessageDriver}
+              playUrl={driverAppDownloadUrl}
+              disabled={loading}
+            />
+          </div>
+        </div>
 
 
       </div>
